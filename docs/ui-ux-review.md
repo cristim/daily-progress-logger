@@ -338,7 +338,9 @@ main window's row actions and the dialogs' per-item selectors mouse-only
 **Fix:** Call `SetAccessibleName` with the tooltip text on every icon
 button, give them an explicit focus policy, and verify tabbing with Full
 Keyboard Access enabled.
-**Status:** open
+**Status:** implemented — `SetAccessibleName(c.tooltip)` added to every
+button in `newChoiceSelector`; backlog button likewise. Focus policy and
+live VoiceOver verification remain manual (flagged in the finding).
 
 ### 30. "Check for Updates…" freezes the UI with no feedback
 **Severity:** low

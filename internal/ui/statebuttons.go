@@ -43,6 +43,7 @@ func newChoiceSelector(choices []choice, initialID int) *choiceSelector {
 		button.SetToolButtonStyle(qt.ToolButtonIconOnly)
 		button.SetCheckable(true)
 		button.SetToolTip(c.tooltip)
+		button.SetAccessibleName(c.tooltip)
 		if c.id == initialID {
 			button.SetChecked(true)
 		}
