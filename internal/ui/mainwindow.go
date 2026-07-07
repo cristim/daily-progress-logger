@@ -80,7 +80,8 @@ func (w *mainWindow) setUpMenu() {
 	addMenuAction(fileMenu, "Open Data Folder", w.openDataFolder)
 	addMenuAction(fileMenu, "Review Last Week…", w.app.runWeekReviewManually)
 	fileMenu.AddSeparator()
-	addMenuAction(fileMenu, "Quit", qt.QCoreApplication_Quit)
+	quit := addMenuAction(fileMenu, "Quit", qt.QCoreApplication_Quit)
+	quit.SetShortcut(qt.NewQKeySequence6(qt.QKeySequence__Quit))
 	w.win.SetMenuBar(menuBar)
 }
 

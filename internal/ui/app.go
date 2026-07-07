@@ -326,10 +326,11 @@ func (a *App) reportError(err error) {
 }
 
 // addMenuAction creates a triggered action on menu.
-func addMenuAction(menu *qt.QMenu, text string, handler func()) {
+func addMenuAction(menu *qt.QMenu, text string, handler func()) *qt.QAction {
 	action := qt.NewQAction2(text)
 	action.OnTriggered(handler)
 	menu.AddAction(action)
+	return action
 }
 
 // trayIcon draws a simple filled circle usable as a menu-bar icon.
