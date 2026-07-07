@@ -160,9 +160,8 @@ func (w *mainWindow) buildPlanRow(index int, item store.Item) *qt.QWidget {
 	})
 
 	backlog := qt.NewQToolButton2()
-	backlog.SetText("Backlog")
 	backlog.SetIcon(standardIcon(qt.QStyle__SP_ArrowUp))
-	backlog.SetToolButtonStyle(qt.ToolButtonTextBesideIcon)
+	backlog.SetToolButtonStyle(qt.ToolButtonIconOnly)
 	backlog.SetToolTip("Move to the cross-week backlog")
 	backlog.OnClicked(func() {
 		if err := w.app.store.MoveToBacklog(time.Now(), index); err != nil {

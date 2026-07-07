@@ -23,11 +23,10 @@ func newStateSelector(initial store.ItemState) *stateSelector {
 	group := qt.NewQButtonGroup()
 	group.SetExclusive(true)
 
-	add := func(state store.ItemState, text string, icon qt.QStyle__StandardPixmap, tooltip string) {
+	add := func(state store.ItemState, icon qt.QStyle__StandardPixmap, tooltip string) {
 		button := qt.NewQToolButton2()
-		button.SetText(text)
 		button.SetIcon(standardIcon(icon))
-		button.SetToolButtonStyle(qt.ToolButtonTextBesideIcon)
+		button.SetToolButtonStyle(qt.ToolButtonIconOnly)
 		button.SetCheckable(true)
 		button.SetToolTip(tooltip)
 		if state == initial {
@@ -36,11 +35,11 @@ func newStateSelector(initial store.ItemState) *stateSelector {
 		group.AddButton2(button.QAbstractButton, int(state))
 		layout.AddWidget(button.QWidget)
 	}
-	add(store.StateDone, "Done", qt.QStyle__SP_DialogApplyButton, "Mark as done")
-	add(store.StateTodo, "Not done", qt.QStyle__SP_DialogCancelButton, "Keep as an open todo")
-	add(store.StatePostponed, "Postpone", qt.QStyle__SP_ArrowForward, "Postpone to next week")
+	add(store.StateDone, qt.QStyle__SP_DialogApplyButton, "Done")
+	add(store.StateTodo, qt.QStyle__SP_DialogCancelButton, "Not done (keep as an open todo)")
+	add(store.StatePostponed, qt.QStyle__SP_ArrowForward, "Postpone to next week")
 
-	widget.SetStyleSheet(`QToolButton { padding: 3px 8px; border: 1px solid transparent; border-radius: 5px; } QToolButton:checked { background-color: palette(highlight); color: palette(highlighted-text); border-color: palette(highlight); }`)
+	widget.SetStyleSheet(`QToolButton { padding: 4px 6px; border: 1px solid transparent; border-radius: 5px; } QToolButton:checked { background-color: palette(highlight); color: palette(highlighted-text); border-color: palette(highlight); }`)
 
 	return &stateSelector{widget: widget, group: group}
 }

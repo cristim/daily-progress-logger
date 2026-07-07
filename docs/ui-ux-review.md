@@ -95,6 +95,21 @@ vertical space and looking out of place.
 SetHorizontalScrollBarPolicy(ScrollBarAlwaysOff).
 **Status:** implemented
 
+### 13. Add-task field was below the list; row-button captions consumed horizontal space
+**Problem:** The "Add a task for today..." input field was positioned below
+the plan list, making it easy to overlook and inconsistent with the natural
+top-to-bottom flow (add then review). Additionally, the Done / Not done /
+Postpone buttons and the Backlog button displayed text labels beside their
+icons, consuming significant horizontal space and causing the last button to
+clip on narrow windows.
+**Fix:** Moved the add-task field above the plan list so it appears
+immediately after the heading. Converted all row buttons to icon-only
+(ToolButtonIconOnly) and folded their captions into tooltips: "Done",
+"Not done (keep as an open todo)", "Postpone to next week", "Move to the
+cross-week backlog". Updated the empty-state placeholder text to reference
+"above" since the add-task field now sits above the list.
+**Status:** implemented
+
 ## Other notes
 
 - **[wontfix] Dock icon visibility:** hiding the Dock icon (LSUIElement) is
