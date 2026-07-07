@@ -1,0 +1,59 @@
+version: "2"
+
+linters:
+  default: all
+  disable:
+    # No import-allowlist policy for this small desktop app.
+    - depguard
+    # Qt widget structs and testify test tables are intentionally partial.
+    - exhaustruct
+    # Idiomatic Go uses short receiver/index names (w, d, b, i).
+    - varnamelen
+    # Whitespace-style linters are too opinionated for hand-laid-out Qt code.
+    - wsl
+    - wsl_v5
+    - nlreturn
+    # Files are organized thematically (each operation next to its helpers),
+    # not by export visibility.
+    - funcorder
+    # `if err := f(); err != nil` is idiomatic Go.
+    - noinlineerr
+    # Named returns are used to document multi-value results (never naked
+    # returns).
+    - nonamedreturns
+    # This app is not internationalized; UI strings legitimately contain
+    # typographic characters like the ellipsis.
+    - gosmopolitan
+    # Immutable lookup tables and test fixtures as package vars are fine.
+    - gochecknoglobals
+    # UI geometry (pixel sizes, margins) and file modes are inherently literal.
+    - mnd
+    # Internal-only packages: plain fmt.Errorf wrapping is sufficient.
+    - err113
+    - wrapcheck
+    # config tests use t.Setenv, which is incompatible with t.Parallel.
+    - paralleltest
+    # White-box tests of the markdown parser are intentional.
+    - testpackage
+    # The config file format uses snake_case keys on purpose.
+    - tagliatelle
+    # Qt widget-construction functions are naturally long; splitting them
+    # into fragments hurts readability.
+    - funlen
+  settings:
+    lll:
+      line-length: 140
+    cyclop:
+      # The line-based markdown parsers are switch-heavy but linear.
+      max-complexity: 15
+    gosec:
+      excludes:
+        # G304 (file inclusion via variable): reading/writing files under
+        # the user-configured data dir is this app's whole purpose.
+        - G304
+
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
