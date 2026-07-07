@@ -50,3 +50,10 @@ func TestRenderPlist(t *testing.T) {
 	hiddenIdx := strings.Index(content, "-hidden")
 	assert.Greater(t, hiddenIdx, exeIdx, "-hidden must follow the executable")
 }
+
+func TestRenderPlistEscapesXML(t *testing.T) {
+	t.Parallel()
+	content := RenderPlist("com.example.app", "/Apps & Tools/my<app>")
+	assert.Contains(t, content, "<string>/Apps &amp; Tools/my&lt;app&gt;</string>")
+	assert.NotContains(t, content, "/Apps & Tools")
+}

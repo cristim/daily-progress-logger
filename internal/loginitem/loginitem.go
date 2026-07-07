@@ -6,6 +6,7 @@ package loginitem
 
 import (
 	"context"
+	"encoding/xml"
 	"fmt"
 	"os"
 	"os/exec"
@@ -48,15 +49,24 @@ func RenderPlist(label, executable string) string {
 	b.WriteString("<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\"" +
 		" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n")
 	b.WriteString("<plist version=\"1.0\">\n<dict>\n")
-	fmt.Fprintf(&b, "\t<key>Label</key>\n\t<string>%s</string>\n", label)
+	fmt.Fprintf(&b, "\t<key>Label</key>\n\t<string>%s</string>\n", xmlEscape(label))
 	b.WriteString("\t<key>ProgramArguments</key>\n\t<array>\n")
-	fmt.Fprintf(&b, "\t\t<string>%s</string>\n", executable)
+	fmt.Fprintf(&b, "\t\t<string>%s</string>\n", xmlEscape(executable))
 	b.WriteString("\t\t<string>-hidden</string>\n")
 	b.WriteString("\t</array>\n")
 	b.WriteString("\t<key>RunAtLoad</key>\n\t<true/>\n")
 	b.WriteString("\t<key>KeepAlive</key>\n\t<false/>\n")
 	b.WriteString("\t<key>ProcessType</key>\n\t<string>Interactive</string>\n")
 	b.WriteString("</dict>\n</plist>\n")
+	return b.String()
+}
+
+// xmlEscape makes a string safe for embedding in plist XML; executable
+// paths may legitimately contain characters like '&'.
+func xmlEscape(s string) string {
+	var b strings.Builder
+	// EscapeText only fails on a failing writer; strings.Builder never does.
+	_ = xml.EscapeText(&b, []byte(s))
 	return b.String()
 }
 
