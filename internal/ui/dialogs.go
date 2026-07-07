@@ -10,6 +10,22 @@ import (
 	"github.com/cristim/daily-progress-logger/internal/store"
 )
 
+// dialogResult is the user's verdict on a check-in dialog.
+type dialogResult int
+
+const (
+	// dialogCanceled: skip this check-in for the rest of the day.
+	dialogCanceled dialogResult = iota
+	// dialogAccepted: answers were applied.
+	dialogAccepted
+	// dialogSnoozed: ask again in an hour.
+	dialogSnoozed
+)
+
+// snoozeCode is the custom QDialog result code for "Postpone 1h" (0 and 1
+// are taken by QDialog__Rejected and QDialog__Accepted).
+const snoozeCode = 2
+
 // dialogSpec is a built check-in dialog plus the action applying its answers
 // once accepted. Building and running are separate so dialogs can also be
 // rendered offscreen (see App.GrabScreenshots).
@@ -19,33 +35,37 @@ type dialogSpec struct {
 }
 
 // run shows the dialog modally and applies the answers if accepted.
-func (s *dialogSpec) run() error {
-	if s.dialog.Exec() != int(qt.QDialog__Accepted) {
-		return nil
+func (s *dialogSpec) run() (dialogResult, error) {
+	switch s.dialog.Exec() {
+	case int(qt.QDialog__Accepted):
+		return dialogAccepted, s.apply()
+	case snoozeCode:
+		return dialogSnoozed, nil
+	default:
+		return dialogCanceled, nil
 	}
-	return s.apply()
 }
 
-func (a *App) runMorningDialog() error {
+func (a *App) runMorningDialog() (dialogResult, error) {
 	spec, err := a.buildMorningDialog(time.Now())
 	if err != nil {
-		return err
+		return dialogCanceled, err
 	}
 	return spec.run()
 }
 
-func (a *App) runEveningDialog() error {
+func (a *App) runEveningDialog() (dialogResult, error) {
 	spec, err := a.buildEveningDialog(time.Now())
 	if err != nil {
-		return err
+		return dialogCanceled, err
 	}
 	return spec.run()
 }
 
-func (a *App) runWeekReviewDialog(week store.WeekID) error {
+func (a *App) runWeekReviewDialog(week store.WeekID) (dialogResult, error) {
 	spec, err := a.buildWeekReviewDialog(week)
 	if err != nil {
-		return err
+		return dialogCanceled, err
 	}
 	return spec.run()
 }
@@ -117,17 +137,15 @@ func (a *App) buildEveningDialog(today time.Time) (*dialogSpec, error) {
 
 	layout.AddWidget(qt.NewQLabel3("<b>How did today go?</b>").QWidget)
 
-	combos := make([]*qt.QComboBox, len(plan))
+	selectors := make([]*stateSelector, len(plan))
 	if len(plan) > 0 {
 		for i, item := range plan {
 			row := qt.NewQHBoxLayout2()
 			label := qt.NewQLabel3(item.Text)
-			combo := qt.NewQComboBox2()
-			combo.AddItems([]string{"Not done", "Done", "Postpone to next week"})
-			combo.SetCurrentIndex(comboIndexForState(item.State))
-			combos[i] = combo
+			selector := newStateSelector(item.State)
+			selectors[i] = selector
 			row.AddWidget2(label.QWidget, 1)
-			row.AddWidget(combo.QWidget)
+			row.AddWidget(selector.widget)
 			layout.AddLayout(row.QLayout)
 		}
 	} else {
@@ -142,8 +160,8 @@ func (a *App) buildEveningDialog(today time.Time) (*dialogSpec, error) {
 
 	apply := func() error {
 		states := make([]store.ItemState, len(plan))
-		for i, combo := range combos {
-			states[i] = stateForComboIndex(combo.CurrentIndex())
+		for i, selector := range selectors {
+			states[i] = selector.state()
 		}
 		return a.store.ApplyEvening(today, states, splitLines(editor.ToPlainText()))
 	}
@@ -195,35 +213,17 @@ func (a *App) buildWeekReviewDialog(week store.WeekID) (*dialogSpec, error) {
 	return &dialogSpec{dialog: dialog, apply: apply}, nil
 }
 
-// attachButtons appends an OK/Cancel button box wired to the dialog.
+// attachButtons appends an OK / Postpone 1h / Cancel button box wired to
+// the dialog. "Postpone 1h" snoozes the check-in; Cancel skips it for the
+// rest of the day.
 func attachButtons(dialog *qt.QDialog, layout *qt.QVBoxLayout) {
 	buttons := qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel)
+	snooze := buttons.AddButton2("Postpone 1h", qt.QDialogButtonBox__ActionRole)
+	snooze.SetToolTip("Ask again in an hour")
+	snooze.OnClicked(func() { dialog.Done(snoozeCode) })
 	buttons.OnAccepted(dialog.Accept)
 	buttons.OnRejected(dialog.Reject)
 	layout.AddWidget(buttons.QWidget)
-}
-
-func comboIndexForState(state store.ItemState) int {
-	switch state {
-	case store.StateDone:
-		return 1
-	case store.StatePostponed:
-		return 2
-	case store.StateTodo:
-		return 0
-	}
-	return 0
-}
-
-func stateForComboIndex(index int) store.ItemState {
-	switch index {
-	case 1:
-		return store.StateDone
-	case 2:
-		return store.StatePostponed
-	default:
-		return store.StateTodo
-	}
 }
 
 func actionForComboIndex(index int) store.ReviewAction {

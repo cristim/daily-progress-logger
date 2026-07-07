@@ -17,7 +17,9 @@ import (
 
 func main() {
 	checkin := flag.String("checkin", "",
-		"force a check-in dialog at startup: morning, evening or review")
+		"show the named check-in (morning, evening or review), then exit")
+	promptDue := flag.Bool("prompt-due", false,
+		"show any check-ins currently due, then exit (for cron/launchd)")
 	hidden := flag.Bool("hidden", false,
 		"start with the main window hidden (menu bar icon only)")
 	screenshotDir := flag.String("screenshot", "",
@@ -42,6 +44,24 @@ func main() {
 		return
 	}
 
+	// Oneshot modes for cron/launchd (or manual invocation): show the
+	// relevant check-ins and exit. A "Postpone 1h" answer keeps the process
+	// alive until the snooze resolves.
+	if *promptDue || *checkin != "" {
+		if *checkin != "" {
+			if err := app.ForcePrompt(*checkin); err != nil {
+				fatal(err)
+			}
+		}
+		app.SetOneshot()
+		app.CheckPrompts()
+		if !app.OneshotPending() {
+			return
+		}
+		os.Exit(qt.QApplication_Exec())
+	}
+
+	// Resident mode: menu bar icon plus periodic prompt checks.
 	if !*hidden {
 		app.Show()
 	}
@@ -49,15 +69,7 @@ func main() {
 	// Run the startup prompts once the event loop is up.
 	startup := qt.NewQTimer()
 	startup.SetSingleShot(true)
-	startup.OnTimeout(func() {
-		if *checkin != "" {
-			if err := app.ForcePrompt(*checkin); err != nil {
-				fatal(err)
-			}
-			return
-		}
-		app.CheckPrompts()
-	})
+	startup.OnTimeout(app.CheckPrompts)
 	startup.Start(200)
 
 	os.Exit(qt.QApplication_Exec())

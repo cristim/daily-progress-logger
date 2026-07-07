@@ -6,6 +6,7 @@ package ui
 import (
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -29,6 +30,17 @@ type App struct {
 	tray       *qt.QSystemTrayIcon
 	timer      *qt.QTimer
 	dialogOpen bool
+
+	// snoozeUntil holds "Postpone 1h" deadlines per prompt.
+	snoozeUntil map[schedule.Prompt]time.Time
+	// skippedOn records the day (time.DateOnly) a prompt was canceled, so
+	// it stays quiet until the next day (or app restart).
+	skippedOn map[schedule.Prompt]string
+	// forced prompts were requested explicitly (-checkin flag) and are kept
+	// pending even when the schedule alone would not show them.
+	forced map[schedule.Prompt]bool
+	// oneshot mode (cron/launchd): quit once nothing is pending.
+	oneshot bool
 }
 
 // New builds the application UI. The Qt application object must already
@@ -43,10 +55,13 @@ func New(st *store.Store, cfg *config.Config) (*App, error) {
 		return nil, err
 	}
 	app := &App{
-		store:   st,
-		cfg:     cfg,
-		morning: schedule.TimeOfDay{Hour: morningHour, Minute: morningMinute},
-		evening: schedule.TimeOfDay{Hour: eveningHour, Minute: eveningMinute},
+		store:       st,
+		cfg:         cfg,
+		morning:     schedule.TimeOfDay{Hour: morningHour, Minute: morningMinute},
+		evening:     schedule.TimeOfDay{Hour: eveningHour, Minute: eveningMinute},
+		snoozeUntil: map[schedule.Prompt]time.Time{},
+		skippedOn:   map[schedule.Prompt]string{},
+		forced:      map[schedule.Prompt]bool{},
 	}
 	app.window = newMainWindow(app)
 	app.setUpTray()
@@ -87,21 +102,78 @@ func (a *App) setUpTray() {
 	a.tray.Show()
 }
 
-// CheckPrompts shows every check-in that is currently due. Called at
-// startup and every minute by the timer.
+// SetOneshot puts the app in cron mode: it quits as soon as no check-in is
+// pending (snoozed prompts keep it alive until resolved or skipped).
+func (a *App) SetOneshot() {
+	a.oneshot = true
+}
+
+// OneshotPending reports whether a oneshot run still has unresolved
+// check-ins (due or snoozed, and not skipped for today).
+func (a *App) OneshotPending() bool {
+	pending, err := a.anythingPending(time.Now())
+	if err != nil {
+		a.reportError(err)
+		return false
+	}
+	return pending
+}
+
+// CheckPrompts shows every check-in that is currently due and neither
+// snoozed nor skipped for today. Called at startup and every minute by the
+// timer.
 func (a *App) CheckPrompts() {
 	if a.dialogOpen {
 		return
 	}
 	now := time.Now()
-	state, err := a.scheduleState(now)
+	due, err := a.duePrompts(now)
 	if err != nil {
 		a.reportError(err)
 		return
 	}
-	for _, prompt := range schedule.Due(now, a.morning, a.evening, state) {
+	show, _ := schedule.Filter(due, now, a.snoozeUntil, a.skippedOn)
+	for _, prompt := range show {
 		a.runPrompt(prompt)
 	}
+	a.maybeQuitOneshot()
+}
+
+// duePrompts combines the schedule's due prompts with explicitly forced
+// ones.
+func (a *App) duePrompts(now time.Time) ([]schedule.Prompt, error) {
+	state, err := a.scheduleState(now)
+	if err != nil {
+		return nil, err
+	}
+	due := schedule.Due(now, a.morning, a.evening, state)
+	for prompt := range a.forced {
+		if !slices.Contains(due, prompt) {
+			due = append(due, prompt)
+		}
+	}
+	return due, nil
+}
+
+func (a *App) anythingPending(now time.Time) (bool, error) {
+	due, err := a.duePrompts(now)
+	if err != nil {
+		return false, err
+	}
+	_, pending := schedule.Filter(due, now, a.snoozeUntil, a.skippedOn)
+	return pending, nil
+}
+
+// maybeQuitOneshot ends a cron-mode run once every check-in is resolved.
+func (a *App) maybeQuitOneshot() {
+	if !a.oneshot || a.dialogOpen {
+		return
+	}
+	pending, err := a.anythingPending(time.Now())
+	if err != nil || pending {
+		return
+	}
+	qt.QCoreApplication_Quit()
 }
 
 func (a *App) scheduleState(now time.Time) (schedule.State, error) {
@@ -124,7 +196,7 @@ func (a *App) scheduleState(now time.Time) (schedule.State, error) {
 
 // runPrompt opens the dialog for prompt, guarding against overlapping
 // dialogs (the timer keeps firing while a modal dialog runs its own event
-// loop).
+// loop), and records the user's snooze/skip choice.
 func (a *App) runPrompt(prompt schedule.Prompt) {
 	if a.dialogOpen {
 		return
@@ -133,29 +205,47 @@ func (a *App) runPrompt(prompt schedule.Prompt) {
 	defer func() {
 		a.dialogOpen = false
 		a.window.refresh()
+		a.maybeQuitOneshot()
 	}()
 
+	result := dialogAccepted
 	var err error
 	switch prompt {
 	case schedule.PromptMorning:
-		err = a.runMorningDialog()
+		result, err = a.runMorningDialog()
 	case schedule.PromptEvening:
-		err = a.runEveningDialog()
+		result, err = a.runEveningDialog()
 	case schedule.PromptWeekReview:
 		var pending bool
 		var week store.WeekID
 		week, pending, err = a.store.UnreviewedWeek(time.Now())
 		if err == nil && pending {
-			err = a.runWeekReviewDialog(week)
+			result, err = a.runWeekReviewDialog(week)
 		}
 	}
 	if err != nil {
 		a.reportError(err)
+		return
+	}
+
+	now := time.Now()
+	switch result {
+	case dialogSnoozed:
+		a.snoozeUntil[prompt] = now.Add(time.Hour)
+	case dialogCanceled:
+		a.skippedOn[prompt] = now.Format(time.DateOnly)
+		delete(a.forced, prompt)
+	case dialogAccepted:
+		delete(a.snoozeUntil, prompt)
+		delete(a.skippedOn, prompt)
+		delete(a.forced, prompt)
 	}
 }
 
 // runWeekReviewManually reviews the most recent past week even if it was
 // already marked reviewed, so the user can re-triage the backlog on demand.
+// Snoozing a manual review is treated like closing it: it was user-invoked,
+// so nothing re-schedules it.
 func (a *App) runWeekReviewManually() {
 	if a.dialogOpen {
 		return
@@ -164,26 +254,34 @@ func (a *App) runWeekReviewManually() {
 	defer func() {
 		a.dialogOpen = false
 		a.window.refresh()
+		a.maybeQuitOneshot()
 	}()
 	week := store.WeekOf(time.Now().AddDate(0, 0, -7))
-	if err := a.runWeekReviewDialog(week); err != nil {
+	if _, err := a.runWeekReviewDialog(week); err != nil {
 		a.reportError(err)
 	}
 }
 
 // ForcePrompt runs the named check-in immediately, regardless of schedule:
-// "morning", "evening" or "review".
+// "morning", "evening" or "review". A forced prompt stays pending (so a
+// snooze re-shows it in an hour) until answered or canceled.
 func (a *App) ForcePrompt(name string) error {
+	var prompt schedule.Prompt
 	switch name {
 	case "morning":
-		a.runPrompt(schedule.PromptMorning)
+		prompt = schedule.PromptMorning
 	case "evening":
-		a.runPrompt(schedule.PromptEvening)
+		prompt = schedule.PromptEvening
 	case "review":
 		a.runWeekReviewManually()
+		return nil
 	default:
 		return fmt.Errorf("unknown check-in %q, want morning, evening or review", name)
 	}
+	delete(a.snoozeUntil, prompt)
+	delete(a.skippedOn, prompt)
+	a.forced[prompt] = true
+	a.runPrompt(prompt)
 	return nil
 }
 

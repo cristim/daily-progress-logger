@@ -13,19 +13,19 @@ import (
 
 // mainWindow is the resident window showing today's plan.
 type mainWindow struct {
-	app        *App
-	win        *qt.QMainWindow
-	heading    *qt.QLabel
-	planList   *qt.QListWidget
-	newItem    *qt.QLineEdit
-	refreshing bool // suppresses OnItemChanged while repopulating
+	app          *App
+	win          *qt.QMainWindow
+	heading      *qt.QLabel
+	planList     *qt.QListWidget
+	newItem      *qt.QLineEdit
+	refreshTimer *qt.QTimer
 }
 
 func newMainWindow(app *App) *mainWindow {
 	w := &mainWindow{app: app}
 	w.win = qt.NewQMainWindow2()
 	w.win.SetWindowTitle("Daily Progress Logger")
-	w.win.Resize(520, 560)
+	w.win.Resize(560, 560)
 
 	central := qt.NewQWidget2()
 	layout := qt.NewQVBoxLayout(central)
@@ -34,7 +34,6 @@ func newMainWindow(app *App) *mainWindow {
 	layout.AddWidget(w.heading.QWidget)
 
 	w.planList = qt.NewQListWidget2()
-	w.planList.OnItemChanged(w.onItemChanged)
 	layout.AddWidget(w.planList.QWidget)
 
 	addRow := qt.NewQHBoxLayout2()
@@ -47,15 +46,6 @@ func newMainWindow(app *App) *mainWindow {
 	addRow.AddWidget(addButton.QWidget)
 	layout.AddLayout(addRow.QLayout)
 
-	itemActions := qt.NewQHBoxLayout2()
-	postponeButton := qt.NewQPushButton3("Postpone to Next Week")
-	postponeButton.OnClicked(w.postponeSelected)
-	backlogButton := qt.NewQPushButton3("Move to Backlog")
-	backlogButton.OnClicked(w.moveSelectedToBacklog)
-	itemActions.AddWidget(postponeButton.QWidget)
-	itemActions.AddWidget(backlogButton.QWidget)
-	layout.AddLayout(itemActions.QLayout)
-
 	checkIns := qt.NewQHBoxLayout2()
 	morningButton := qt.NewQPushButton3("Morning Check-in…")
 	morningButton.OnClicked(func() { w.app.runPrompt(schedule.PromptMorning) })
@@ -67,6 +57,13 @@ func newMainWindow(app *App) *mainWindow {
 
 	w.win.SetCentralWidget(central)
 	w.setUpMenu()
+
+	// Row-button handlers rebuild the list; doing that while the clicked
+	// button's signal is still being delivered would destroy the sender, so
+	// refreshes triggered from rows are deferred to the event loop.
+	w.refreshTimer = qt.NewQTimer2(w.win.QObject)
+	w.refreshTimer.SetSingleShot(true)
+	w.refreshTimer.OnTimeout(w.refresh)
 
 	// Closing the window hides it; the app stays in the menu bar.
 	w.win.OnCloseEvent(func(_ func(event *qt.QCloseEvent), event *qt.QCloseEvent) {
@@ -100,9 +97,6 @@ func (w *mainWindow) refresh() {
 		return
 	}
 
-	w.refreshing = true
-	defer func() { w.refreshing = false }()
-
 	w.heading.SetText(fmt.Sprintf("<b>%s, %d %s %d</b> &nbsp; (week %s)",
 		today.Weekday(), today.Day(), today.Month(), today.Year(), store.WeekOf(today)))
 
@@ -110,37 +104,60 @@ func (w *mainWindow) refresh() {
 	if !exists {
 		return
 	}
-	for _, item := range daily.Plan {
-		listItem := qt.NewQListWidgetItem2(item.Text)
-		switch item.State {
-		case store.StatePostponed:
-			listItem.SetText(item.Text + "  (postponed)")
-			listItem.SetFlags(qt.ItemIsSelectable)
-		case store.StateDone:
-			listItem.SetFlags(qt.ItemIsSelectable | qt.ItemIsEnabled | qt.ItemIsUserCheckable)
-			listItem.SetCheckState(qt.Checked)
-		case store.StateTodo:
-			listItem.SetFlags(qt.ItemIsSelectable | qt.ItemIsEnabled | qt.ItemIsUserCheckable)
-			listItem.SetCheckState(qt.Unchecked)
-		}
+	for i, item := range daily.Plan {
+		row := w.buildPlanRow(i, item)
+		listItem := qt.NewQListWidgetItem()
+		listItem.SetSizeHint(row.SizeHint())
 		w.planList.AddItemWithItem(listItem)
+		w.planList.SetItemWidget(listItem, row)
 	}
 }
 
-// onItemChanged syncs a checkbox toggle back to the daily file.
-func (w *mainWindow) onItemChanged(item *qt.QListWidgetItem) {
-	if w.refreshing {
-		return
-	}
-	row := w.planList.Row(item)
-	state := store.StateTodo
-	if item.CheckState() == qt.Checked {
-		state = store.StateDone
-	}
-	if err := w.app.store.SetPlanItemState(time.Now(), row, state); err != nil {
-		w.app.reportError(err)
-	}
-	w.refresh()
+// scheduleRefresh rebuilds the list on the next event-loop pass; safe to
+// call from handlers of widgets the rebuild will destroy.
+func (w *mainWindow) scheduleRefresh() {
+	w.refreshTimer.Start(0)
+}
+
+// buildPlanRow renders one plan item: its text, the Done / Not done /
+// Postpone selector, and a move-to-backlog button.
+func (w *mainWindow) buildPlanRow(index int, item store.Item) *qt.QWidget {
+	row := qt.NewQWidget2()
+	layout := qt.NewQHBoxLayout(row)
+	layout.SetContentsMargins(6, 2, 6, 2)
+
+	label := qt.NewQLabel3(item.Text)
+
+	selector := newStateSelector(item.State)
+	selector.onChanged(func(state store.ItemState) {
+		var err error
+		if state == store.StatePostponed {
+			err = w.app.store.PostponePlanItem(time.Now(), index)
+		} else {
+			err = w.app.store.SetPlanItemState(time.Now(), index, state)
+		}
+		if err != nil {
+			w.app.reportError(err)
+		}
+		w.scheduleRefresh()
+	})
+
+	backlog := qt.NewQToolButton2()
+	backlog.SetText("Backlog")
+	backlog.SetIcon(standardIcon(qt.QStyle__SP_ArrowUp))
+	backlog.SetToolButtonStyle(qt.ToolButtonTextBesideIcon)
+	backlog.SetToolTip("Move to the cross-week backlog")
+	backlog.OnClicked(func() {
+		if err := w.app.store.MoveToBacklog(time.Now(), index); err != nil {
+			w.app.reportError(err)
+		}
+		w.scheduleRefresh()
+	})
+
+	layout.AddWidget2(label.QWidget, 1)
+	layout.AddWidget(selector.widget)
+	layout.AddWidget(backlog.QWidget)
+	return row
 }
 
 func (w *mainWindow) addItem() {
@@ -153,26 +170,6 @@ func (w *mainWindow) addItem() {
 		return
 	}
 	w.newItem.Clear()
-	w.refresh()
-}
-
-func (w *mainWindow) postponeSelected() {
-	w.withSelectedRow(w.app.store.PostponePlanItem)
-}
-
-func (w *mainWindow) moveSelectedToBacklog() {
-	w.withSelectedRow(w.app.store.MoveToBacklog)
-}
-
-func (w *mainWindow) withSelectedRow(op func(time.Time, int) error) {
-	row := w.planList.CurrentRow()
-	if row < 0 {
-		return
-	}
-	if err := op(time.Now(), row); err != nil {
-		w.app.reportError(err)
-		return
-	}
 	w.refresh()
 }
 

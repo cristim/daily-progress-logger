@@ -9,12 +9,14 @@ BINARY      := daily-progress-logger
 BUNDLE_ID   := com.cristim.daily-progress-logger
 BUILD_DIR   := build
 APP_BUNDLE  := $(BUILD_DIR)/$(APP_NAME).app
-PLIST       := $(HOME)/Library/LaunchAgents/$(BUNDLE_ID).plist
-MACDEPLOYQT := /opt/homebrew/opt/qt/bin/macdeployqt
+PLIST         := $(HOME)/Library/LaunchAgents/$(BUNDLE_ID).plist
+CHECKIN_PLIST := $(HOME)/Library/LaunchAgents/$(BUNDLE_ID).checkins.plist
+MACDEPLOYQT   := /opt/homebrew/opt/qt/bin/macdeployqt
 
 export CGO_CXXFLAGS := -std=c++20
 
-.PHONY: build test lint run screenshot app install-agent uninstall-agent clean
+.PHONY: build test lint run screenshot app install-agent uninstall-agent \
+	install-checkin-agent uninstall-checkin-agent clean
 
 build:
 	go build -o $(BUILD_DIR)/$(BINARY) ./cmd/$(BINARY)
@@ -57,6 +59,22 @@ uninstall-agent:
 	launchctl unload $(PLIST) 2>/dev/null || true
 	rm -f $(PLIST)
 	@echo "LaunchAgent removed"
+
+# Scheduled check-ins without a resident app: launchd pops the due dialog
+# at 09:30 and 17:30 (adjust the template if you change config times).
+install-checkin-agent: app
+	mkdir -p $(HOME)/Library/LaunchAgents
+	sed -e 's|@EXECUTABLE@|$(abspath $(APP_BUNDLE))/Contents/MacOS/$(BINARY)|g' \
+		-e 's/@BUNDLE_ID@/$(BUNDLE_ID)/g' \
+		packaging/checkin-agent.plist.template > $(CHECKIN_PLIST)
+	launchctl unload $(CHECKIN_PLIST) 2>/dev/null || true
+	launchctl load $(CHECKIN_PLIST)
+	@echo "Check-in LaunchAgent installed: $(CHECKIN_PLIST)"
+
+uninstall-checkin-agent:
+	launchctl unload $(CHECKIN_PLIST) 2>/dev/null || true
+	rm -f $(CHECKIN_PLIST)
+	@echo "Check-in LaunchAgent removed"
 
 clean:
 	rm -rf $(BUILD_DIR)
