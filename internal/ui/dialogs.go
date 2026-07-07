@@ -161,6 +161,7 @@ func (a *App) buildEveningDialog(today time.Time) (*dialogSpec, error) {
 		for i, item := range plan {
 			row := qt.NewQHBoxLayout2()
 			label := qt.NewQLabel3(item.Text)
+			label.SetTextFormat(qt.PlainText)
 			label.SetWordWrap(true)
 			selector := newStateSelector(item.State)
 			selectors[i] = selector
@@ -225,6 +226,7 @@ func (a *App) buildWeekReviewDialog(week store.WeekID) (*dialogSpec, error) {
 		for i, text := range items {
 			row := qt.NewQHBoxLayout2()
 			itemLabel := qt.NewQLabel3(text)
+			itemLabel.SetTextFormat(qt.PlainText)
 			itemLabel.SetWordWrap(true)
 			sel := newChoiceSelector(reviewChoices, int(store.ReviewKeep))
 			selectors[i] = sel

@@ -182,7 +182,9 @@ state changes.
 **Fix:** Call `SetTextFormat(Qt::PlainText)` on every item label, and apply
 the done/postponed strike/dim styling via `QFont`/palette (or keep HTML but
 escape uniformly, as the weekly summary already does).
-**Status:** open
+**Status:** implemented — todo labels in `buildPlanRow` now call
+`SetTextFormat(qt.PlainText)`; evening and week-review dialog item labels
+likewise. Done/postponed labels keep HTML with `html.EscapeString` as before.
 
 ### 18. Morning check-in pre-checks the entire backlog by default
 **Severity:** medium

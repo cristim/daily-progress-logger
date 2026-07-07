@@ -194,6 +194,11 @@ func (w *mainWindow) buildPlanRow(index int, item store.Item) *qt.QWidget {
 		labelText = displayText
 	}
 	label := qt.NewQLabel3(labelText)
+	if item.State == store.StateTodo {
+		// Prevent QLabel's rich-text auto-detection from mangling characters
+		// such as '<', '>' and '&' that commonly appear in task descriptions.
+		label.SetTextFormat(qt.PlainText)
+	}
 	if wasTruncated {
 		label.SetToolTip(item.Text)
 	}
