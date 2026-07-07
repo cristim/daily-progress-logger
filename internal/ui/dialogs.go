@@ -86,6 +86,7 @@ func (a *App) buildMorningDialog(today time.Time) (*dialogSpec, error) {
 
 	dialog := qt.NewQDialog(a.window.win.QWidget)
 	dialog.SetWindowTitle("Morning Check-in")
+	dialog.SetMinimumWidth(460)
 	layout := qt.NewQVBoxLayout(dialog.QWidget)
 
 	layout.AddWidget(qt.NewQLabel3("<b>What are you planning to work on today?</b>").QWidget)
@@ -140,6 +141,7 @@ func (a *App) buildEveningDialog(today time.Time) (*dialogSpec, error) {
 
 	dialog := qt.NewQDialog(a.window.win.QWidget)
 	dialog.SetWindowTitle("Evening Check-in")
+	dialog.SetMinimumWidth(460)
 	layout := qt.NewQVBoxLayout(dialog.QWidget)
 
 	layout.AddWidget(qt.NewQLabel3("<b>How did today go?</b>").QWidget)
@@ -188,6 +190,7 @@ func (a *App) buildWeekReviewDialog(week store.WeekID) (*dialogSpec, error) {
 
 	dialog := qt.NewQDialog(a.window.win.QWidget)
 	dialog.SetWindowTitle(fmt.Sprintf("Week Review: %s", week))
+	dialog.SetMinimumWidth(460)
 	layout := qt.NewQVBoxLayout(dialog.QWidget)
 
 	title := fmt.Sprintf("<b>Starting a new week.</b> These items from %s are still open. Are they still relevant?", week)
