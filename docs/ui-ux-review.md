@@ -164,7 +164,10 @@ four rows).
 `max(targetWidth, naturalHint.Width())` in `refresh()`; size every row to the
 viewport width and let the label wrap within its allotted space (recompute
 the row height from the wrapped label's `heightForWidth`).
-**Status:** open
+**Status:** implemented — display text hard-capped at 120 runes with "…" and
+full text in the label tooltip; `refresh()` always sizes rows to `targetWidth`
+(no longer `max(targetWidth, naturalHint.Width())`). RTL rows now render
+correctly within the 560 px viewport. Manyshort regression passes.
 
 ### 17. Item text containing `<`, `>` or `&` is silently mangled
 **Severity:** medium

@@ -144,10 +144,10 @@ func (w *mainWindow) refresh() {
 		row := w.buildPlanRow(i, item)
 		naturalHint := row.SizeHint()
 		// Span each row to the full viewport width so the right-side buttons
-		// form an aligned column regardless of label length.
+		// form an aligned column regardless of label length. Never expand
+		// beyond targetWidth: a long label must not push buttons off-screen.
 		listItem := qt.NewQListWidgetItem()
-		itemWidth := max(targetWidth, naturalHint.Width())
-		listItem.SetSizeHint(qt.NewQSize2(itemWidth, naturalHint.Height()))
+		listItem.SetSizeHint(qt.NewQSize2(targetWidth, naturalHint.Height()))
 		w.planList.AddItemWithItem(listItem)
 		w.planList.SetItemWidget(listItem, row)
 	}
@@ -159,6 +159,17 @@ func (w *mainWindow) scheduleRefresh() {
 	w.refreshTimer.Start(0)
 }
 
+// elideText returns s truncated to at most maxRunes runes with "…" appended
+// when truncation occurs. Used to cap displayed label text so a single long
+// item cannot push all row buttons off-screen.
+func elideText(s string, maxRunes int) (display string, truncated bool) {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s, false
+	}
+	return string(runes[:maxRunes]) + "…", true
+}
+
 // buildPlanRow renders one plan item: its text, the Done / Not done /
 // Postpone selector, and a move-to-backlog button.
 func (w *mainWindow) buildPlanRow(index int, item store.Item) *qt.QWidget {
@@ -166,18 +177,26 @@ func (w *mainWindow) buildPlanRow(index int, item store.Item) *qt.QWidget {
 	layout := qt.NewQHBoxLayout(row)
 	layout.SetContentsMargins(6, 2, 6, 2)
 
+	// Cap the displayed text so no single item forces the row beyond the
+	// viewport width. The full text is always available via the tooltip.
+	const maxDisplayRunes = 120
+	displayText, wasTruncated := elideText(item.Text, maxDisplayRunes)
+
 	// Make the item's state readable at a glance: done items are struck
 	// through and dimmed, postponed ones dimmed.
-	labelText := item.Text
+	var labelText string
 	switch item.State {
 	case store.StateDone:
-		labelText = fmt.Sprintf(`<s style="color:#888888">%s</s>`, html.EscapeString(item.Text))
+		labelText = fmt.Sprintf(`<s style="color:#888888">%s</s>`, html.EscapeString(displayText))
 	case store.StatePostponed:
-		labelText = fmt.Sprintf(`<span style="color:#888888">%s</span>`, html.EscapeString(item.Text))
+		labelText = fmt.Sprintf(`<span style="color:#888888">%s</span>`, html.EscapeString(displayText))
 	case store.StateTodo:
-		// Plain text.
+		labelText = displayText
 	}
 	label := qt.NewQLabel3(labelText)
+	if wasTruncated {
+		label.SetToolTip(item.Text)
+	}
 
 	selector := newStateSelector(item.State)
 	selector.onChanged(func(state store.ItemState) {
