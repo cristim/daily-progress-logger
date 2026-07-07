@@ -16,7 +16,7 @@ const (
 	appDirName     = "DailyProgressLogger"
 	configFileName = "config.json"
 
-	defaultMorningTime = "09:00"
+	defaultMorningTime = "09:30"
 	defaultEveningTime = "17:30"
 	defaultDataDirName = "DailyProgress" // under the home directory
 )

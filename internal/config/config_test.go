@@ -24,14 +24,14 @@ func TestLoadCreatesDefaults(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(home, "DailyProgress"), cfg.DataDir)
-	assert.Equal(t, "09:00", cfg.MorningTime)
+	assert.Equal(t, "09:30", cfg.MorningTime)
 	assert.Equal(t, "17:30", cfg.EveningTime)
 
 	path, err := Path()
 	require.NoError(t, err)
 	content, err := os.ReadFile(path)
 	require.NoError(t, err)
-	assert.Contains(t, string(content), `"morning_time": "09:00"`)
+	assert.Contains(t, string(content), `"morning_time": "09:30"`)
 }
 
 func TestLoadExistingAndTildeExpansion(t *testing.T) {
