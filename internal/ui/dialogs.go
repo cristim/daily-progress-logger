@@ -215,12 +215,15 @@ func (a *App) buildWeekReviewDialog(week store.WeekID) (*dialogSpec, error) {
 	return &dialogSpec{dialog: dialog, apply: apply}, nil
 }
 
-// attachButtons appends an OK / Postpone 1h / Cancel button box wired to
-// the dialog. "Postpone 1h" snoozes the check-in; Cancel skips it for the
-// rest of the day.
+// attachButtons appends an OK / Postpone 1h / Skip Today button box wired
+// to the dialog. "Postpone 1h" snoozes the check-in; "Skip Today" (the
+// reject role, so Escape triggers it) silences it until tomorrow.
 func attachButtons(dialog *qt.QDialog, layout *qt.QVBoxLayout) {
 	buttons := qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel)
 	buttons.Button(qt.QDialogButtonBox__Ok).SetDefault(true)
+	skip := buttons.Button(qt.QDialogButtonBox__Cancel)
+	skip.SetText("Skip Today")
+	skip.SetToolTip("Don't ask again today")
 	snooze := buttons.AddButton2("Postpone 1h", qt.QDialogButtonBox__ActionRole)
 	snooze.SetToolTip("Ask again in an hour")
 	snooze.OnClicked(func() { dialog.Done(snoozeCode) })
