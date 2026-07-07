@@ -323,7 +323,10 @@ string uses.
 **Fix:** Drop the count line when it is zero; give the no-op review dialog a
 single Close/OK button; align the evening empty-state wording with the rest
 ("No plan was recorded for today.").
-**Status:** open
+**Status:** partially implemented — "0 items completed." count line is
+suppressed when totalDone == 0; evening no-plan label changed to "No plan was
+recorded for today." (parentheses removed). The no-op week-review Close/OK
+simplification is deferred (review dialog still shows Remind/Skip when empty).
 
 ### 29. Icon-only controls lack accessible names and keyboard access
 **Severity:** low

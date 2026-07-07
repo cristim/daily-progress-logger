@@ -198,7 +198,9 @@ func (a *App) buildEveningDialog(today time.Time) (*dialogSpec, error) {
 		}
 		layout.AddWidget(area.QWidget)
 	} else {
-		layout.AddWidget(qt.NewQLabel3("(No plan was recorded for today.)").QWidget)
+		noplan := qt.NewQLabel3("No plan was recorded for today.")
+		noplan.SetTextFormat(qt.PlainText)
+		layout.AddWidget(noplan.QWidget)
 	}
 
 	layout.AddWidget(qt.NewQLabel3("Anything else you accomplished?").QWidget)
@@ -306,12 +308,13 @@ func (a *App) buildWeeklySummaryDialog(week store.WeekID) (*dialogSpec, error) {
 	}
 	if totalDone == 0 {
 		sb.WriteString("<p><i>Nothing completed yet this week.</i></p>")
+	} else {
+		itemWord := "items"
+		if totalDone == 1 {
+			itemWord = "item"
+		}
+		fmt.Fprintf(&sb, "<p><i>%d %s completed.</i></p>", totalDone, itemWord)
 	}
-	itemWord := "items"
-	if totalDone == 1 {
-		itemWord = "item"
-	}
-	fmt.Fprintf(&sb, "<p><i>%d %s completed.</i></p>", totalDone, itemWord)
 
 	browser := qt.NewQTextBrowser2()
 	browser.SetHtml(sb.String())
