@@ -190,6 +190,7 @@ func (a *App) setUpTray() {
 	addMenuAction(menu, "Evening Check-in…", func() { a.runPrompt(schedule.PromptEvening, true) })
 	addMenuAction(menu, "This Week's Summary…", a.runWeeklySummaryManually)
 	addMenuAction(menu, "Review Last Week…", a.runWeekReviewManually)
+	addMenuAction(menu, "Backlog…", a.openBacklogDialog)
 	menu.AddSeparator()
 	addMenuAction(menu, "Check for Updates…", a.checkForUpdatesManual)
 	menu.AddSeparator()
@@ -426,6 +427,29 @@ func (a *App) runWeekReviewManually() {
 	a.applyManualResult(schedule.PromptWeekReview, result)
 }
 
+// openBacklogDialog shows the Backlog manager dialog, guarded by the
+// dialogOpen flag so scheduled prompts cannot stack on top of it.
+func (a *App) openBacklogDialog() {
+	if a.dialogOpen {
+		return
+	}
+	a.dialogOpen = true
+	defer func() {
+		a.dialogOpen = false
+		a.window.refresh()
+		a.maybeQuitOneshot()
+	}()
+	bd, err := a.buildBacklogDialog()
+	if err != nil {
+		a.reportError(err)
+		return
+	}
+	bd.dialog.Show()
+	bd.dialog.Raise()
+	bd.dialog.ActivateWindow()
+	bd.dialog.Exec()
+}
+
 // runWeeklySummaryManually shows the current week's summary on demand.
 // It does not mark the week as summarized (that is reserved for the
 // scheduled Friday prompt). Snooze keeps a forced prompt alive; cancel
@@ -501,6 +525,10 @@ func (a *App) GrabScreenshots(dir string) error {
 	if err != nil {
 		return err
 	}
+	backlogDlg, err := a.buildBacklogDialog()
+	if err != nil {
+		return err
+	}
 
 	for name, widget := range map[string]*qt.QWidget{
 		"main-window":    a.window.win.QWidget,
@@ -508,6 +536,7 @@ func (a *App) GrabScreenshots(dir string) error {
 		"evening":        evening.dialog.QWidget,
 		"week-review":    review.dialog.QWidget,
 		"weekly-summary": weeklySummary.dialog.QWidget,
+		"backlog":        backlogDlg.dialog.QWidget,
 	} {
 		path := dir + "/" + name + ".png"
 		if !widget.Grab().Save(path) {

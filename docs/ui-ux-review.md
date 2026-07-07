@@ -320,10 +320,15 @@ shouldn't require a text editor.
 **Fix:** Add edit-in-place (double-click) and a Delete action to plan rows;
 show a transient status ("Moved to backlog") or a small backlog count next
 to the heading.
-**Status:** partially implemented (feedback); in-app backlog view deferred —
-after a successful MoveToBacklog the tray (if present) shows a balloon
-"Moved to backlog / <item text>" via `App.notifyBacklogMove`. Edit-in-place,
-delete, and an in-app backlog view are not yet implemented.
+**Status:** implemented (feedback + backlog manager); after a successful
+MoveToBacklog the tray (if present) shows a balloon "Moved to backlog /
+<item text>" via `App.notifyBacklogMove`. The Backlog dialog (File menu,
+tray menu, and "Backlog…" button in the main window) lists both "This week"
+(Current) and "Next week" sections with per-row "Add to today's plan" and
+"Move to next/this week" icon buttons; actions apply immediately and the
+dialog refreshes in place. Edit-in-place and delete for plan rows are still
+not implemented — use File → Open Data Folder to edit the markdown directly
+for typo fixes and deletions.
 
 ### 27. Re-running the morning check-in hides the existing plan
 **Severity:** low

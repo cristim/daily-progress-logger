@@ -42,8 +42,10 @@ effort is a rough t-shirt size.
 
 ## UI
 
-- **In-app backlog viewer/editor** (M): the one part of the data with no UI
-  today (deferred from review finding 26).
+- **In-app backlog viewer/editor** (M): shipped — the Backlog dialog (File
+  menu, tray menu, "Backlog…" button) shows both sections with adopt and
+  move actions; edit-in-place and delete remain out of scope (use File →
+  Open Data Folder).
 - **History browser** (M): calendar picker rendering past days/weeks
   read-only (currently by-design wontfix; revisit if Finder round-trips
   annoy).

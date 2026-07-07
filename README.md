@@ -21,6 +21,13 @@ markdown files you can grep, sync, or feed to an LLM at review time.
   leftover items and asks whether each is still relevant — *Keep this week*,
   *Postpone to next week*, or *Drop*. Postponed items automatically surface
   the following week.
+- **Backlog** (File menu, tray menu, or the *Backlog…* button in the main
+  window): shows the cross-week todo list divided into *This week* (active
+  candidates) and *Next week* (postponed items). Each row offers *Add to
+  today's plan* (adopts the item into today's plan and removes it from the
+  backlog) and *Move to next/this week* (shuttles it between sections). The
+  backlog file (`backlog.md`) remains plain markdown and can be edited
+  directly via File → Open Data Folder for renaming or deleting items.
 - The app stays resident in the menu bar; the main window shows today's plan
   with add / check off / postpone / move-to-backlog actions.
 
