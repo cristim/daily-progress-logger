@@ -8,13 +8,15 @@ markdown files you can grep, sync, or feed to an LLM at review time.
 
 ## How it works
 
-- **Morning check-in** (default 09:00): asks *"What are you planning to work
+- **Morning check-in** (default 09:30): asks *"What are you planning to work
   on today?"* — one task per line — and offers to carry over still-open items
   from earlier in the week and from the backlog. Saves the plan as a checkbox
   list in the day's file.
-- **Evening check-in** (default 17:30): shows the day's plan and asks how each
-  item went (*Done / Not done / Postpone to next week*), plus anything else
-  you accomplished. Regenerates the weekly summary afterwards.
+- **Evening check-in** (default 17:30): shows the day's plan with
+  *Done / Not done / Postpone to next week* buttons per item, plus anything
+  else you accomplished. Regenerates the weekly summary afterwards.
+- Every check-in offers **Postpone 1h** (snooze: it re-appears an hour
+  later) and **Skip Today** (it stays quiet until tomorrow).
 - **Week review** (first launch in a new ISO week): lists the previous week's
   leftover items and asks whether each is still relevant — *Keep this week*,
   *Postpone to next week*, or *Drop*. Postponed items automatically surface
@@ -48,10 +50,23 @@ first run):
 ```json
 {
   "data_dir": "~/DailyProgress",
-  "morning_time": "09:00",
+  "morning_time": "09:30",
   "evening_time": "17:30"
 }
 ```
+
+## Running it
+
+Two supported setups:
+
+- **Resident app** (`make install-agent`): starts at login, lives in the
+  menu bar, checks every minute and pops each check-in once its time has
+  passed — including the first app open after 09:30 / 17:30.
+- **Scheduled check-ins** (`make install-checkin-agent`): no resident app;
+  launchd runs `daily-progress-logger -prompt-due` at 09:30 and 17:30, which
+  shows whatever is due and exits (it stays alive only while a "Postpone 1h"
+  snooze is pending). Adjust `packaging/checkin-agent.plist.template` if you
+  change the times in config.
 
 ## Building
 
@@ -74,7 +89,8 @@ directly.
 ## CLI flags
 
 ```
--checkin morning|evening|review   force a check-in dialog at startup
+-checkin morning|evening|review   show the named check-in, then exit
+-prompt-due                       show any check-ins currently due, then exit
 -hidden                           start without showing the main window
 -screenshot <dir>                 render the UI offscreen to PNGs and exit
 ```

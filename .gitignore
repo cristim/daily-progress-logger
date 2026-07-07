@@ -5,6 +5,9 @@
 # Session tooling (Claude Code scratch scripts)
 .claude/
 
+# Generated code graph
+graphify-out/
+
 # OS cruft
 .DS_Store
 
