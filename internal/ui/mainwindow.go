@@ -101,7 +101,10 @@ func (w *mainWindow) refresh() {
 		today.Weekday(), today.Day(), today.Month(), today.Year(), store.WeekOf(today)))
 
 	w.planList.Clear()
-	if !exists {
+	if !exists || len(daily.Plan) == 0 {
+		placeholder := qt.NewQListWidgetItem2("No plan for today yet. Run the Morning Check-in below, or add a task.")
+		placeholder.SetFlags(qt.ItemFlag(0)) // informational, not selectable
+		w.planList.AddItemWithItem(placeholder)
 		return
 	}
 	for i, item := range daily.Plan {
