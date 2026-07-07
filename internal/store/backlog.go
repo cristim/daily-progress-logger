@@ -88,6 +88,11 @@ func (b *Backlog) removeCurrent(text string) {
 	b.Current = slices.DeleteFunc(b.Current, func(s string) bool { return s == text })
 }
 
+// removeNextWeek drops text from NextWeek if present.
+func (b *Backlog) removeNextWeek(text string) {
+	b.NextWeek = slices.DeleteFunc(b.NextWeek, func(s string) bool { return s == text })
+}
+
 // rollOver moves every NextWeek item into Current; called at week review, at
 // which point "next week" has arrived.
 func (b *Backlog) rollOver() {

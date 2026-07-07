@@ -143,6 +143,27 @@ func TestStore_PostponeAndMoveToBacklog(t *testing.T) {
 	require.ErrorContains(t, s.MoveToBacklog(tuesday, -1), "out of range")
 }
 
+func TestStore_UnpostponeRemovesBacklogEntry(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"task a", "task b"}, nil))
+
+	// Postpone both, then revert one directly and one via the evening
+	// check-in; neither revert may leave a stale next-week backlog entry.
+	require.NoError(t, s.PostponePlanItem(tuesday, 0))
+	require.NoError(t, s.PostponePlanItem(tuesday, 1))
+
+	require.NoError(t, s.SetPlanItemState(tuesday, 0, StateDone))
+	backlog, err := s.LoadBacklog()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"task b"}, backlog.NextWeek)
+
+	require.NoError(t, s.ApplyEvening(tuesday, []ItemState{StateDone, StateTodo}, nil))
+	backlog, err = s.LoadBacklog()
+	require.NoError(t, err)
+	assert.Empty(t, backlog.NextWeek)
+}
+
 func TestStore_UnreviewedWeekAndReview(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)

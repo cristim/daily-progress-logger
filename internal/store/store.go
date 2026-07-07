@@ -231,10 +231,13 @@ func (s *Store) ApplyEvening(today time.Time, states []ItemState, extraDone []st
 		return fmt.Errorf("evening decisions (%d) do not match plan items (%d); was the daily file edited concurrently?",
 			len(states), len(d.Plan))
 	}
-	var postponed []string
+	var postponed, unpostponed []string
 	for i, state := range states {
 		if d.Plan[i].State != state && state == StatePostponed {
 			postponed = append(postponed, d.Plan[i].Text)
+		}
+		if d.Plan[i].State == StatePostponed && state != StatePostponed {
+			unpostponed = append(unpostponed, d.Plan[i].Text)
 		}
 		d.Plan[i].State = state
 	}
@@ -248,13 +251,16 @@ func (s *Store) ApplyEvening(today time.Time, states []ItemState, extraDone []st
 		return err
 	}
 
-	if len(postponed) > 0 {
+	if len(postponed) > 0 || len(unpostponed) > 0 {
 		backlog, err := s.LoadBacklog()
 		if err != nil {
 			return err
 		}
 		for _, text := range postponed {
 			backlog.addNextWeek(text)
+		}
+		for _, text := range unpostponed {
+			backlog.removeNextWeek(text)
 		}
 		if err := s.SaveBacklog(backlog); err != nil {
 			return err
@@ -277,6 +283,8 @@ func (s *Store) AddPlanItem(date time.Time, text string) error {
 }
 
 // SetPlanItemState updates one plan item's state (e.g. checking it off).
+// Moving an item out of the postponed state also removes it from the
+// backlog's next-week list, so a reverted postpone leaves no stale entry.
 func (s *Store) SetPlanItemState(date time.Time, index int, state ItemState) error {
 	d, err := s.loadOrNewDaily(date)
 	if err != nil {
@@ -285,8 +293,20 @@ func (s *Store) SetPlanItemState(date time.Time, index int, state ItemState) err
 	if index < 0 || index >= len(d.Plan) {
 		return fmt.Errorf("plan item index %d out of range (%d items)", index, len(d.Plan))
 	}
+	unpostponed := d.Plan[index].State == StatePostponed && state != StatePostponed
 	d.Plan[index].State = state
-	return s.SaveDaily(d)
+	if err := s.SaveDaily(d); err != nil {
+		return err
+	}
+	if !unpostponed {
+		return nil
+	}
+	backlog, err := s.LoadBacklog()
+	if err != nil {
+		return err
+	}
+	backlog.removeNextWeek(d.Plan[index].Text)
+	return s.SaveBacklog(backlog)
 }
 
 // PostponePlanItem marks a plan item postponed and queues it in the backlog
