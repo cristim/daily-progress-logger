@@ -135,7 +135,7 @@ func (s *Store) MorningCandidates(today time.Time) ([]Candidate, error) {
 	}
 	seen := map[string]bool{}
 	for _, item := range todayDaily.Plan {
-		seen[item.Text] = true
+		seen[normalizeText(item.Text)] = true
 	}
 
 	var candidates []Candidate
@@ -153,8 +153,9 @@ func (s *Store) MorningCandidates(today time.Time) ([]Candidate, error) {
 			continue
 		}
 		for _, item := range d.Plan {
-			if item.State == StateTodo && !seen[item.Text] {
-				seen[item.Text] = true
+			norm := normalizeText(item.Text)
+			if item.State == StateTodo && !seen[norm] {
+				seen[norm] = true
 				candidates = append(candidates, Candidate{Text: item.Text})
 			}
 		}
@@ -165,8 +166,9 @@ func (s *Store) MorningCandidates(today time.Time) ([]Candidate, error) {
 		return nil, err
 	}
 	for _, text := range backlog.Current {
-		if !seen[text] {
-			seen[text] = true
+		norm := normalizeText(text)
+		if !seen[norm] {
+			seen[norm] = true
 			candidates = append(candidates, Candidate{Text: text, FromBacklog: true})
 		}
 	}
@@ -242,7 +244,18 @@ func (s *Store) ApplyEvening(today time.Time, states []ItemState, extraDone []st
 		d.Plan[i].State = state
 	}
 	for _, text := range extraDone {
-		if text != "" && !slices.Contains(d.Done, text) {
+		if text == "" {
+			continue
+		}
+		norm := normalizeText(text)
+		dup := false
+		for _, s := range d.Done {
+			if normalizeText(s) == norm {
+				dup = true
+				break
+			}
+		}
+		if !dup {
 			d.Done = append(d.Done, text)
 		}
 	}
@@ -469,7 +482,15 @@ func (s *Store) WeekReviewCandidates(week WeekID) ([]string, error) {
 		return nil, err
 	}
 	for _, text := range backlog.Current {
-		if !slices.Contains(texts, text) {
+		norm := normalizeText(text)
+		dup := false
+		for _, t := range texts {
+			if normalizeText(t) == norm {
+				dup = true
+				break
+			}
+		}
+		if !dup {
 			texts = append(texts, text)
 		}
 	}

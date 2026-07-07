@@ -69,28 +69,38 @@ func writeItems(sb *strings.Builder, items []string) {
 	}
 }
 
-// addCurrent appends text to Current unless already present.
+// addCurrent appends text to Current unless a normalized match is already present.
 func (b *Backlog) addCurrent(text string) {
-	if !slices.Contains(b.Current, text) {
-		b.Current = append(b.Current, text)
+	norm := normalizeText(text)
+	for _, s := range b.Current {
+		if normalizeText(s) == norm {
+			return
+		}
 	}
+	b.Current = append(b.Current, text)
 }
 
-// addNextWeek appends text to NextWeek unless already present.
+// addNextWeek appends text to NextWeek unless a normalized match is already present.
 func (b *Backlog) addNextWeek(text string) {
-	if !slices.Contains(b.NextWeek, text) {
-		b.NextWeek = append(b.NextWeek, text)
+	norm := normalizeText(text)
+	for _, s := range b.NextWeek {
+		if normalizeText(s) == norm {
+			return
+		}
 	}
+	b.NextWeek = append(b.NextWeek, text)
 }
 
-// removeCurrent drops text from Current if present.
+// removeCurrent drops entries from Current whose normalized text matches text.
 func (b *Backlog) removeCurrent(text string) {
-	b.Current = slices.DeleteFunc(b.Current, func(s string) bool { return s == text })
+	norm := normalizeText(text)
+	b.Current = slices.DeleteFunc(b.Current, func(s string) bool { return normalizeText(s) == norm })
 }
 
-// removeNextWeek drops text from NextWeek if present.
+// removeNextWeek drops entries from NextWeek whose normalized text matches text.
 func (b *Backlog) removeNextWeek(text string) {
-	b.NextWeek = slices.DeleteFunc(b.NextWeek, func(s string) bool { return s == text })
+	norm := normalizeText(text)
+	b.NextWeek = slices.DeleteFunc(b.NextWeek, func(s string) bool { return normalizeText(s) == norm })
 }
 
 // rollOver moves every NextWeek item into Current; called at week review, at

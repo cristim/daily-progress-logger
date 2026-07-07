@@ -3,9 +3,10 @@
 Statuses: **open**, **planned** (fix scheduled), **done** (fixed, kept for
 reference until the next release), **wontfix** (deliberate).
 
-- **[planned] Backlog dedup is exact-text only.** Rewording an item ("fix
-  flaky test" vs "fix the flaky test") creates a duplicate. Planned fix:
-  normalize case and whitespace when comparing; no fuzzy matching.
+- **[done] Backlog dedup is exact-text only.** Rewording an item ("fix
+  flaky test" vs "fix the flaky test") creates a duplicate. Fix: added
+  `normalizeText` (lower-case + collapsed whitespace) used for all
+  comparisons; original text is preserved in storage.
 - **[planned] Week review only covers the most recent week with data.** If
   the review prompt is ignored for an entire week, the week before it is
   never triaged. Planned fix: walk all unreviewed weeks, oldest first.

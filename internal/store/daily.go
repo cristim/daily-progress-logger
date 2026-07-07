@@ -7,6 +7,14 @@ import (
 	"time"
 )
 
+// normalizeText returns a canonical form of s for deduplication: lower-cased
+// and with all internal runs of whitespace collapsed to a single space. The
+// original text is always what gets stored or rendered; only comparisons use
+// the normalized form.
+func normalizeText(s string) string {
+	return strings.ToLower(strings.Join(strings.Fields(s), " "))
+}
+
 const dateLayout = "2006-01-02"
 
 // Daily is one day's log: the plan checklist filled in each morning and the
@@ -143,11 +151,12 @@ func (d *Daily) render() string {
 	return b.String()
 }
 
-// hasPlanItem reports whether the plan already contains an item with the
-// exact same text, in any state.
+// hasPlanItem reports whether the plan already contains an item whose
+// normalized text matches text, in any state.
 func (d *Daily) hasPlanItem(text string) bool {
+	norm := normalizeText(text)
 	for _, item := range d.Plan {
-		if item.Text == text {
+		if normalizeText(item.Text) == norm {
 			return true
 		}
 	}

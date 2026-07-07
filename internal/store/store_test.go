@@ -278,3 +278,52 @@ func TestMidnight(t *testing.T) {
 	now := time.Date(2026, 7, 7, 15, 30, 45, 123, time.Local)
 	assert.Equal(t, tuesday, midnight(now))
 }
+
+func TestNormalizeText(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		a, b  string
+		equal bool
+	}{
+		{"Fix flaky test", "fix  flaky   test", true},
+		{"Fix flaky test", "FIX FLAKY TEST", true},
+		{"  leading spaces  ", "leading spaces", true},
+		{"ship feature", "ship feature", true},
+		{"ship feature", "ship features", false},
+		{"review PR", "Update docs", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.a+"_vs_"+tt.b, func(t *testing.T) {
+			t.Parallel()
+			got := normalizeText(tt.a) == normalizeText(tt.b)
+			assert.Equal(t, tt.equal, got)
+		})
+	}
+}
+
+func TestStore_NormalizedDedup(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	// Different casing / whitespace should not create a duplicate plan item.
+	require.NoError(t, s.ApplyMorning(monday, []string{"Fix flaky test"}, nil))
+	require.NoError(t, s.AddPlanItem(monday, "fix  flaky   test"))
+	d, _, err := s.LoadDaily(monday)
+	require.NoError(t, err)
+	assert.Len(t, d.Plan, 1, "normalized duplicate must not be added to the plan")
+
+	// Distinct texts must both be kept.
+	require.NoError(t, s.AddPlanItem(monday, "review PR"))
+	d, _, err = s.LoadDaily(monday)
+	require.NoError(t, err)
+	assert.Len(t, d.Plan, 2, "distinct items must both appear in the plan")
+
+	// Backlog dedup: adding an already-present entry (different case) is a no-op.
+	b := &Backlog{Current: []string{"update docs"}}
+	b.addCurrent("Update docs")
+	assert.Len(t, b.Current, 1, "normalized duplicate must not be added to the backlog")
+
+	b2 := &Backlog{NextWeek: []string{"big refactor"}}
+	b2.addNextWeek("BIG REFACTOR")
+	assert.Len(t, b2.NextWeek, 1, "normalized duplicate must not be added to NextWeek")
+}

@@ -85,8 +85,9 @@ func collectByState(dailies []*Daily, state ItemState) []string {
 	seen := map[string]bool{}
 	for _, d := range dailies {
 		for _, item := range d.Plan {
-			if item.State == state && !seen[item.Text] {
-				seen[item.Text] = true
+			norm := normalizeText(item.Text)
+			if item.State == state && !seen[norm] {
+				seen[norm] = true
 				texts = append(texts, item.Text)
 			}
 		}
