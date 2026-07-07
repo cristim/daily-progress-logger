@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
@@ -129,7 +130,18 @@ func (w *mainWindow) buildPlanRow(index int, item store.Item) *qt.QWidget {
 	layout := qt.NewQHBoxLayout(row)
 	layout.SetContentsMargins(6, 2, 6, 2)
 
-	label := qt.NewQLabel3(item.Text)
+	// Make the item's state readable at a glance: done items are struck
+	// through and dimmed, postponed ones dimmed.
+	labelText := item.Text
+	switch item.State {
+	case store.StateDone:
+		labelText = fmt.Sprintf(`<s style="color:#888888">%s</s>`, html.EscapeString(item.Text))
+	case store.StatePostponed:
+		labelText = fmt.Sprintf(`<span style="color:#888888">%s</span>`, html.EscapeString(item.Text))
+	case store.StateTodo:
+		// Plain text.
+	}
+	label := qt.NewQLabel3(labelText)
 
 	selector := newStateSelector(item.State)
 	selector.onChanged(func(state store.ItemState) {
