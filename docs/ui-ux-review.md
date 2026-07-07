@@ -308,7 +308,9 @@ item silently dedupes.
 **Fix:** Show the current plan (read-only list or prefilled editor) when
 `morning_done` is already true, or change the heading to "Add more tasks for
 today".
-**Status:** open
+**Status:** implemented — when today's plan is non-empty, `buildMorningDialog`
+adds a PlainText QLabel "Already planned today: N items." with a tooltip
+listing each item. Not shown on the first run (no plan yet).
 
 ### 28. Empty-state polish in the summary and review dialogs
 **Severity:** low

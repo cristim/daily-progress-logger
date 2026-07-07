@@ -93,12 +93,39 @@ func (a *App) buildMorningDialog(today time.Time) (*dialogSpec, error) {
 		return nil, err
 	}
 
+	// Load the existing plan so we can show a summary when re-running the
+	// morning dialog after the plan has already been recorded.
+	daily, dailyExists, err := a.store.LoadDaily(today)
+	if err != nil {
+		return nil, err
+	}
+
 	dialog := qt.NewQDialog(a.window.win.QWidget)
 	dialog.SetWindowTitle("Morning Check-in")
 	dialog.SetMinimumWidth(460)
 	layout := qt.NewQVBoxLayout(dialog.QWidget)
 
 	layout.AddWidget(qt.NewQLabel3("<b>What are you planning to work on today?</b>").QWidget)
+
+	// When today's plan already exists, show a read-only summary so the user
+	// knows their earlier tasks are still there (they are not visible in the
+	// editor because ApplyMorning deduplicates on accept).
+	if dailyExists && daily != nil && len(daily.Plan) > 0 {
+		n := len(daily.Plan)
+		word := "items"
+		if n == 1 {
+			word = "item"
+		}
+		summary := qt.NewQLabel3(fmt.Sprintf("Already planned today: %d %s.", n, word))
+		summary.SetTextFormat(qt.PlainText)
+		var tipLines []string
+		for _, it := range daily.Plan {
+			tipLines = append(tipLines, "• "+it.Text)
+		}
+		summary.SetToolTip(strings.Join(tipLines, "\n"))
+		layout.AddWidget(summary.QWidget)
+	}
+
 	editor := qt.NewQPlainTextEdit2()
 	editor.SetPlaceholderText("One task per line…")
 	editor.SetFocus()
