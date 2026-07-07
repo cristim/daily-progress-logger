@@ -136,6 +136,232 @@ window is resized. `GrabScreenshots` shows the window and processes events
 before refreshing so the correct viewport geometry is used for screenshots.
 **Status:** implemented
 
+## Review round 2 — Fable (2026-07-07)
+
+Fresh-eyes adversarial pass. Evidence screenshots live under
+`/tmp/claude/dpl-review-shots/` (subdirs: `seeded`, `empty`, `stress`,
+`longone`, `manyshort`), rendered offscreen against seeded homes under
+`/tmp/claude/dpl-home*`. The `stress` home has 25 plan items (incl. 200+
+char, emoji, Cyrillic, Hebrew, Arabic, and HTML-like texts), 15 backlog
+items and 23 week-review leftovers; `longone` isolates a single long item;
+`manyshort` has 25 short items; `empty` is a brand-new home with no data.
+
+### 16. One long plan item hides every row's controls in the main window
+**Severity:** high
+**Problem:** Main-window row labels do not word-wrap, so a single long item
+(200+ chars) has a natural width of ~1800px. The list then lays out *every*
+row at that width: all Done / Not done / Postpone / Backlog buttons move far
+past the right edge, and with the horizontal scrollbar disabled (finding 12)
+they are completely invisible and unreachable for **all** items, not just the
+long one. RTL items (Hebrew/Arabic) right-align inside their over-wide labels
+and render as blank rows. The long text itself is clipped with no ellipsis.
+Repro: add one 200-char task; see
+`stress/main-window.png` (no buttons anywhere, two blank RTL rows) vs
+`manyshort/main-window.png` (25 short items, buttons fine) and
+`longone/main-window.png` (one long item among three short ones breaks all
+four rows).
+**Fix:** Enable word wrap on plan-row labels and stop taking
+`max(targetWidth, naturalHint.Width())` in `refresh()`; size every row to the
+viewport width and let the label wrap within its allotted space (recompute
+the row height from the wrapped label's `heightForWidth`).
+**Status:** open
+
+### 17. Item text containing `<`, `>` or `&` is silently mangled
+**Severity:** medium
+**Problem:** `QLabel` auto-detects rich text. Todo rows in the main window
+(`labelText = item.Text`) and all item labels in the evening and week-review
+dialogs pass raw text, so a task like `compare a<b && b>c in the benchmark
+harness` renders as "compare ac in the benchmark harness" (bold), and
+`<b>ship the release</b> & tag v2.0` renders bold without the literal tags —
+see rows 9-10 of `stress/main-window.png`. Meanwhile done/postponed rows DO
+escape via `html.EscapeString`, so the same item changes rendering as its
+state changes.
+**Fix:** Call `SetTextFormat(Qt::PlainText)` on every item label, and apply
+the done/postponed strike/dim styling via `QFont`/palette (or keep HTML but
+escape uniformly, as the weekly summary already does).
+**Status:** open
+
+### 18. Morning check-in pre-checks the entire backlog by default
+**Severity:** medium
+**Problem:** Every backlog "Current" item appears in the morning carry-over
+list pre-checked (`item.SetCheckState(qt.Checked)`), so pressing Return (OK
+is default) adopts the whole backlog into today's plan and *removes those
+entries from the backlog*. With 15 backlog items (`stress/morning.png`) the
+default action floods the day and drains the backlog. It also defeats the
+Backlog button: an item parked out of today's plan comes back pre-checked
+the very next morning.
+**Fix:** Pre-check only same-week carry-over items; backlog candidates
+default unchecked (optionally add "select all / none" toggles).
+**Status:** open
+
+### 19. Skip/snooze semantics leak into manually invoked check-ins
+**Severity:** medium
+**Problem:** Tray "Morning Check-in…"/"Evening Check-in…" run through
+`runPrompt`, so pressing Escape ("Skip Today") on a *manually opened* dialog
+records `skippedOn` and silently cancels that day's scheduled prompt (peek at
+08:00, hit Esc, the 09:30 prompt never fires). Conversely, on the manual
+review/summary paths (`runWeekReviewManually`, `runWeeklySummaryManually`)
+the result is ignored, so "Postpone 1h" promises "Ask again in an hour" and
+does nothing.
+**Fix:** Don't record skip bookkeeping for user-invoked runs (or show a
+plain Close/Cancel instead of Skip Today there), and drop the snooze/skip
+buttons from manual review/summary dialogs.
+**Status:** open
+
+### 20. Viewing "This Week's Summary…" mid-week kills the Friday prompt
+**Severity:** medium
+**Problem:** The summary dialog looks like a passive report, but OK (the
+default button, triggered by Return) calls `MarkWeekSummarized`. A user who
+opens the tray summary on Tuesday and dismisses it with Return has silently
+consumed the scheduled Friday-afternoon summary for that week.
+**Fix:** A manual summary view should be read-only with a Close button;
+only the scheduled prompt (or an explicit "Mark week summarized" control)
+should set the flag.
+**Status:** open
+
+### 21. Manual "Review Last Week…" prematurely rolls the backlog over
+**Severity:** medium
+**Problem:** Accepting the review dialog runs `ApplyWeekReview`, which always
+calls `backlog.rollOver()` (Next week -> Current). Invoked manually mid-week,
+one Return keypress promotes every item the user postponed "to next week"
+into Current *today*, resurfacing them (pre-checked, per finding 18) in the
+next morning's candidates. The rollover is correct for the scheduled
+Monday review, not for an on-demand re-triage on Wednesday.
+**Fix:** Only roll over NextWeek items when the review runs for a week
+boundary that has actually passed since the last rollover (e.g. skip
+`rollOver()` when the reviewed week's successor is still the current week
+and a rollover already happened), or confirm before rolling over on manual
+runs.
+**Status:** open
+
+### 22. Morning and evening dialogs fire back-to-back, in an odd order
+**Severity:** medium
+**Problem:** `CheckPrompts` shows every due prompt sequentially. Launching
+the app (or coming back from a day away) after the evening time with the
+morning check-in not done produces: "What are you planning to work on
+today?" followed immediately by "How did today go?" — planning a day that is
+already over, then triaging it seconds later. On a Monday this can chain
+week review + morning + evening with no indication that more dialogs are
+queued.
+**Fix:** When both daily check-ins are due, show only the evening one (the
+plan can be captured there); when several prompts are queued, indicate
+progress (e.g. "1 of 2") or at least announce the next dialog.
+**Status:** open
+
+### 23. Week-review Drop gives no confirmation or summary
+**Severity:** low
+**Problem:** The trash button sits one icon away from Postpone; OK applies
+all decisions with no recap, so a mis-clicked Drop removes an item from the
+backlog silently. (Mitigation: dropped texts are recorded under the weekly
+file's dropped list, so the data is recoverable by hand.)
+**Fix:** When any Drop is selected, show a one-line count in the dialog
+("2 items will be dropped") or confirm on OK.
+**Status:** open
+
+### 24. Postpone arrow icon is nearly invisible in dark mode
+**Severity:** low
+**Problem:** `SP_ArrowForward` renders as a dark glyph on the dark dialog
+background; unchecked it is barely visible next to the colored check/cross
+icons (`seeded/evening.png`, first two rows; same in the week review and
+main window). Users may not realize a third state exists.
+**Fix:** Tint the arrow like the tray glyph (template/mask icon painted from
+the palette), or choose a higher-contrast standard icon.
+**Status:** open
+
+### 25. "Postpone" means two different things in the same dialog
+**Severity:** low
+**Problem:** In the evening dialog the per-item arrow tooltip says "Postpone
+to next week" while the bottom button says "Postpone 1h" (snooze the
+dialog). Same verb, wholly different consequences.
+**Fix:** Rename the snooze button to "Remind me in 1h" (tooltip already
+says "Ask again in an hour").
+**Status:** open
+
+### 26. Plan items cannot be edited or deleted; the backlog is invisible
+**Severity:** low
+**Problem:** A mistyped task can only be marked done/not-done/postponed or
+moved to the backlog; there is no rename or delete anywhere in the UI, and
+the backlog itself has no in-app view, so "Move to the cross-week backlog"
+makes an item vanish with no feedback, no undo, and no way to check where it
+went (short of opening the markdown file). The markdown-is-the-interface
+design covers browsing history, but fixing a typo in *today's* plan
+shouldn't require a text editor.
+**Fix:** Add edit-in-place (double-click) and a Delete action to plan rows;
+show a transient status ("Moved to backlog") or a small backlog count next
+to the heading.
+**Status:** open
+
+### 27. Re-running the morning check-in hides the existing plan
+**Severity:** low
+**Problem:** Invoking the morning dialog when today already has a plan shows
+an empty editor and no mention of the existing items (they are excluded from
+the candidate list). It looks like the earlier plan was lost; re-typing an
+item silently dedupes.
+**Fix:** Show the current plan (read-only list or prefilled editor) when
+`morning_done` is already true, or change the heading to "Add more tasks for
+today".
+**Status:** open
+
+### 28. Empty-state polish in the summary and review dialogs
+**Severity:** low
+**Problem:** The empty weekly summary shows both "Nothing completed yet this
+week." and "0 items completed." (`empty/weekly-summary.png`); the
+nothing-left-open week review still offers "Postpone 1h" and "Skip Today"
+even though there is nothing to come back for (`empty/week-review.png`);
+"(No plan was recorded for today.)" uses a parenthetical tone no other
+string uses.
+**Fix:** Drop the count line when it is zero; give the no-op review dialog a
+single Close/OK button; align the evening empty-state wording with the rest
+("No plan was recorded for today.").
+**Status:** open
+
+### 29. Icon-only controls lack accessible names and keyboard access
+**Severity:** low
+**Problem:** All state/backlog/review buttons are icon-only QToolButtons
+with tooltips but no accessible names, so VoiceOver reads nothing useful;
+on macOS tool buttons are typically excluded from the tab order, making the
+main window's row actions and the dialogs' per-item selectors mouse-only
+(not verified in a live session; flagged from code).
+**Fix:** Call `SetAccessibleName` with the tooltip text on every icon
+button, give them an explicit focus policy, and verify tabbing with Full
+Keyboard Access enabled.
+**Status:** open
+
+### 30. "Check for Updates…" freezes the UI with no feedback
+**Severity:** low
+**Problem:** The tray action runs the HTTP check synchronously on the main
+thread with a 10 s timeout: on a slow network the menu click appears to do
+nothing while the whole UI (including the tray) is frozen for up to 10
+seconds.
+**Fix:** Reuse the existing background-check path with a completion dialog
+(plus a busy cursor), instead of the synchronous variant.
+**Status:** open
+
+### Checked and found fine (round 2)
+- 25 short plan items: rows and button columns align, vertical scrolling
+  works, no horizontal scrollbar (`manyshort/main-window.png`).
+- Evening and week-review dialogs word-wrap 200+ char items correctly and
+  cap their height with a scroll area; checked-state highlight is clearly
+  visible in dark mode (findings 4/11 hold up).
+- Emoji and Cyrillic text render fine on every screen; the weekly summary
+  HTML-escapes item text properly; "1 item / n items" pluralization correct;
+  date and week formats are consistent across heading, dialogs and files.
+- Empty home: config auto-creates; all five screens render sensible
+  first-run states; the main-window placeholder (finding 5) reads well.
+- OK is the default button and Escape consistently maps to Skip Today in all
+  four check-in dialogs; dialogs raise/activate; the `dialogOpen` guard
+  prevents overlapping prompts; the multi-week review loop walks oldest
+  first.
+- Morning candidate dedup (normalized text) works across days and backlog;
+  hand-edited files while the evening dialog is open are handled by
+  text-matched decisions; file writes are atomic.
+- Tray menu covers all core actions plus Show Window; Cmd+Q works; closing
+  the window hides to the menu bar as intended.
+- Borderline, not filed: the 320px scroll-area cap makes 20+ item triage
+  cramped on large screens but stays usable; morning candidate list allows
+  horizontal scrolling for long texts (inconsistent with finding 12 but
+  functional).
+
 ## Other notes
 
 - **[wontfix] Dock icon visibility:** hiding the Dock icon (LSUIElement) is
