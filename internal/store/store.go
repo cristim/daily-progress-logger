@@ -251,22 +251,29 @@ func (s *Store) ApplyEvening(today time.Time, states []ItemState, extraDone []st
 		return err
 	}
 
-	if len(postponed) > 0 || len(unpostponed) > 0 {
-		backlog, err := s.LoadBacklog()
-		if err != nil {
-			return err
-		}
-		for _, text := range postponed {
-			backlog.addNextWeek(text)
-		}
-		for _, text := range unpostponed {
-			backlog.removeNextWeek(text)
-		}
-		if err := s.SaveBacklog(backlog); err != nil {
-			return err
-		}
+	if err := s.syncPostponed(postponed, unpostponed); err != nil {
+		return err
 	}
 	return s.RegenerateWeekly(WeekOf(today))
+}
+
+// syncPostponed queues newly postponed items in the backlog for next week
+// and removes entries for items that left the postponed state.
+func (s *Store) syncPostponed(postponed, unpostponed []string) error {
+	if len(postponed) == 0 && len(unpostponed) == 0 {
+		return nil
+	}
+	backlog, err := s.LoadBacklog()
+	if err != nil {
+		return err
+	}
+	for _, text := range postponed {
+		backlog.addNextWeek(text)
+	}
+	for _, text := range unpostponed {
+		backlog.removeNextWeek(text)
+	}
+	return s.SaveBacklog(backlog)
 }
 
 // AddPlanItem appends a new todo to the plan for date.
