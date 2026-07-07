@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    env:
+      CGO_CXXFLAGS: -std=c++20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Cache the Go build cache separately from the module cache that
+      # setup-go handles. miqt cgo compilation takes 15+ min on a cold runner.
+      - name: Cache Go build cache
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/go-build
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}-v1
+          restore-keys: |
+            ${{ runner.os }}-go-build-
+
+      - name: Install Qt and golangci-lint
+        run: brew install qt golangci-lint
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Lint
+        run: golangci-lint run
+
+      - name: Vulnerability check
+        run: govulncheck ./...
