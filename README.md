@@ -94,3 +94,45 @@ directly.
 -hidden                           start without showing the main window
 -screenshot <dir>                 render the UI offscreen to PNGs and exit
 ```
+
+## Distribution
+
+### Building a DMG
+
+```sh
+make dmg   # produces build/DailyProgressLogger-<version>.dmg
+```
+
+This assembles the self-contained `.app` (via `macdeployqt`) and packages it
+into a compressed UDZO disk image with an `/Applications` symlink.
+
+### Creating a GitHub release
+
+```sh
+make release   # runs make dmg, then gh release create v<version> --generate-notes
+```
+
+Requires the `gh` CLI authenticated to `cristim/daily-progress-logger`.
+
+### Homebrew cask (cristim/tap)
+
+The cask template lives at `packaging/daily-progress-logger.rb` in this repo.
+After a `make release`, publish it to the tap with:
+
+```sh
+TAP_DIR=$(brew --repository cristim/tap)
+cp packaging/daily-progress-logger.rb "$TAP_DIR/Casks/"
+# Update sha256 in the copied file:
+SHA=$(shasum -a 256 build/DailyProgressLogger-0.1.0.dmg | awk '{print $1}')
+sed -i '' "s/sha256 :no_check/sha256 \"$SHA\"/" "$TAP_DIR/Casks/daily-progress-logger.rb"
+cd "$TAP_DIR" && git add Casks/daily-progress-logger.rb && git commit -m "feat: add daily-progress-logger cask" && git push
+```
+
+After that, users can install with:
+
+```sh
+brew install --cask cristim/tap/daily-progress-logger
+```
+
+Note: the repo must be public (or the release asset publicly accessible) before
+`brew install` can fetch the DMG.
