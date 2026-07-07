@@ -383,7 +383,7 @@ func (a *App) runWeeklySummaryForNow() (dialogResult, error) {
 	if err != nil {
 		return dialogCanceled, err
 	}
-	return a.runWeeklySummaryDialog(week)
+	return a.runWeeklySummaryDialog(week, true) // scheduled: mark summarized on accept
 }
 
 // applyManualResult applies the bookkeeping for a user-initiated (manual)
@@ -441,7 +441,7 @@ func (a *App) runWeeklySummaryManually() {
 		a.maybeQuitOneshot()
 	}()
 	week := store.WeekOf(time.Now())
-	result, err := a.runWeeklySummaryDialog(week)
+	result, err := a.runWeeklySummaryDialog(week, false) // manual: do not mark summarized
 	if err != nil {
 		a.reportError(err)
 		return
@@ -497,7 +497,7 @@ func (a *App) GrabScreenshots(dir string) error {
 	if err != nil {
 		return err
 	}
-	weeklySummary, err := a.buildWeeklySummaryDialog(store.WeekOf(now))
+	weeklySummary, err := a.buildWeeklySummaryDialog(store.WeekOf(now), false)
 	if err != nil {
 		return err
 	}

@@ -53,8 +53,13 @@ func (s *dialogSpec) run() (dialogResult, error) {
 	}
 }
 
-func (a *App) runWeeklySummaryDialog(week store.WeekID) (dialogResult, error) {
-	spec, err := a.buildWeeklySummaryDialog(week)
+// runWeeklySummaryDialog shows the summary dialog for week. When markOnAccept
+// is true (scheduled path) accepting the dialog marks the week summarized;
+// when false (manual / on-demand view) accepting is a read-only action and
+// the summarized flag is left untouched so the scheduled Friday prompt still
+// fires.
+func (a *App) runWeeklySummaryDialog(week store.WeekID, markOnAccept bool) (dialogResult, error) {
+	spec, err := a.buildWeeklySummaryDialog(week, markOnAccept)
 	if err != nil {
 		return dialogCanceled, err
 	}
@@ -290,7 +295,10 @@ func (a *App) buildWeekReviewDialog(week store.WeekID) (*dialogSpec, error) {
 
 // buildWeeklySummaryDialog shows the current week's accomplishments for a
 // quick Friday review and lets the user open the weekly file.
-func (a *App) buildWeeklySummaryDialog(week store.WeekID) (*dialogSpec, error) {
+// markOnAccept controls whether accepting the dialog marks the week
+// summarized: true for the scheduled Friday prompt, false for on-demand
+// (manual) views so a mid-week peek does not consume the Friday summary.
+func (a *App) buildWeeklySummaryDialog(week store.WeekID, markOnAccept bool) (*dialogSpec, error) {
 	dailies, err := a.store.DailiesInWeek(week)
 	if err != nil {
 		return nil, err
@@ -343,6 +351,9 @@ func (a *App) buildWeeklySummaryDialog(week store.WeekID) (*dialogSpec, error) {
 	attachButtons(dialog, layout)
 
 	apply := func() error {
+		if !markOnAccept {
+			return nil // manual view: do not consume the scheduled summary
+		}
 		return a.store.MarkWeekSummarized(week)
 	}
 	return &dialogSpec{dialog: dialog, apply: apply}, nil

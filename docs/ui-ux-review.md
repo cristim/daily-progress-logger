@@ -231,7 +231,11 @@ consumed the scheduled Friday-afternoon summary for that week.
 **Fix:** A manual summary view should be read-only with a Close button;
 only the scheduled prompt (or an explicit "Mark week summarized" control)
 should set the flag.
-**Status:** open
+**Status:** implemented — `buildWeeklySummaryDialog` now takes `markOnAccept
+bool`. The scheduled path (`runWeeklySummaryForNow`) passes `true`; the
+manual tray path (`runWeeklySummaryManually`) passes `false` so accepting
+the dialog is a no-op write-wise. The dialog content and buttons are
+identical in both cases.
 
 ### 21. Manual "Review Last Week…" prematurely rolls the backlog over
 **Severity:** medium
