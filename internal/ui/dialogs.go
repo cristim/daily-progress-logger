@@ -319,7 +319,7 @@ func attachButtons(dialog *qt.QDialog, layout *qt.QVBoxLayout) {
 	skip := buttons.Button(qt.QDialogButtonBox__Cancel)
 	skip.SetText("Skip Today")
 	skip.SetToolTip("Don't ask again today")
-	snooze := buttons.AddButton2("Postpone 1h", qt.QDialogButtonBox__ActionRole)
+	snooze := buttons.AddButton2("Remind me in 1h", qt.QDialogButtonBox__ActionRole)
 	snooze.SetToolTip("Ask again in an hour")
 	snooze.OnClicked(func() { dialog.Done(snoozeCode) })
 	buttons.OnAccepted(dialog.Accept)

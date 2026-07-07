@@ -15,7 +15,7 @@ markdown files you can grep, sync, or feed to an LLM at review time.
 - **Evening check-in** (default 17:30): shows the day's plan with
   *Done / Not done / Postpone to next week* buttons per item, plus anything
   else you accomplished. Regenerates the weekly summary afterwards.
-- Every check-in offers **Postpone 1h** (snooze: it re-appears an hour
+- Every check-in offers **Remind me in 1h** (snooze: it re-appears an hour
   later) and **Skip Today** (it stays quiet until tomorrow).
 - **Week review** (first launch in a new ISO week): lists the previous week's
   leftover items and asks whether each is still relevant — *Keep this week*,
@@ -64,8 +64,8 @@ Two supported setups:
   passed — including the first app open after 09:30 / 17:30.
 - **Scheduled check-ins** (`make install-checkin-agent`): no resident app;
   launchd runs `daily-progress-logger -prompt-due` at 09:30 and 17:30, which
-  shows whatever is due and exits (it stays alive only while a "Postpone 1h"
-  snooze is pending). Adjust `packaging/checkin-agent.plist.template` if you
+  shows whatever is due and exits (it stays alive only while a "Remind me in
+  1h" snooze is pending). Adjust `packaging/checkin-agent.plist.template` if you
   change the times in config.
 
 ## Building

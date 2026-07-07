@@ -282,7 +282,8 @@ to next week" while the bottom button says "Postpone 1h" (snooze the
 dialog). Same verb, wholly different consequences.
 **Fix:** Rename the snooze button to "Remind me in 1h" (tooltip already
 says "Ask again in an hour").
-**Status:** open
+**Status:** implemented — `attachButtons` label changed to "Remind me in 1h";
+README updated accordingly.
 
 ### 26. Plan items cannot be edited or deleted; the backlog is invisible
 **Severity:** low
