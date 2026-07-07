@@ -85,6 +85,7 @@ func (a *App) buildMorningDialog(today time.Time) (*dialogSpec, error) {
 	layout.AddWidget(qt.NewQLabel3("<b>What are you planning to work on today?</b>").QWidget)
 	editor := qt.NewQPlainTextEdit2()
 	editor.SetPlaceholderText("One task per line…")
+	editor.SetFocus()
 	layout.AddWidget(editor.QWidget)
 
 	var candidateList *qt.QListWidget
@@ -155,6 +156,7 @@ func (a *App) buildEveningDialog(today time.Time) (*dialogSpec, error) {
 	layout.AddWidget(qt.NewQLabel3("Anything else you accomplished?").QWidget)
 	editor := qt.NewQPlainTextEdit2()
 	editor.SetPlaceholderText("One accomplishment per line…")
+	editor.SetFocus()
 	layout.AddWidget(editor.QWidget)
 	attachButtons(dialog, layout)
 
@@ -218,6 +220,7 @@ func (a *App) buildWeekReviewDialog(week store.WeekID) (*dialogSpec, error) {
 // rest of the day.
 func attachButtons(dialog *qt.QDialog, layout *qt.QVBoxLayout) {
 	buttons := qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel)
+	buttons.Button(qt.QDialogButtonBox__Ok).SetDefault(true)
 	snooze := buttons.AddButton2("Postpone 1h", qt.QDialogButtonBox__ActionRole)
 	snooze.SetToolTip("Ask again in an hour")
 	snooze.OnClicked(func() { dialog.Done(snoozeCode) })
