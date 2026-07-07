@@ -6,15 +6,24 @@ import (
 	"github.com/cristim/daily-progress-logger/internal/store"
 )
 
-// stateSelector is a row of three mutually exclusive icon buttons for an
-// item's state: Done / Not done / Postpone to next week. It is shared by
-// the evening check-in dialog and the main window's plan list.
-type stateSelector struct {
+// choice describes one option in a choiceSelector.
+type choice struct {
+	id      int
+	icon    qt.QStyle__StandardPixmap
+	tooltip string
+}
+
+// choiceSelector is a row of mutually exclusive icon buttons where each
+// button corresponds to a choice. It is the generic foundation for
+// stateSelector (plan item states) and the week-review action selector.
+type choiceSelector struct {
 	widget *qt.QWidget
 	group  *qt.QButtonGroup
 }
 
-func newStateSelector(initial store.ItemState) *stateSelector {
+// newChoiceSelector builds a row of exclusive icon QToolButtons from choices,
+// with the button matching initialID pre-checked.
+func newChoiceSelector(choices []choice, initialID int) *choiceSelector {
 	widget := qt.NewQWidget2()
 	layout := qt.NewQHBoxLayout(widget)
 	layout.SetContentsMargins(0, 0, 0, 0)
@@ -23,25 +32,41 @@ func newStateSelector(initial store.ItemState) *stateSelector {
 	group := qt.NewQButtonGroup()
 	group.SetExclusive(true)
 
-	add := func(state store.ItemState, icon qt.QStyle__StandardPixmap, tooltip string) {
+	for _, c := range choices {
 		button := qt.NewQToolButton2()
-		button.SetIcon(standardIcon(icon))
+		button.SetIcon(standardIcon(c.icon))
 		button.SetToolButtonStyle(qt.ToolButtonIconOnly)
 		button.SetCheckable(true)
-		button.SetToolTip(tooltip)
-		if state == initial {
+		button.SetToolTip(c.tooltip)
+		if c.id == initialID {
 			button.SetChecked(true)
 		}
-		group.AddButton2(button.QAbstractButton, int(state))
+		group.AddButton2(button.QAbstractButton, c.id)
 		layout.AddWidget(button.QWidget)
 	}
-	add(store.StateDone, qt.QStyle__SP_DialogApplyButton, "Done")
-	add(store.StateTodo, qt.QStyle__SP_DialogCancelButton, "Not done (keep as an open todo)")
-	add(store.StatePostponed, qt.QStyle__SP_ArrowForward, "Postpone to next week")
 
 	widget.SetStyleSheet(`QToolButton { padding: 4px 6px; border: 1px solid transparent; border-radius: 5px; } QToolButton:checked { background-color: palette(highlight); color: palette(highlighted-text); border-color: palette(highlight); }`)
 
-	return &stateSelector{widget: widget, group: group}
+	return &choiceSelector{widget: widget, group: group}
+}
+
+// stateSelector is a row of three mutually exclusive icon buttons for an
+// item's state: Done / Not done / Postpone to next week. It is shared by
+// the evening check-in dialog and the main window's plan list.
+type stateSelector struct {
+	widget *qt.QWidget
+	group  *qt.QButtonGroup
+}
+
+// newStateSelector returns a stateSelector pre-set to initial, built as a
+// thin wrapper over newChoiceSelector.
+func newStateSelector(initial store.ItemState) *stateSelector {
+	cs := newChoiceSelector([]choice{
+		{id: int(store.StateDone), icon: qt.QStyle__SP_DialogApplyButton, tooltip: "Done"},
+		{id: int(store.StateTodo), icon: qt.QStyle__SP_DialogCancelButton, tooltip: "Not done (keep as an open todo)"},
+		{id: int(store.StatePostponed), icon: qt.QStyle__SP_ArrowForward, tooltip: "Postpone to next week"},
+	}, int(initial))
+	return &stateSelector{widget: cs.widget, group: cs.group}
 }
 
 // state returns the currently selected item state.

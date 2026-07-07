@@ -110,12 +110,21 @@ cross-week backlog". Updated the empty-state placeholder text to reference
 "above" since the add-task field now sits above the list.
 **Status:** implemented
 
+### 14. Week-review dialog used QComboBox dropdowns
+**Problem:** The review dialog offered each leftover item a plain dropdown
+("Keep this week / Postpone to next week / Drop"), inconsistent with the
+icon-button row used everywhere else in the app for state selection.
+**Fix:** Extracted `newChoiceSelector(choices []choice, initialID int)`
+in statebuttons.go as a generic icon-button row; `newStateSelector` is
+now a thin wrapper. The review dialog uses three icon buttons per item
+(Apply = Keep, ArrowForward = Postpone, TrashIcon = Drop) defaulting to
+Keep. Removed the now-unused `actionForComboIndex` helper.
+**Status:** implemented
+
 ## Other notes
 
 - **[wontfix] Dock icon visibility:** hiding the Dock icon (LSUIElement) is
   common for menu-bar apps, but the main window is a first-class part of
   this app; keeping the Dock icon aids discoverability. Revisit if noisy.
-- **[planned] Week review combos:** switch the review dialog's dropdowns to
-  icon buttons for consistency with the rest of the UI.
 - **[wontfix] In-app history browser:** "Open Data Folder" remains the way
   to browse past days; the markdown files are the interface by design.

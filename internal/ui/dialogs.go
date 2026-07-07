@@ -204,18 +204,23 @@ func (a *App) buildWeekReviewDialog(week store.WeekID) (*dialogSpec, error) {
 	label.SetWordWrap(true)
 	layout.AddWidget(label.QWidget)
 
-	combos := make([]*qt.QComboBox, len(items))
+	reviewChoices := []choice{
+		{id: int(store.ReviewKeep), icon: qt.QStyle__SP_DialogApplyButton, tooltip: "Keep this week"},
+		{id: int(store.ReviewPostpone), icon: qt.QStyle__SP_ArrowForward, tooltip: "Postpone to next week"},
+		{id: int(store.ReviewDrop), icon: qt.QStyle__SP_TrashIcon, tooltip: "Drop"},
+	}
+
+	selectors := make([]*choiceSelector, len(items))
 	if len(items) > 0 {
 		area, rows := newRowsArea()
 		for i, text := range items {
 			row := qt.NewQHBoxLayout2()
 			itemLabel := qt.NewQLabel3(text)
 			itemLabel.SetWordWrap(true)
-			combo := qt.NewQComboBox2()
-			combo.AddItems([]string{"Keep this week", "Postpone to next week", "Drop"})
-			combos[i] = combo
+			sel := newChoiceSelector(reviewChoices, int(store.ReviewKeep))
+			selectors[i] = sel
 			row.AddWidget2(itemLabel.QWidget, 1)
-			row.AddWidget(combo.QWidget)
+			row.AddWidget(sel.widget)
 			rows.AddLayout(row.QLayout)
 		}
 		layout.AddWidget(area.QWidget)
@@ -227,7 +232,7 @@ func (a *App) buildWeekReviewDialog(week store.WeekID) (*dialogSpec, error) {
 		for i, text := range items {
 			decisions[i] = store.ReviewDecision{
 				Text:   text,
-				Action: actionForComboIndex(combos[i].CurrentIndex()),
+				Action: store.ReviewAction(selectors[i].group.CheckedId()),
 			}
 		}
 		return a.store.ApplyWeekReview(week, decisions)
@@ -262,17 +267,6 @@ func newRowsArea() (*qt.QScrollArea, *qt.QVBoxLayout) {
 	area.SetWidget(container)
 	area.SetMaximumHeight(320)
 	return area, rows
-}
-
-func actionForComboIndex(index int) store.ReviewAction {
-	switch index {
-	case 1:
-		return store.ReviewPostpone
-	case 2:
-		return store.ReviewDrop
-	default:
-		return store.ReviewKeep
-	}
 }
 
 // splitLines turns textarea content into trimmed, non-empty lines.
