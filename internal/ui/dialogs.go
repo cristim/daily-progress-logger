@@ -1,0 +1,249 @@
+package ui
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	qt "github.com/mappu/miqt/qt6"
+
+	"github.com/cristim/daily-progress-logger/internal/store"
+)
+
+// dialogSpec is a built check-in dialog plus the action applying its answers
+// once accepted. Building and running are separate so dialogs can also be
+// rendered offscreen (see App.GrabScreenshots).
+type dialogSpec struct {
+	dialog *qt.QDialog
+	apply  func() error
+}
+
+// run shows the dialog modally and applies the answers if accepted.
+func (s *dialogSpec) run() error {
+	if s.dialog.Exec() != int(qt.QDialog__Accepted) {
+		return nil
+	}
+	return s.apply()
+}
+
+func (a *App) runMorningDialog() error {
+	spec, err := a.buildMorningDialog(time.Now())
+	if err != nil {
+		return err
+	}
+	return spec.run()
+}
+
+func (a *App) runEveningDialog() error {
+	spec, err := a.buildEveningDialog(time.Now())
+	if err != nil {
+		return err
+	}
+	return spec.run()
+}
+
+func (a *App) runWeekReviewDialog(week store.WeekID) error {
+	spec, err := a.buildWeekReviewDialog(week)
+	if err != nil {
+		return err
+	}
+	return spec.run()
+}
+
+// buildMorningDialog asks what the user plans to work on today, offering
+// carry-over candidates from earlier in the week and the backlog.
+func (a *App) buildMorningDialog(today time.Time) (*dialogSpec, error) {
+	candidates, err := a.store.MorningCandidates(today)
+	if err != nil {
+		return nil, err
+	}
+
+	dialog := qt.NewQDialog(a.window.win.QWidget)
+	dialog.SetWindowTitle("Morning Check-in")
+	layout := qt.NewQVBoxLayout(dialog.QWidget)
+
+	layout.AddWidget(qt.NewQLabel3("<b>What are you planning to work on today?</b>").QWidget)
+	editor := qt.NewQPlainTextEdit2()
+	editor.SetPlaceholderText("One task per line…")
+	layout.AddWidget(editor.QWidget)
+
+	var candidateList *qt.QListWidget
+	if len(candidates) > 0 {
+		layout.AddWidget(qt.NewQLabel3("Carry over open items (from this week and the backlog):").QWidget)
+		candidateList = qt.NewQListWidget2()
+		for _, c := range candidates {
+			text := c.Text
+			if c.FromBacklog {
+				text += "  (backlog)"
+			}
+			item := qt.NewQListWidgetItem2(text)
+			item.SetFlags(qt.ItemIsSelectable | qt.ItemIsEnabled | qt.ItemIsUserCheckable)
+			item.SetCheckState(qt.Checked)
+			candidateList.AddItemWithItem(item)
+		}
+		layout.AddWidget(candidateList.QWidget)
+	}
+	attachButtons(dialog, layout)
+
+	apply := func() error {
+		var adopted []store.Candidate
+		if candidateList != nil {
+			for i, c := range candidates {
+				if candidateList.Item(i).CheckState() == qt.Checked {
+					adopted = append(adopted, c)
+				}
+			}
+		}
+		return a.store.ApplyMorning(today, splitLines(editor.ToPlainText()), adopted)
+	}
+	return &dialogSpec{dialog: dialog, apply: apply}, nil
+}
+
+// buildEveningDialog asks what happened to each planned item and what else
+// was accomplished.
+func (a *App) buildEveningDialog(today time.Time) (*dialogSpec, error) {
+	daily, _, err := a.store.LoadDaily(today)
+	if err != nil {
+		return nil, err
+	}
+	var plan []store.Item
+	if daily != nil {
+		plan = daily.Plan
+	}
+
+	dialog := qt.NewQDialog(a.window.win.QWidget)
+	dialog.SetWindowTitle("Evening Check-in")
+	layout := qt.NewQVBoxLayout(dialog.QWidget)
+
+	layout.AddWidget(qt.NewQLabel3("<b>How did today go?</b>").QWidget)
+
+	combos := make([]*qt.QComboBox, len(plan))
+	if len(plan) > 0 {
+		for i, item := range plan {
+			row := qt.NewQHBoxLayout2()
+			label := qt.NewQLabel3(item.Text)
+			combo := qt.NewQComboBox2()
+			combo.AddItems([]string{"Not done", "Done", "Postpone to next week"})
+			combo.SetCurrentIndex(comboIndexForState(item.State))
+			combos[i] = combo
+			row.AddWidget2(label.QWidget, 1)
+			row.AddWidget(combo.QWidget)
+			layout.AddLayout(row.QLayout)
+		}
+	} else {
+		layout.AddWidget(qt.NewQLabel3("(No plan was recorded for today.)").QWidget)
+	}
+
+	layout.AddWidget(qt.NewQLabel3("Anything else you accomplished?").QWidget)
+	editor := qt.NewQPlainTextEdit2()
+	editor.SetPlaceholderText("One accomplishment per line…")
+	layout.AddWidget(editor.QWidget)
+	attachButtons(dialog, layout)
+
+	apply := func() error {
+		states := make([]store.ItemState, len(plan))
+		for i, combo := range combos {
+			states[i] = stateForComboIndex(combo.CurrentIndex())
+		}
+		return a.store.ApplyEvening(today, states, splitLines(editor.ToPlainText()))
+	}
+	return &dialogSpec{dialog: dialog, apply: apply}, nil
+}
+
+// buildWeekReviewDialog triages the given week's leftover items.
+func (a *App) buildWeekReviewDialog(week store.WeekID) (*dialogSpec, error) {
+	items, err := a.store.WeekReviewCandidates(week)
+	if err != nil {
+		return nil, err
+	}
+
+	dialog := qt.NewQDialog(a.window.win.QWidget)
+	dialog.SetWindowTitle(fmt.Sprintf("Week Review: %s", week))
+	layout := qt.NewQVBoxLayout(dialog.QWidget)
+
+	title := fmt.Sprintf("<b>Starting a new week.</b> These items from %s are still open. Are they still relevant?", week)
+	if len(items) == 0 {
+		title = fmt.Sprintf("<b>Starting a new week.</b> Nothing left open from %s. Great job!", week)
+	}
+	label := qt.NewQLabel3(title)
+	label.SetWordWrap(true)
+	layout.AddWidget(label.QWidget)
+
+	combos := make([]*qt.QComboBox, len(items))
+	for i, text := range items {
+		row := qt.NewQHBoxLayout2()
+		itemLabel := qt.NewQLabel3(text)
+		combo := qt.NewQComboBox2()
+		combo.AddItems([]string{"Keep this week", "Postpone to next week", "Drop"})
+		combos[i] = combo
+		row.AddWidget2(itemLabel.QWidget, 1)
+		row.AddWidget(combo.QWidget)
+		layout.AddLayout(row.QLayout)
+	}
+	attachButtons(dialog, layout)
+
+	apply := func() error {
+		decisions := make([]store.ReviewDecision, len(items))
+		for i, text := range items {
+			decisions[i] = store.ReviewDecision{
+				Text:   text,
+				Action: actionForComboIndex(combos[i].CurrentIndex()),
+			}
+		}
+		return a.store.ApplyWeekReview(week, decisions)
+	}
+	return &dialogSpec{dialog: dialog, apply: apply}, nil
+}
+
+// attachButtons appends an OK/Cancel button box wired to the dialog.
+func attachButtons(dialog *qt.QDialog, layout *qt.QVBoxLayout) {
+	buttons := qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel)
+	buttons.OnAccepted(dialog.Accept)
+	buttons.OnRejected(dialog.Reject)
+	layout.AddWidget(buttons.QWidget)
+}
+
+func comboIndexForState(state store.ItemState) int {
+	switch state {
+	case store.StateDone:
+		return 1
+	case store.StatePostponed:
+		return 2
+	case store.StateTodo:
+		return 0
+	}
+	return 0
+}
+
+func stateForComboIndex(index int) store.ItemState {
+	switch index {
+	case 1:
+		return store.StateDone
+	case 2:
+		return store.StatePostponed
+	default:
+		return store.StateTodo
+	}
+}
+
+func actionForComboIndex(index int) store.ReviewAction {
+	switch index {
+	case 1:
+		return store.ReviewPostpone
+	case 2:
+		return store.ReviewDrop
+	default:
+		return store.ReviewKeep
+	}
+}
+
+// splitLines turns textarea content into trimmed, non-empty lines.
+func splitLines(text string) []string {
+	var lines []string
+	for line := range strings.SplitSeq(text, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
