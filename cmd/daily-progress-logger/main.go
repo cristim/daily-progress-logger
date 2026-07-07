@@ -15,6 +15,9 @@ import (
 	"github.com/cristim/daily-progress-logger/internal/ui"
 )
 
+// version is overridden at build time by -ldflags "-X main.version=<tag>".
+var version = "dev"
+
 func main() {
 	checkin := flag.String("checkin", "",
 		"show the named check-in (morning, evening or review), then exit")
@@ -33,7 +36,7 @@ func main() {
 		fatal(err)
 	}
 	st := store.New(cfg.DataDir)
-	app, err := ui.New(st, cfg)
+	app, err := ui.New(st, cfg, version)
 	if err != nil {
 		fatal(err)
 	}

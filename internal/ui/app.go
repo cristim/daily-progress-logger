@@ -4,6 +4,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,15 +12,20 @@ import (
 	"time"
 
 	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/cristim/daily-progress-logger/internal/config"
 	"github.com/cristim/daily-progress-logger/internal/loginitem"
 	"github.com/cristim/daily-progress-logger/internal/schedule"
 	"github.com/cristim/daily-progress-logger/internal/store"
+	"github.com/cristim/daily-progress-logger/internal/update"
 )
 
 // checkInterval is how often the app re-evaluates which prompts are due.
 const checkInterval = 60 * time.Second
+
+// updateCheckInterval is how often the app re-checks for a new release.
+const updateCheckInterval = 24 * time.Hour
 
 // App owns the Qt widgets and drives the check-in prompts.
 type App struct {
@@ -29,11 +35,13 @@ type App struct {
 	evening    schedule.TimeOfDay
 	summaryDay time.Weekday
 	summary    schedule.TimeOfDay
+	version    string
 
-	window     *mainWindow
-	tray       *qt.QSystemTrayIcon
-	timer      *qt.QTimer
-	dialogOpen bool
+	window      *mainWindow
+	tray        *qt.QSystemTrayIcon
+	timer       *qt.QTimer
+	updateTimer *qt.QTimer
+	dialogOpen  bool
 
 	// snoozeUntil holds "Postpone 1h" deadlines per prompt.
 	snoozeUntil map[schedule.Prompt]time.Time
@@ -48,8 +56,9 @@ type App struct {
 }
 
 // New builds the application UI. The Qt application object must already
-// exist.
-func New(st *store.Store, cfg *config.Config) (*App, error) {
+// exist. appVersion is the running binary's version string (e.g. "0.1.0" or
+// "dev") and is used by the auto-updater.
+func New(st *store.Store, cfg *config.Config, appVersion string) (*App, error) {
 	morningHour, morningMinute, err := config.ParseTimeOfDay(cfg.MorningTime)
 	if err != nil {
 		return nil, err
@@ -73,6 +82,7 @@ func New(st *store.Store, cfg *config.Config) (*App, error) {
 		evening:     schedule.TimeOfDay{Hour: eveningHour, Minute: eveningMinute},
 		summaryDay:  summaryDay,
 		summary:     schedule.TimeOfDay{Hour: summaryHour, Minute: summaryMinute},
+		version:     appVersion,
 		snoozeUntil: map[schedule.Prompt]time.Time{},
 		skippedOn:   map[schedule.Prompt]string{},
 		forced:      map[schedule.Prompt]bool{},
@@ -86,6 +96,21 @@ func New(st *store.Store, cfg *config.Config) (*App, error) {
 	app.timer = qt.NewQTimer2(app.window.win.QObject)
 	app.timer.OnTimeout(app.CheckPrompts)
 	app.timer.Start(int(checkInterval.Milliseconds()))
+
+	// Schedule the first automatic update check 2 minutes after launch, then
+	// every 24 hours. The check runs in a goroutine; results are marshalled
+	// back to the Qt main thread via mainthread.Start.
+	firstCheck := qt.NewQTimer2(app.window.win.QObject)
+	firstCheck.SetSingleShot(true)
+	firstCheck.OnTimeout(func() {
+		app.checkForUpdatesBackground(false)
+		// Arm the recurring 24-hour timer.
+		app.updateTimer = qt.NewQTimer2(app.window.win.QObject)
+		app.updateTimer.OnTimeout(func() { app.checkForUpdatesBackground(false) })
+		app.updateTimer.Start(int(updateCheckInterval.Milliseconds()))
+	})
+	firstCheck.Start(int((2 * time.Minute).Milliseconds()))
+
 	return app, nil
 }
 
@@ -165,6 +190,8 @@ func (a *App) setUpTray() {
 	addMenuAction(menu, "Evening Check-in…", func() { a.runPrompt(schedule.PromptEvening) })
 	addMenuAction(menu, "This Week's Summary…", a.runWeeklySummaryManually)
 	addMenuAction(menu, "Review Last Week…", a.runWeekReviewManually)
+	menu.AddSeparator()
+	addMenuAction(menu, "Check for Updates…", a.checkForUpdatesSynchronous)
 	menu.AddSeparator()
 	addMenuAction(menu, "Quit", qt.QCoreApplication_Quit)
 
@@ -455,6 +482,85 @@ func (a *App) reportError(err error) {
 	slog.Error("ui error", "error", err)
 	qt.QMessageBox_Critical2(a.window.win.QWidget, "Daily Progress Logger", err.Error(),
 		qt.QMessageBox__Ok, qt.QMessageBox__NoButton)
+}
+
+// checkForUpdatesBackground runs an update check in a goroutine and, when a
+// newer version is found, shows a notification on the Qt main thread.
+// Errors are silently logged at debug level so offline machines are unaffected.
+func (a *App) checkForUpdatesBackground(silent bool) {
+	ver := a.version
+	go func() {
+		latest, newer, pageURL, err := update.Check(
+			context.Background(), ver, update.DefaultReleaseURL)
+		if err != nil {
+			slog.Debug("update check failed", "error", err)
+			return
+		}
+		if !newer {
+			if silent {
+				mainthread.Start(func() {
+					qt.QMessageBox_Information2(a.window.win.QWidget,
+						"Daily Progress Logger",
+						"You are running the latest version.",
+						qt.QMessageBox__Ok)
+				})
+			}
+			return
+		}
+		mainthread.Start(func() { a.showUpdateDialog(latest, pageURL) })
+	}()
+}
+
+// checkForUpdatesSynchronous is the tray-menu handler: runs the check on the
+// main thread (brief pause is acceptable for a user-initiated action) and
+// shows the outcome in a dialog either way.
+func (a *App) checkForUpdatesSynchronous() {
+	latest, newer, pageURL, err := update.Check(
+		context.Background(), a.version, update.DefaultReleaseURL)
+	if err != nil {
+		slog.Debug("manual update check failed", "error", err)
+		qt.QMessageBox_Information2(a.window.win.QWidget,
+			"Daily Progress Logger",
+			"Could not check for updates: "+err.Error(),
+			qt.QMessageBox__Ok)
+		return
+	}
+	if !newer {
+		qt.QMessageBox_Information2(a.window.win.QWidget,
+			"Daily Progress Logger",
+			"You are running the latest version.",
+			qt.QMessageBox__Ok)
+		return
+	}
+	a.showUpdateDialog(latest, pageURL)
+}
+
+// showUpdateDialog presents the "new version available" notification.
+// Must be called on the Qt main thread.
+func (a *App) showUpdateDialog(latest, pageURL string) {
+	msg := fmt.Sprintf(
+		"Daily Progress Logger %s is available (you have %s).",
+		latest, a.version)
+
+	dialog := qt.NewQDialog(a.window.win.QWidget)
+	dialog.SetWindowTitle("Update Available")
+	layout := qt.NewQVBoxLayout(dialog.QWidget)
+
+	label := qt.NewQLabel3(msg)
+	label.SetWordWrap(true)
+	layout.AddWidget(label.QWidget)
+
+	buttons := qt.NewQDialogButtonBox2()
+	openBtn := buttons.AddButton2("Open Release Page", qt.QDialogButtonBox__AcceptRole)
+	laterBtn := buttons.AddButton2("Later", qt.QDialogButtonBox__RejectRole)
+	openBtn.OnClicked(func() {
+		qt.QDesktopServices_OpenUrl(qt.QUrl_FromEncoded([]byte(pageURL)))
+		dialog.Accept()
+	})
+	laterBtn.OnClicked(dialog.Reject)
+	layout.AddWidget(buttons.QWidget)
+
+	dialog.Exec()
 }
 
 // addMenuAction creates a triggered action on menu.

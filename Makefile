@@ -20,7 +20,7 @@ export CGO_CXXFLAGS := -std=c++20
 	install-checkin-agent uninstall-checkin-agent clean
 
 build:
-	go build -o $(BUILD_DIR)/$(BINARY) ./cmd/$(BINARY)
+	go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY) ./cmd/$(BINARY)
 
 test:
 	go test -race -cover ./...
@@ -37,7 +37,8 @@ screenshot: build
 
 # Assemble a .app bundle and vendor the Qt frameworks into it with
 # macdeployqt, so the app survives Homebrew Qt upgrades.
-app: build
+app:
+	go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY) ./cmd/$(BINARY)
 	rm -rf $(APP_BUNDLE)
 	mkdir -p $(APP_BUNDLE)/Contents/MacOS
 	cp $(BUILD_DIR)/$(BINARY) $(APP_BUNDLE)/Contents/MacOS/$(BINARY)
