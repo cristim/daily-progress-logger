@@ -191,7 +191,7 @@ func (a *App) setUpTray() {
 	addMenuAction(menu, "This Week's Summary…", a.runWeeklySummaryManually)
 	addMenuAction(menu, "Review Last Week…", a.runWeekReviewManually)
 	menu.AddSeparator()
-	addMenuAction(menu, "Check for Updates…", a.checkForUpdatesSynchronous)
+	addMenuAction(menu, "Check for Updates…", a.checkForUpdatesManual)
 	menu.AddSeparator()
 	addMenuAction(menu, "Quit", qt.QCoreApplication_Quit)
 
@@ -560,28 +560,34 @@ func (a *App) checkForUpdatesBackground(silent bool) {
 	}()
 }
 
-// checkForUpdatesSynchronous is the tray-menu handler: runs the check on the
-// main thread (brief pause is acceptable for a user-initiated action) and
-// shows the outcome in a dialog either way.
-func (a *App) checkForUpdatesSynchronous() {
-	latest, newer, pageURL, err := update.Check(
-		context.Background(), a.version, update.DefaultReleaseURL)
-	if err != nil {
-		slog.Debug("manual update check failed", "error", err)
-		qt.QMessageBox_Information2(a.window.win.QWidget,
-			"Daily Progress Logger",
-			"Could not check for updates: "+err.Error(),
-			qt.QMessageBox__Ok)
-		return
-	}
-	if !newer {
-		qt.QMessageBox_Information2(a.window.win.QWidget,
-			"Daily Progress Logger",
-			"You are running the latest version.",
-			qt.QMessageBox__Ok)
-		return
-	}
-	a.showUpdateDialog(latest, pageURL)
+// checkForUpdatesManual is the tray-menu handler: runs the HTTP check in a
+// goroutine so the UI stays responsive, then marshals the outcome back to
+// the Qt main thread for display. Errors are shown in a dialog (unlike the
+// silent background check).
+func (a *App) checkForUpdatesManual() {
+	ver := a.version
+	go func() {
+		latest, newer, pageURL, err := update.Check(
+			context.Background(), ver, update.DefaultReleaseURL)
+		mainthread.Start(func() {
+			if err != nil {
+				slog.Debug("manual update check failed", "error", err)
+				qt.QMessageBox_Information2(a.window.win.QWidget,
+					"Daily Progress Logger",
+					"Could not check for updates: "+err.Error(),
+					qt.QMessageBox__Ok)
+				return
+			}
+			if !newer {
+				qt.QMessageBox_Information2(a.window.win.QWidget,
+					"Daily Progress Logger",
+					"You are running the latest version.",
+					qt.QMessageBox__Ok)
+				return
+			}
+			a.showUpdateDialog(latest, pageURL)
+		})
+	}()
 }
 
 // showUpdateDialog presents the "new version available" notification.

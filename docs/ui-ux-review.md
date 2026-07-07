@@ -376,7 +376,12 @@ nothing while the whole UI (including the tray) is frozen for up to 10
 seconds.
 **Fix:** Reuse the existing background-check path with a completion dialog
 (plus a busy cursor), instead of the synchronous variant.
-**Status:** open
+**Status:** implemented — replaced `checkForUpdatesSynchronous` with
+`checkForUpdatesManual`: the HTTP check runs in a goroutine; all results
+(up-to-date, new version, error) are marshalled back to the Qt main thread
+via `mainthread.Start` and shown in a dialog. The tray menu is wired to
+the async handler. Disabling the menu item during the in-flight check was
+skipped (not trivially easy with the current menu API).
 
 ### Checked and found fine (round 2)
 - 25 short plan items: rows and button columns align, vertical scrolling
