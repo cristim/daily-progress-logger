@@ -146,15 +146,18 @@ func (a *App) buildEveningDialog(today time.Time) (*dialogSpec, error) {
 
 	selectors := make([]*stateSelector, len(plan))
 	if len(plan) > 0 {
+		area, rows := newRowsArea()
 		for i, item := range plan {
 			row := qt.NewQHBoxLayout2()
 			label := qt.NewQLabel3(item.Text)
+			label.SetWordWrap(true)
 			selector := newStateSelector(item.State)
 			selectors[i] = selector
 			row.AddWidget2(label.QWidget, 1)
 			row.AddWidget(selector.widget)
-			layout.AddLayout(row.QLayout)
+			rows.AddLayout(row.QLayout)
 		}
+		layout.AddWidget(area.QWidget)
 	} else {
 		layout.AddWidget(qt.NewQLabel3("(No plan was recorded for today.)").QWidget)
 	}
@@ -196,15 +199,20 @@ func (a *App) buildWeekReviewDialog(week store.WeekID) (*dialogSpec, error) {
 	layout.AddWidget(label.QWidget)
 
 	combos := make([]*qt.QComboBox, len(items))
-	for i, text := range items {
-		row := qt.NewQHBoxLayout2()
-		itemLabel := qt.NewQLabel3(text)
-		combo := qt.NewQComboBox2()
-		combo.AddItems([]string{"Keep this week", "Postpone to next week", "Drop"})
-		combos[i] = combo
-		row.AddWidget2(itemLabel.QWidget, 1)
-		row.AddWidget(combo.QWidget)
-		layout.AddLayout(row.QLayout)
+	if len(items) > 0 {
+		area, rows := newRowsArea()
+		for i, text := range items {
+			row := qt.NewQHBoxLayout2()
+			itemLabel := qt.NewQLabel3(text)
+			itemLabel.SetWordWrap(true)
+			combo := qt.NewQComboBox2()
+			combo.AddItems([]string{"Keep this week", "Postpone to next week", "Drop"})
+			combos[i] = combo
+			row.AddWidget2(itemLabel.QWidget, 1)
+			row.AddWidget(combo.QWidget)
+			rows.AddLayout(row.QLayout)
+		}
+		layout.AddWidget(area.QWidget)
 	}
 	attachButtons(dialog, layout)
 
@@ -236,6 +244,18 @@ func attachButtons(dialog *qt.QDialog, layout *qt.QVBoxLayout) {
 	buttons.OnAccepted(dialog.Accept)
 	buttons.OnRejected(dialog.Reject)
 	layout.AddWidget(buttons.QWidget)
+}
+
+// newRowsArea wraps per-item rows in a scroll container so long plans don't
+// grow a dialog past the screen.
+func newRowsArea() (*qt.QScrollArea, *qt.QVBoxLayout) {
+	container := qt.NewQWidget2()
+	rows := qt.NewQVBoxLayout(container)
+	area := qt.NewQScrollArea2()
+	area.SetWidgetResizable(true)
+	area.SetWidget(container)
+	area.SetMaximumHeight(320)
+	return area, rows
 }
 
 func actionForComboIndex(index int) store.ReviewAction {
