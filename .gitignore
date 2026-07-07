@@ -1,0 +1,14 @@
+# Build artifacts
+/build/
+/daily-progress-logger
+
+# Session tooling (Claude Code scratch scripts)
+.claude/
+
+# OS cruft
+.DS_Store
+
+# Editor/IDE
+.idea/
+.vscode/
+*.swp
