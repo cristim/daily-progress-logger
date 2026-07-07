@@ -3,7 +3,48 @@ package store
 import (
 	"fmt"
 	"strings"
+	"time"
 )
+
+// DayDone holds the deduplicated done items for one day.
+// Checked plan items come first, followed by Done-section bullets; when the
+// same text appears in both it is emitted exactly once.
+type DayDone struct {
+	Date  time.Time
+	Items []string
+}
+
+// DoneByDay computes per-day done items across dailies. Within each day,
+// checked plan items are listed first, then Done-section bullets; duplicates
+// (compared by normalizeText) are omitted. Days with no items are omitted.
+// The result preserves the order of dailies.
+func DoneByDay(dailies []*Daily) []DayDone {
+	var result []DayDone
+	for _, d := range dailies {
+		seen := map[string]bool{}
+		var items []string
+		for _, item := range d.Plan {
+			if item.State == StateDone {
+				norm := normalizeText(item.Text)
+				if !seen[norm] {
+					seen[norm] = true
+					items = append(items, item.Text)
+				}
+			}
+		}
+		for _, text := range d.Done {
+			norm := normalizeText(text)
+			if !seen[norm] {
+				seen[norm] = true
+				items = append(items, text)
+			}
+		}
+		if len(items) > 0 {
+			result = append(result, DayDone{Date: d.Date, Items: items})
+		}
+	}
+	return result
+}
 
 // weeklyMeta is the state carried by a weekly file across regenerations: the
 // summary sections are derived from the daily files, but the review flag, the
@@ -66,19 +107,9 @@ func renderWeekly(week WeekID, dailies []*Daily, meta weeklyMeta) string {
 		week.Start().Format("2 Jan"), week.End().Format("2 Jan"))
 
 	b.WriteString("\n## Done\n")
-	for _, d := range dailies {
-		var done []string
-		for _, item := range d.Plan {
-			if item.State == StateDone {
-				done = append(done, item.Text)
-			}
-		}
-		done = append(done, d.Done...)
-		if len(done) == 0 {
-			continue
-		}
-		fmt.Fprintf(&b, "\n### %s, %d %s\n\n", d.Date.Weekday(), d.Date.Day(), d.Date.Month())
-		for _, text := range done {
+	for _, dd := range DoneByDay(dailies) {
+		fmt.Fprintf(&b, "\n### %s, %d %s\n\n", dd.Date.Weekday(), dd.Date.Day(), dd.Date.Month())
+		for _, text := range dd.Items {
 			fmt.Fprintf(&b, "- %s\n", text)
 		}
 	}

@@ -206,3 +206,109 @@ func TestWeeklyRenderAndMeta(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, meta, parsed)
 }
+
+// TestWeeklyRenderDedupDoneAndPlan verifies that when a checked plan item and
+// a Done-section bullet carry the same text, the weekly markdown emits that
+// text exactly once.
+func TestWeeklyRenderDedupDoneAndPlan(t *testing.T) {
+	t.Parallel()
+	week := WeekID{Year: 2026, Week: 28}
+	dailies := []*Daily{
+		{
+			Date: date("2026-07-06"), // Monday
+			Plan: []Item{
+				{Text: "review Ana's PR", State: StateDone},
+			},
+			// User also typed the same accomplishment in the free-text evening field.
+			Done: []string{"review Ana's PR", "fixed deploy pipeline"},
+		},
+	}
+	content := renderWeekly(week, dailies, weeklyMeta{})
+
+	assert.Equal(t, 1, strings.Count(content, "review Ana's PR"),
+		"same-text checked item and Done bullet must appear exactly once in Done section")
+	assert.Contains(t, content, "- fixed deploy pipeline")
+}
+
+// TestDoneByDay verifies ordering, deduplication, and empty-day omission.
+func TestDoneByDay(t *testing.T) {
+	t.Parallel()
+
+	t.Run("checked_plan_before_done_bullets", func(t *testing.T) {
+		t.Parallel()
+		dailies := []*Daily{
+			{
+				Date: date("2026-07-06"),
+				Plan: []Item{
+					{Text: "ship feature", State: StateDone},
+				},
+				Done: []string{"helped on-call"},
+			},
+		}
+		got := DoneByDay(dailies)
+		require.Len(t, got, 1)
+		assert.Equal(t, []string{"ship feature", "helped on-call"}, got[0].Items,
+			"checked plan items must come before Done bullets")
+	})
+
+	t.Run("dedup_same_text_in_plan_and_done", func(t *testing.T) {
+		t.Parallel()
+		dailies := []*Daily{
+			{
+				Date: date("2026-07-06"),
+				Plan: []Item{
+					{Text: "review Ana's PR", State: StateDone},
+				},
+				Done: []string{"review Ana's PR"},
+			},
+		}
+		got := DoneByDay(dailies)
+		require.Len(t, got, 1)
+		assert.Equal(t, []string{"review Ana's PR"}, got[0].Items,
+			"same text in checked plan and Done must appear exactly once")
+	})
+
+	t.Run("dedup_case_and_whitespace", func(t *testing.T) {
+		t.Parallel()
+		dailies := []*Daily{
+			{
+				Date: date("2026-07-06"),
+				Plan: []Item{
+					{Text: "Fix flaky test", State: StateDone},
+				},
+				Done: []string{"fix  flaky   test"},
+			},
+		}
+		got := DoneByDay(dailies)
+		require.Len(t, got, 1)
+		assert.Len(t, got[0].Items, 1, "normalized duplicate must appear only once")
+		assert.Equal(t, "Fix flaky test", got[0].Items[0], "original (plan) text must be preserved")
+	})
+
+	t.Run("empty_day_omitted", func(t *testing.T) {
+		t.Parallel()
+		dailies := []*Daily{
+			{
+				Date: date("2026-07-06"),
+				Plan: []Item{
+					{Text: "todo item", State: StateTodo},
+				},
+				Done: nil,
+			},
+		}
+		got := DoneByDay(dailies)
+		assert.Empty(t, got, "day with no done items must be omitted from result")
+	})
+
+	t.Run("multiple_days_order_preserved", func(t *testing.T) {
+		t.Parallel()
+		dailies := []*Daily{
+			{Date: date("2026-07-06"), Plan: []Item{{Text: "mon task", State: StateDone}}},
+			{Date: date("2026-07-07"), Plan: []Item{{Text: "tue task", State: StateDone}}},
+		}
+		got := DoneByDay(dailies)
+		require.Len(t, got, 2)
+		assert.Equal(t, date("2026-07-06"), got[0].Date)
+		assert.Equal(t, date("2026-07-07"), got[1].Date)
+	})
+}

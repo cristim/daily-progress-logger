@@ -266,29 +266,23 @@ func (a *App) buildWeeklySummaryDialog(week store.WeekID) (*dialogSpec, error) {
 	var sb strings.Builder
 	sb.WriteString("<h3>Done this week</h3>")
 	totalDone := 0
-	for _, d := range dailies {
-		var done []string
-		for _, item := range d.Plan {
-			if item.State == store.StateDone {
-				done = append(done, item.Text)
-			}
-		}
-		done = append(done, d.Done...)
-		if len(done) == 0 {
-			continue
-		}
+	for _, dd := range store.DoneByDay(dailies) {
 		fmt.Fprintf(&sb, "<b>%s, %d %s</b><ul>",
-			d.Date.Weekday(), d.Date.Day(), d.Date.Month())
-		for _, text := range done {
+			dd.Date.Weekday(), dd.Date.Day(), dd.Date.Month())
+		for _, text := range dd.Items {
 			fmt.Fprintf(&sb, "<li>%s</li>", html.EscapeString(text))
 		}
 		sb.WriteString("</ul>")
-		totalDone += len(done)
+		totalDone += len(dd.Items)
 	}
 	if totalDone == 0 {
 		sb.WriteString("<p><i>Nothing completed yet this week.</i></p>")
 	}
-	fmt.Fprintf(&sb, "<p><i>%d item(s) completed.</i></p>", totalDone)
+	itemWord := "items"
+	if totalDone == 1 {
+		itemWord = "item"
+	}
+	fmt.Fprintf(&sb, "<p><i>%d %s completed.</i></p>", totalDone, itemWord)
 
 	browser := qt.NewQTextBrowser2()
 	browser.SetHtml(sb.String())
