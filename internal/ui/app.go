@@ -333,7 +333,8 @@ func addMenuAction(menu *qt.QMenu, text string, handler func()) *qt.QAction {
 	return action
 }
 
-// trayIcon draws a simple filled circle usable as a menu-bar icon.
+// trayIcon draws a ring glyph as a template icon, so macOS tints it to
+// match the light or dark menu bar.
 func trayIcon() *qt.QIcon {
 	const size = 22
 	pixmap := qt.NewQPixmap2(size, size)
@@ -341,10 +342,12 @@ func trayIcon() *qt.QIcon {
 	painter := qt.NewQPainter2(pixmap.QPaintDevice)
 	painter.SetRenderHint(qt.QPainter__Antialiasing)
 	painter.SetPenWithStyle(qt.NoPen)
-	painter.SetBrush(qt.NewQBrush3(qt.NewQColor3(52, 120, 246)))
+	painter.SetBrush(qt.NewQBrush3(qt.NewQColor3(0, 0, 0)))
 	painter.DrawEllipse2(3, 3, size-6, size-6)
-	painter.SetBrush(qt.NewQBrush3(qt.NewQColor3(255, 255, 255)))
+	painter.SetCompositionMode(qt.QPainter__CompositionMode_Clear)
 	painter.DrawEllipse2(8, 8, size-16, size-16)
 	painter.End()
-	return qt.NewQIcon2(pixmap)
+	icon := qt.NewQIcon2(pixmap)
+	icon.SetIsMask(true)
+	return icon
 }
