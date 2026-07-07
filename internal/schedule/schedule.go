@@ -62,6 +62,12 @@ type State struct {
 // report, then the weekly summary (on the configured summary day once the
 // summary time has passed). The week review is due at any hour; the daily
 // check-ins and the weekly summary only once their configured time has passed.
+//
+// When both the morning and evening check-ins are due simultaneously (the
+// morning was missed and the evening window has now opened), the morning
+// prompt is dropped: asking "what are you planning?" after the evening
+// window is pointless planning theater. The evening dialog already captures
+// what was accomplished, and any unplanned work goes in the free-text field.
 func Due(now time.Time, morning, evening TimeOfDay, st State,
 	summaryDay time.Weekday, summary TimeOfDay,
 ) []Prompt {
@@ -69,10 +75,14 @@ func Due(now time.Time, morning, evening TimeOfDay, st State,
 	if st.WeekReviewPending {
 		due = append(due, PromptWeekReview)
 	}
-	if !st.MorningDone && morning.reached(now) {
+	morningDue := !st.MorningDone && morning.reached(now)
+	eveningDue := !st.EveningDone && evening.reached(now)
+	// Only show morning when the evening window has not yet opened; once
+	// both are overdue, skip the morning and go straight to evening.
+	if morningDue && !eveningDue {
 		due = append(due, PromptMorning)
 	}
-	if !st.EveningDone && evening.reached(now) {
+	if eveningDue {
 		due = append(due, PromptEvening)
 	}
 	if st.SummaryPending && now.Weekday() == summaryDay && summary.reached(now) {

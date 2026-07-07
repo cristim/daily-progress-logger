@@ -268,7 +268,13 @@ queued.
 **Fix:** When both daily check-ins are due, show only the evening one (the
 plan can be captured there); when several prompts are queued, indicate
 progress (e.g. "1 of 2") or at least announce the next dialog.
-**Status:** open
+**Status:** implemented — in `schedule.Due`, when both morning and evening
+are due simultaneously the morning prompt is omitted; morning is included
+only when the evening window has not yet opened. Schedule tests updated:
+"missed morning stacks with evening" renamed and now expects only
+`[PromptEvening]`; "full stack" and "full friday stack" tests likewise
+updated; new "morning only mid-day" case asserts morning is shown when
+evening has not opened yet.
 
 ### 23. Week-review Drop gives no confirmation or summary
 **Severity:** low

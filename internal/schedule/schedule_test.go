@@ -54,9 +54,18 @@ func TestDue(t *testing.T) {
 			want:  []Prompt{PromptEvening},
 		},
 		{
-			name: "missed morning stacks with evening",
+			// When the evening window is already open, the missed morning
+			// is dropped: planning at day's end is noise; the evening
+			// dialog captures what was done and has a free-text field for
+			// unplanned work.
+			name: "missed morning dropped when evening is due",
 			now:  at(18, 0),
-			want: []Prompt{PromptMorning, PromptEvening},
+			want: []Prompt{PromptEvening},
+		},
+		{
+			name: "morning only mid-day before evening window",
+			now:  at(10, 0),
+			want: []Prompt{PromptMorning},
 		},
 		{
 			name:  "both done",
@@ -70,10 +79,12 @@ func TestDue(t *testing.T) {
 			want:  []Prompt{PromptWeekReview},
 		},
 		{
-			name:  "full stack ordered review then morning then evening",
+			// At 19:00 both morning and evening are overdue; morning is
+			// dropped. Week review still precedes evening.
+			name:  "full stack ordered: review then evening (morning dropped)",
 			now:   at(19, 0),
 			state: State{WeekReviewPending: true},
-			want:  []Prompt{PromptWeekReview, PromptMorning, PromptEvening},
+			want:  []Prompt{PromptWeekReview, PromptEvening},
 		},
 		{
 			name:  "weekly summary due on friday after summary time when daily done",
@@ -97,10 +108,12 @@ func TestDue(t *testing.T) {
 			state: State{MorningDone: true, EveningDone: true, SummaryPending: false},
 		},
 		{
-			name:  "full friday stack: morning, evening, then summary",
+			// At Friday 18:00 both morning and evening are overdue; morning
+			// is dropped. Weekly summary follows evening.
+			name:  "full friday stack: evening then summary (morning dropped)",
 			now:   atDay(time.Friday, 18, 0),
 			state: State{SummaryPending: true},
-			want:  []Prompt{PromptMorning, PromptEvening, PromptWeeklySummary},
+			want:  []Prompt{PromptEvening, PromptWeeklySummary},
 		},
 	}
 	for _, tt := range tests {
