@@ -67,3 +67,25 @@ func Due(now time.Time, morning, evening TimeOfDay, st State) []Prompt {
 	}
 	return due
 }
+
+// Filter applies the user's snooze ("Postpone 1h") and skip (Cancel)
+// choices to the due prompts. show is what should be displayed right now;
+// pending reports whether anything remains unresolved: a snoozed prompt is
+// still pending (it will be shown once the snooze expires), a prompt
+// skipped today is not (it returns tomorrow).
+func Filter(due []Prompt, now time.Time, snoozedUntil map[Prompt]time.Time,
+	skippedOn map[Prompt]string,
+) (show []Prompt, pending bool) {
+	today := now.Format(time.DateOnly)
+	for _, p := range due {
+		if skippedOn[p] == today {
+			continue
+		}
+		pending = true
+		if until, ok := snoozedUntil[p]; ok && now.Before(until) {
+			continue
+		}
+		show = append(show, p)
+	}
+	return show, pending
+}

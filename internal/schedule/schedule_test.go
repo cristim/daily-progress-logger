@@ -73,6 +73,63 @@ func TestDue(t *testing.T) {
 	}
 }
 
+func TestFilter(t *testing.T) {
+	t.Parallel()
+	now := at(10, 0)
+	due := []Prompt{PromptMorning, PromptEvening}
+
+	tests := []struct {
+		name        string
+		snoozed     map[Prompt]time.Time
+		skipped     map[Prompt]string
+		wantShow    []Prompt
+		wantPending bool
+	}{
+		{
+			name:        "nothing filtered",
+			wantShow:    due,
+			wantPending: true,
+		},
+		{
+			name:        "active snooze hides but stays pending",
+			snoozed:     map[Prompt]time.Time{PromptMorning: at(10, 30)},
+			wantShow:    []Prompt{PromptEvening},
+			wantPending: true,
+		},
+		{
+			name:        "expired snooze shows again",
+			snoozed:     map[Prompt]time.Time{PromptMorning: at(9, 59)},
+			wantShow:    due,
+			wantPending: true,
+		},
+		{
+			name:        "skipped today is gone and not pending",
+			skipped:     map[Prompt]string{PromptMorning: "2026-07-07", PromptEvening: "2026-07-07"},
+			wantPending: false,
+		},
+		{
+			name:        "skip from yesterday no longer applies",
+			skipped:     map[Prompt]string{PromptMorning: "2026-07-06"},
+			wantShow:    due,
+			wantPending: true,
+		},
+		{
+			name:        "one skipped one snoozed stays pending",
+			snoozed:     map[Prompt]time.Time{PromptEvening: at(11, 0)},
+			skipped:     map[Prompt]string{PromptMorning: "2026-07-07"},
+			wantPending: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			show, pending := Filter(due, now, tt.snoozed, tt.skipped)
+			assert.Equal(t, tt.wantShow, show)
+			assert.Equal(t, tt.wantPending, pending)
+		})
+	}
+}
+
 func TestPromptString(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, "week review", PromptWeekReview.String())
