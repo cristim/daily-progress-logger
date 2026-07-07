@@ -142,7 +142,15 @@ func (a *App) buildMorningDialog(today time.Time) (*dialogSpec, error) {
 			}
 			item := qt.NewQListWidgetItem2(text)
 			item.SetFlags(qt.ItemIsSelectable | qt.ItemIsEnabled | qt.ItemIsUserCheckable)
-			item.SetCheckState(qt.Checked)
+			// Backlog items default unchecked: they were explicitly parked
+			// away from today's plan, so re-adopting them requires an active
+			// choice. Same-week carry-overs default checked: they were planned
+			// recently and are likely still relevant.
+			if c.FromBacklog {
+				item.SetCheckState(qt.Unchecked)
+			} else {
+				item.SetCheckState(qt.Checked)
+			}
 			candidateList.AddItemWithItem(item)
 		}
 		layout.AddWidget(candidateList.QWidget)

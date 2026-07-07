@@ -197,7 +197,10 @@ Backlog button: an item parked out of today's plan comes back pre-checked
 the very next morning.
 **Fix:** Pre-check only same-week carry-over items; backlog candidates
 default unchecked (optionally add "select all / none" toggles).
-**Status:** open
+**Status:** implemented — same-week carry-over candidates remain pre-checked
+(planned recently, likely still relevant); `FromBacklog` candidates default
+unchecked so adopting them requires an active choice. Pressing Return (OK
+default) no longer drains the backlog.
 
 ### 19. Skip/snooze semantics leak into manually invoked check-ins
 **Severity:** medium
