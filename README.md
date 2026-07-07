@@ -136,3 +136,29 @@ brew install --cask cristim/tap/daily-progress-logger
 
 Note: the repo must be public (or the release asset publicly accessible) before
 `brew install` can fetch the DMG.
+
+### CI / automated releases
+
+Pushing a `v*` tag (e.g. `v1.2.0`) triggers `.github/workflows/release.yml`,
+which:
+
+1. Builds the DMG on a macOS-15 runner (`make dmg VERSION=<tag>`).
+2. Creates a GitHub release with `--generate-notes` and attaches the DMG.
+3. Clones `cristim/homebrew-tap`, updates the cask version and sha256, and
+   pushes a `chore: daily-progress-logger <version>` commit.
+
+Step 3 requires a `TAP_GITHUB_TOKEN` repository secret: a fine-grained
+personal access token with **Contents: Read and write** on
+`cristim/homebrew-tap`. If the secret is absent the step prints a notice and
+exits cleanly -- the release and DMG upload still complete.
+
+A separate `.github/workflows/ci.yml` runs on every push to `main` and on
+pull requests: it builds, tests (race detector on), lints with golangci-lint,
+and checks for known vulnerabilities with govulncheck.
+
+First-run caveat: the miqt Qt bindings require a full cgo compile on a cold
+runner (~15 min). Subsequent runs restore `~/Library/Caches/go-build` from
+the Actions cache and finish in a few minutes.
+
+Note: the cask remains uninstallable via `brew install` while the repository
+(or its release assets) is private.

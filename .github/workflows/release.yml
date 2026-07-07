@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    env:
+      CGO_CXXFLAGS: -std=c++20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Cache the Go build cache separately from the module cache that
+      # setup-go handles. miqt cgo compilation takes 15+ min on a cold runner.
+      - name: Cache Go build cache
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/go-build
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}-v1
+          restore-keys: |
+            ${{ runner.os }}-go-build-
+
+      - name: Install Qt
+        run: brew install qt
+
+      - name: Derive version from tag
+        id: version
+        # Strip the leading 'v' from the tag (e.g. v1.2.3 -> 1.2.3).
+        # GITHUB_REF_NAME is a runner-set env var; no shell injection risk.
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build DMG
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: make dmg VERSION="$VERSION"
+
+      - name: Compute SHA256
+        id: sha256
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          DMG="build/DailyProgressLogger-${VERSION}.dmg"
+          SHA=$(shasum -a 256 "$DMG" | awk '{print $1}')
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --generate-notes \
+            "build/DailyProgressLogger-${VERSION}.dmg"
+
+      # TAP_GITHUB_TOKEN must be a fine-grained PAT with contents:write on
+      # cristim/homebrew-tap. If unset, this step prints a notice and exits 0.
+      - name: Update Homebrew tap
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          SHA256: ${{ steps.sha256.outputs.sha256 }}
+        run: |
+          if [ -z "$TAP_GITHUB_TOKEN" ]; then
+            echo "::notice::TAP_GITHUB_TOKEN is not set; skipping Homebrew tap update"
+            exit 0
+          fi
+
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+          git clone \
+            "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/cristim/homebrew-tap.git" \
+            tap
+
+          # Always start from the source-controlled template so the sed
+          # patterns have predictable input.
+          cp packaging/daily-progress-logger.rb tap/Casks/
+
+          # BSD sed (-i '') requires the backup-extension argument.
+          sed -i '' \
+            "s/version \"[^\"]*\"/version \"${VERSION}\"/" \
+            tap/Casks/daily-progress-logger.rb
+          sed -i '' \
+            "s/sha256 :no_check/sha256 \"${SHA256}\"/" \
+            tap/Casks/daily-progress-logger.rb
+
+          cd tap
+          git add Casks/daily-progress-logger.rb
+          git commit -m "chore: daily-progress-logger ${VERSION}"
+          git push
