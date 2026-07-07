@@ -121,6 +121,21 @@ now a thin wrapper. The review dialog uses three icon buttons per item
 Keep. Removed the now-unused `actionForComboIndex` helper.
 **Status:** implemented
 
+### 15. Plan-row buttons did not form an aligned column
+**Problem:** Each plan-item row widget was sized to its natural content width,
+so rows with short task labels ended before the list's right edge. This caused
+the Done / Not done / Postpone / Backlog buttons on the right of each row to
+sit at inconsistent horizontal positions, breaking the visual column alignment
+that makes state scanning fast.
+**Fix:** In `refresh()`, capture the list viewport width before clearing,
+then call `SetSizeHint` on every item to force it to that width (taking the
+natural hint when the natural width is larger). Added a `rowWidth()` helper
+that caps the viewport's pre-show over-large value to the window width.
+An `OnResizeEvent` handler schedules a refresh so rows re-span whenever the
+window is resized. `GrabScreenshots` shows the window and processes events
+before refreshing so the correct viewport geometry is used for screenshots.
+**Status:** implemented
+
 ## Other notes
 
 - **[wontfix] Dock icon visibility:** hiding the Dock icon (LSUIElement) is

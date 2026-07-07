@@ -440,9 +440,13 @@ func (a *App) ForcePrompt(name string) error {
 }
 
 // GrabScreenshots renders the main window and every check-in dialog
-// offscreen into PNG files under dir, for headless UI verification.
+// into PNG files under dir, for visual UI verification.
 func (a *App) GrabScreenshots(dir string) error {
 	now := time.Now()
+	// Show the window briefly so Qt computes the final layout (viewport
+	// widths, item-widget geometry) before we grab the frames.
+	a.window.win.Show()
+	qt.QCoreApplication_ProcessEvents()
 	a.window.refresh()
 
 	morning, err := a.buildMorningDialog(now)

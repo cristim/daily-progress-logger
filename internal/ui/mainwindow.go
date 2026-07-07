@@ -72,6 +72,13 @@ func newMainWindow(app *App) *mainWindow {
 		event.Ignore()
 		w.win.Hide()
 	})
+
+	// Re-span rows to the new viewport width when the window is resized.
+	w.win.OnResizeEvent(func(super func(event *qt.QResizeEvent), event *qt.QResizeEvent) {
+		super(event)
+		w.scheduleRefresh()
+	})
+
 	return w
 }
 
@@ -92,6 +99,24 @@ func (w *mainWindow) openDataFolder() {
 	qt.QDesktopServices_OpenUrl(url)
 }
 
+// rowWidth returns the pixel width that each plan-item row should span.
+// It reads the list viewport width when the window is visible, and falls back
+// to the window width (minus a small margin for borders/scrollbar) when the
+// viewport reports an over-large pre-show value.
+func (w *mainWindow) rowWidth() int {
+	vpWidth := w.planList.Viewport().Width()
+	winWidth := w.win.Width()
+	// Before the window is shown Qt may report an oversized viewport; cap to
+	// the window width to stay within the visible area.
+	if vpWidth > winWidth && winWidth > 0 {
+		vpWidth = winWidth
+	}
+	if vpWidth <= 0 {
+		vpWidth = winWidth
+	}
+	return vpWidth
+}
+
 // refresh reloads today's plan into the list.
 func (w *mainWindow) refresh() {
 	today := time.Now()
@@ -104,6 +129,10 @@ func (w *mainWindow) refresh() {
 	w.heading.SetText(fmt.Sprintf("<b>%s, %d %s %d</b> &nbsp; (week %s)",
 		today.Weekday(), today.Day(), today.Month(), today.Year(), store.WeekOf(today)))
 
+	// Capture the target row width before clearing, as Clear() may alter
+	// the viewport's geometry.
+	targetWidth := w.rowWidth()
+
 	w.planList.Clear()
 	if !exists || len(daily.Plan) == 0 {
 		placeholder := qt.NewQListWidgetItem2("No plan for today yet. Run the Morning Check-in below, or add a task above.")
@@ -113,8 +142,12 @@ func (w *mainWindow) refresh() {
 	}
 	for i, item := range daily.Plan {
 		row := w.buildPlanRow(i, item)
+		naturalHint := row.SizeHint()
+		// Span each row to the full viewport width so the right-side buttons
+		// form an aligned column regardless of label length.
 		listItem := qt.NewQListWidgetItem()
-		listItem.SetSizeHint(row.SizeHint())
+		itemWidth := max(targetWidth, naturalHint.Width())
+		listItem.SetSizeHint(qt.NewQSize2(itemWidth, naturalHint.Height()))
 		w.planList.AddItemWithItem(listItem)
 		w.planList.SetItemWidget(listItem, row)
 	}
