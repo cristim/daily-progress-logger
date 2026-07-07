@@ -216,11 +216,19 @@ func (a *App) runPrompt(prompt schedule.Prompt) {
 	case schedule.PromptEvening:
 		result, err = a.runEveningDialog()
 	case schedule.PromptWeekReview:
-		var pending bool
-		var week store.WeekID
-		week, pending, err = a.store.UnreviewedWeek(time.Now())
-		if err == nil && pending {
+		// Loop oldest-first through all unreviewed weeks; stop if the user
+		// snoozes or skips (result != dialogAccepted).
+		for {
+			var pending bool
+			var week store.WeekID
+			week, pending, err = a.store.UnreviewedWeek(time.Now())
+			if err != nil || !pending {
+				break
+			}
 			result, err = a.runWeekReviewDialog(week)
+			if err != nil || result != dialogAccepted {
+				break
+			}
 		}
 	}
 	if err != nil {

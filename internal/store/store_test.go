@@ -226,6 +226,38 @@ func TestStore_UnreviewedWeekAndReview(t *testing.T) {
 	assert.False(t, pending)
 }
 
+func TestStore_UnreviewedWeeksOldestFirst(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	// Create data in two past weeks: week 27 (older) and week 28.
+	week27monday := date("2026-06-29")
+	week27 := WeekID{Year: 2026, Week: 27}
+	nextMonday := date("2026-07-13")
+
+	require.NoError(t, s.ApplyMorning(week27monday, []string{"week27 task"}, nil))
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"week28 task"}, nil))
+
+	// First unreviewed week should be the older one (week 27).
+	week, pending, err := s.UnreviewedWeek(nextMonday)
+	require.NoError(t, err)
+	require.True(t, pending)
+	assert.Equal(t, week27, week, "oldest unreviewed week must come first")
+
+	// After reviewing week 27, the next call should return week 28.
+	require.NoError(t, s.ApplyWeekReview(week27, nil))
+	week, pending, err = s.UnreviewedWeek(nextMonday)
+	require.NoError(t, err)
+	require.True(t, pending)
+	assert.Equal(t, week28, week, "second call must return the next-oldest unreviewed week")
+
+	// After reviewing week 28 as well, nothing is pending.
+	require.NoError(t, s.ApplyWeekReview(week28, nil))
+	_, pending, err = s.UnreviewedWeek(nextMonday)
+	require.NoError(t, err)
+	assert.False(t, pending)
+}
+
 func TestStore_ReviewPostpone(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)

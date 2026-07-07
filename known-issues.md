@@ -7,9 +7,10 @@ reference until the next release), **wontfix** (deliberate).
   flaky test" vs "fix the flaky test") creates a duplicate. Fix: added
   `normalizeText` (lower-case + collapsed whitespace) used for all
   comparisons; original text is preserved in storage.
-- **[planned] Week review only covers the most recent week with data.** If
+- **[done] Week review only covers the most recent week with data.** If
   the review prompt is ignored for an entire week, the week before it is
-  never triaged. Planned fix: walk all unreviewed weeks, oldest first.
+  never triaged. Fix: UnreviewedWeek now returns the oldest unreviewed
+  week; the UI loops until all are reviewed or the user snoozes/skips.
 - **[planned] Evening check-in decisions are index-based.** If the daily
   file is hand-edited while the evening dialog is open, applying fails with
   a mismatch error and the answers are lost. Planned fix: match decisions

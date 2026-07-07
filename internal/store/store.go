@@ -415,8 +415,10 @@ func (s *Store) loadWeeklyMeta(week WeekID) (meta weeklyMeta, exists bool, err e
 	return meta, true, nil
 }
 
-// UnreviewedWeek returns the most recent week before the current one that
-// has daily data but has not been through the week review yet.
+// UnreviewedWeek returns the oldest week before the current one that has
+// daily data but has not been through the week review yet. Calling it
+// repeatedly (after each review) walks forward through all unreviewed weeks
+// in chronological order.
 func (s *Store) UnreviewedWeek(now time.Time) (WeekID, bool, error) {
 	current := WeekOf(now)
 	pattern := filepath.Join(s.DataDir, "daily", "*", "*", "*.md")
@@ -424,31 +426,38 @@ func (s *Store) UnreviewedWeek(now time.Time) (WeekID, bool, error) {
 	if err != nil {
 		return WeekID{}, false, fmt.Errorf("listing daily files: %w", err)
 	}
-	var latest WeekID
-	found := false
+
+	// Collect the unique set of past weeks that have at least one daily file.
+	weekSet := map[WeekID]bool{}
 	for _, path := range paths {
 		name := filepath.Base(path)
-		date, err := time.ParseInLocation(dateLayout, name[:len(name)-len(".md")], time.Local)
+		d, err := time.ParseInLocation(dateLayout, name[:len(name)-len(".md")], time.Local)
 		if err != nil {
 			continue // not one of our daily files
 		}
-		week := WeekOf(date)
-		if week.Before(current) && (!found || latest.Before(week)) {
-			latest = week
+		week := WeekOf(d)
+		if week.Before(current) {
+			weekSet[week] = true
+		}
+	}
+
+	// Among those weeks, find the oldest that has not yet been reviewed.
+	var oldest WeekID
+	found := false
+	for week := range weekSet {
+		meta, _, err := s.loadWeeklyMeta(week)
+		if err != nil {
+			return WeekID{}, false, err
+		}
+		if meta.Reviewed {
+			continue
+		}
+		if !found || week.Before(oldest) {
+			oldest = week
 			found = true
 		}
 	}
-	if !found {
-		return WeekID{}, false, nil
-	}
-	meta, _, err := s.loadWeeklyMeta(latest)
-	if err != nil {
-		return WeekID{}, false, err
-	}
-	if meta.Reviewed {
-		return WeekID{}, false, nil
-	}
-	return latest, true, nil
+	return oldest, found, nil
 }
 
 // ReviewAction is the user's verdict on a leftover item at week review.
