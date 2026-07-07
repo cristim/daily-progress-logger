@@ -26,7 +26,7 @@ func main() {
 		"render the UI offscreen into PNGs under this directory and exit")
 	flag.Parse()
 
-	qt.NewQApplication(os.Args)
+	qapp := qt.NewQApplication(os.Args)
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -62,6 +62,8 @@ func main() {
 	}
 
 	// Resident mode: menu bar icon plus periodic prompt checks.
+	// Re-show the main window when the user clicks the Dock icon.
+	app.HandleReopen(qapp)
 	if !*hidden {
 		app.Show()
 	}

@@ -81,6 +81,19 @@ func (a *App) Show() {
 	a.window.win.Show()
 }
 
+// HandleReopen installs an event handler on qapp so that clicking the Dock
+// icon while the main window is hidden brings it back to the front.
+// Qt delivers QEvent::ApplicationActivate (type 121) when the application
+// becomes active, including on a Dock-icon click on macOS.
+func (a *App) HandleReopen(qapp *qt.QApplication) {
+	qapp.OnEvent(func(super func(*qt.QEvent) bool, e *qt.QEvent) bool {
+		if e.Type() == qt.QEvent__ApplicationActivate && !a.window.win.IsVisible() {
+			a.Show()
+		}
+		return super(e)
+	})
+}
+
 func (a *App) setUpTray() {
 	if !qt.QSystemTrayIcon_IsSystemTrayAvailable() {
 		slog.Warn("system tray unavailable; running with window only")

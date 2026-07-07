@@ -227,6 +227,19 @@ type EveningDecision struct {
 	State ItemState
 }
 
+// findDecisionState looks up the state chosen for itemText in decisions by
+// normalized text comparison. It returns the found state and true, or the
+// default state and false when no decision matches.
+func findDecisionState(decisions []EveningDecision, itemText string) (ItemState, bool) {
+	norm := normalizeText(itemText)
+	for _, dec := range decisions {
+		if normalizeText(dec.Text) == norm {
+			return dec.State, true
+		}
+	}
+	return 0, false
+}
+
 // ApplyEvening records the evening check-in. Each decision is matched to a
 // plan item by normalized text (first match wins); items not mentioned in
 // decisions keep their current state; decisions whose text no longer exists
@@ -241,13 +254,9 @@ func (s *Store) ApplyEvening(today time.Time, decisions []EveningDecision, extra
 	}
 	var postponed, unpostponed []string
 	for i, item := range d.Plan {
-		// Look up the decision for this item by normalized text.
 		newState := item.State // default: keep current state unchanged
-		for _, dec := range decisions {
-			if normalizeText(dec.Text) == normalizeText(item.Text) {
-				newState = dec.State
-				break
-			}
+		if st, ok := findDecisionState(decisions, item.Text); ok {
+			newState = st
 		}
 		if d.Plan[i].State != newState && newState == StatePostponed {
 			postponed = append(postponed, item.Text)

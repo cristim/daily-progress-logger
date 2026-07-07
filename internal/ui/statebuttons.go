@@ -45,7 +45,11 @@ func newChoiceSelector(choices []choice, initialID int) *choiceSelector {
 		layout.AddWidget(button.QWidget)
 	}
 
-	widget.SetStyleSheet(`QToolButton { padding: 4px 6px; border: 1px solid transparent; border-radius: 5px; } QToolButton:checked { background-color: palette(highlight); color: palette(highlighted-text); border-color: palette(highlight); }`)
+	widget.SetStyleSheet(
+		`QToolButton { padding: 4px 6px; border: 1px solid transparent; border-radius: 5px; }` +
+			` QToolButton:checked { background-color: palette(highlight);` +
+			` color: palette(highlighted-text); border-color: palette(highlight); }`,
+	)
 
 	return &choiceSelector{widget: widget, group: group}
 }
