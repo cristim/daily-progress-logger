@@ -271,7 +271,9 @@ icons (`seeded/evening.png`, first two rows; same in the week review and
 main window). Users may not realize a third state exists.
 **Fix:** Tint the arrow like the tray glyph (template/mask icon painted from
 the palette), or choose a higher-contrast standard icon.
-**Status:** open
+**Status:** implemented — `postponeIcon()` in statebuttons.go draws a
+right-pointing chevron in mid-gray (140,140,140) on a 16x16 transparent
+pixmap; used in both `newStateSelector` and the week-review choices.
 
 ### 25. "Postpone" means two different things in the same dialog
 **Severity:** low

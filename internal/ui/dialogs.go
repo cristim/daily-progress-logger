@@ -216,7 +216,7 @@ func (a *App) buildWeekReviewDialog(week store.WeekID) (*dialogSpec, error) {
 
 	reviewChoices := []choice{
 		{id: int(store.ReviewKeep), icon: qt.QStyle__SP_DialogApplyButton, tooltip: "Keep this week"},
-		{id: int(store.ReviewPostpone), icon: qt.QStyle__SP_ArrowForward, tooltip: "Postpone to next week"},
+		{id: int(store.ReviewPostpone), customIcon: postponeIcon(), tooltip: "Postpone to next week"},
 		{id: int(store.ReviewDrop), icon: qt.QStyle__SP_TrashIcon, tooltip: "Drop"},
 	}
 

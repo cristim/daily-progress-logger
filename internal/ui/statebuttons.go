@@ -8,9 +8,10 @@ import (
 
 // choice describes one option in a choiceSelector.
 type choice struct {
-	id      int
-	icon    qt.QStyle__StandardPixmap
-	tooltip string
+	id         int
+	icon       qt.QStyle__StandardPixmap
+	customIcon *qt.QIcon // overrides icon when non-nil
+	tooltip    string
 }
 
 // choiceSelector is a row of mutually exclusive icon buttons where each
@@ -34,7 +35,11 @@ func newChoiceSelector(choices []choice, initialID int) *choiceSelector {
 
 	for _, c := range choices {
 		button := qt.NewQToolButton2()
-		button.SetIcon(standardIcon(c.icon))
+		if c.customIcon != nil {
+			button.SetIcon(c.customIcon)
+		} else {
+			button.SetIcon(standardIcon(c.icon))
+		}
 		button.SetToolButtonStyle(qt.ToolButtonIconOnly)
 		button.SetCheckable(true)
 		button.SetToolTip(c.tooltip)
@@ -68,9 +73,28 @@ func newStateSelector(initial store.ItemState) *stateSelector {
 	cs := newChoiceSelector([]choice{
 		{id: int(store.StateDone), icon: qt.QStyle__SP_DialogApplyButton, tooltip: "Done"},
 		{id: int(store.StateTodo), icon: qt.QStyle__SP_DialogCancelButton, tooltip: "Not done (keep as an open todo)"},
-		{id: int(store.StatePostponed), icon: qt.QStyle__SP_ArrowForward, tooltip: "Postpone to next week"},
+		{id: int(store.StatePostponed), customIcon: postponeIcon(), tooltip: "Postpone to next week"},
 	}, int(initial))
 	return &stateSelector{widget: cs.widget, group: cs.group}
+}
+
+// postponeIcon draws a right-pointing chevron in a visible mid-gray on a
+// 16x16 transparent pixmap. SP_ArrowForward is nearly invisible as an
+// unchecked button in dark mode; this custom glyph is always legible.
+func postponeIcon() *qt.QIcon {
+	const size = 16
+	pixmap := qt.NewQPixmap2(size, size)
+	pixmap.FillWithFillColor(qt.NewQColor11(0, 0, 0, 0))
+	painter := qt.NewQPainter2(pixmap.QPaintDevice)
+	painter.SetRenderHint(qt.QPainter__Antialiasing)
+	pen := qt.NewQPen3(qt.NewQColor3(140, 140, 140))
+	pen.SetWidth(2)
+	painter.SetPenWithPen(pen)
+	// Right-pointing chevron: two lines meeting at the right tip.
+	painter.DrawLine2(3, 4, 12, 8)
+	painter.DrawLine2(3, 12, 12, 8)
+	painter.End()
+	return qt.NewQIcon2(pixmap)
 }
 
 // state returns the currently selected item state.
