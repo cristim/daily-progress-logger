@@ -79,13 +79,28 @@ the morning dialog can come up cramped.
 comfortable.
 **Status:** implemented
 
-## Noted, deliberately not changed
+### 11. Checked state of state-selector buttons indistinct in dark mode
+**Problem:** On macOS dark mode the three QToolButtons (Done / Not done /
+Postpone) show no clear visual difference between checked and unchecked
+states, making the current selection hard to spot.
+**Fix:** Apply a palette-based stylesheet to the container widget so the
+checked button is highlighted using the system highlight colour.
+**Status:** implemented
 
-- **Dock icon visibility:** hiding the Dock icon (LSUIElement) is common
-  for menu-bar apps, but the main window is a first-class part of this app;
-  keeping the Dock icon aids discoverability. Revisit if it feels noisy.
-- **Week review combos:** the review dialog keeps dropdowns; its three
-  choices (keep/postpone/drop) are less frequent decisions and vertical
-  space matters more there. Can switch to buttons later for consistency.
-- **In-app history browser:** "Open Data Folder" remains the way to browse
-  past days; the markdown files are the interface by design.
+### 12. Main window plan list showed a horizontal scrollbar when rows overflow
+**Problem:** When plan item rows were wider than the list widget (e.g. due
+to long task text or many buttons) a horizontal scrollbar appeared, wasting
+vertical space and looking out of place.
+**Fix:** Disable the horizontal scrollbar on the plan QListWidget via
+SetHorizontalScrollBarPolicy(ScrollBarAlwaysOff).
+**Status:** implemented
+
+## Other notes
+
+- **[wontfix] Dock icon visibility:** hiding the Dock icon (LSUIElement) is
+  common for menu-bar apps, but the main window is a first-class part of
+  this app; keeping the Dock icon aids discoverability. Revisit if noisy.
+- **[planned] Week review combos:** switch the review dialog's dropdowns to
+  icon buttons for consistency with the rest of the UI.
+- **[wontfix] In-app history browser:** "Open Data Folder" remains the way
+  to browse past days; the markdown files are the interface by design.
