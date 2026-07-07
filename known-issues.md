@@ -11,10 +11,11 @@ reference until the next release), **wontfix** (deliberate).
   the review prompt is ignored for an entire week, the week before it is
   never triaged. Fix: UnreviewedWeek now returns the oldest unreviewed
   week; the UI loops until all are reviewed or the user snoozes/skips.
-- **[planned] Evening check-in decisions are index-based.** If the daily
+- **[done] Evening check-in decisions are index-based.** If the daily
   file is hand-edited while the evening dialog is open, applying fails with
-  a mismatch error and the answers are lost. Planned fix: match decisions
-  by item text instead of position.
+  a mismatch error and the answers are lost. Fix: ApplyEvening now accepts
+  []EveningDecision{Text, State}; items are matched by normalized text;
+  decisions for non-existent items are silently ignored.
 - **[open] Interactive click-through not yet verified end-to-end.** The
   store logic is unit-tested and all screens pixel-verified via offscreen
   rendering (`-screenshot`), but the dialogs have not been driven by real

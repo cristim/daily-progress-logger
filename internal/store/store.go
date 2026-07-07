@@ -220,28 +220,42 @@ func (s *Store) ApplyMorning(today time.Time, newItems []string, adopted []Candi
 	return s.SaveBacklog(backlog)
 }
 
-// ApplyEvening records the evening check-in. states must parallel today's
-// plan items; postponed items are added to the backlog for next week.
-// extraDone lines are appended to the Done section. The weekly summary is
-// regenerated afterwards.
-func (s *Store) ApplyEvening(today time.Time, states []ItemState, extraDone []string) error {
+// EveningDecision pairs a plan item's text with the state chosen for it in
+// the evening check-in dialog.
+type EveningDecision struct {
+	Text  string
+	State ItemState
+}
+
+// ApplyEvening records the evening check-in. Each decision is matched to a
+// plan item by normalized text (first match wins); items not mentioned in
+// decisions keep their current state; decisions whose text no longer exists
+// in the plan are silently ignored (the user may have deleted the item while
+// the dialog was open). Postponed items are added to the backlog for next
+// week; items leaving the postponed state are removed. extraDone lines are
+// appended to the Done section. The weekly summary is regenerated afterwards.
+func (s *Store) ApplyEvening(today time.Time, decisions []EveningDecision, extraDone []string) error {
 	d, err := s.loadOrNewDaily(today)
 	if err != nil {
 		return err
 	}
-	if len(states) != len(d.Plan) {
-		return fmt.Errorf("evening decisions (%d) do not match plan items (%d); was the daily file edited concurrently?",
-			len(states), len(d.Plan))
-	}
 	var postponed, unpostponed []string
-	for i, state := range states {
-		if d.Plan[i].State != state && state == StatePostponed {
-			postponed = append(postponed, d.Plan[i].Text)
+	for i, item := range d.Plan {
+		// Look up the decision for this item by normalized text.
+		newState := item.State // default: keep current state unchanged
+		for _, dec := range decisions {
+			if normalizeText(dec.Text) == normalizeText(item.Text) {
+				newState = dec.State
+				break
+			}
 		}
-		if d.Plan[i].State == StatePostponed && state != StatePostponed {
-			unpostponed = append(unpostponed, d.Plan[i].Text)
+		if d.Plan[i].State != newState && newState == StatePostponed {
+			postponed = append(postponed, item.Text)
 		}
-		d.Plan[i].State = state
+		if d.Plan[i].State == StatePostponed && newState != StatePostponed {
+			unpostponed = append(unpostponed, item.Text)
+		}
+		d.Plan[i].State = newState
 	}
 	for _, text := range extraDone {
 		if text == "" {

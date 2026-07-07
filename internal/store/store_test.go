@@ -87,9 +87,13 @@ func TestStore_EveningFlow(t *testing.T) {
 	s := newTestStore(t)
 	require.NoError(t, s.ApplyMorning(tuesday, []string{"task a", "task b", "task c"}, nil))
 
-	states := []ItemState{StateDone, StateTodo, StatePostponed}
+	decisions := []EveningDecision{
+		{Text: "task a", State: StateDone},
+		{Text: "task b", State: StateTodo},
+		{Text: "task c", State: StatePostponed},
+	}
 	extra := []string{"pair-debugged deploy issue"}
-	require.NoError(t, s.ApplyEvening(tuesday, states, extra))
+	require.NoError(t, s.ApplyEvening(tuesday, decisions, extra))
 
 	d, _, err := s.LoadDaily(tuesday)
 	require.NoError(t, err)
@@ -113,12 +117,46 @@ func TestStore_EveningFlow(t *testing.T) {
 	assert.Contains(t, string(content), "## Postponed\n\n- task c")
 }
 
-func TestStore_EveningStateMismatch(t *testing.T) {
+func TestStore_EveningPlanChangedMidDialog(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"task a", "task b"}, nil))
+
+	// Simulate a plan item added while the evening dialog was already open.
+	require.NoError(t, s.AddPlanItem(tuesday, "task c"))
+
+	// The dialog only captured decisions for the original two items.
+	decisions := []EveningDecision{
+		{Text: "task a", State: StateDone},
+		{Text: "task b", State: StatePostponed},
+	}
+	// Applying must not error; "task c" must keep its current (Todo) state.
+	require.NoError(t, s.ApplyEvening(tuesday, decisions, nil))
+
+	d, _, err := s.LoadDaily(tuesday)
+	require.NoError(t, err)
+	require.Len(t, d.Plan, 3)
+	assert.Equal(t, StateDone, d.Plan[0].State)
+	assert.Equal(t, StatePostponed, d.Plan[1].State)
+	assert.Equal(t, StateTodo, d.Plan[2].State, "plan item added mid-dialog must keep its current state")
+}
+
+func TestStore_EveningUnknownTextIgnored(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)
 	require.NoError(t, s.ApplyMorning(tuesday, []string{"task a"}, nil))
-	err := s.ApplyEvening(tuesday, []ItemState{StateDone, StateDone}, nil)
-	require.ErrorContains(t, err, "do not match plan items")
+
+	// Decision for a text that no longer exists must be silently ignored.
+	decisions := []EveningDecision{
+		{Text: "task a", State: StateDone},
+		{Text: "deleted item", State: StateTodo},
+	}
+	require.NoError(t, s.ApplyEvening(tuesday, decisions, nil))
+
+	d, _, err := s.LoadDaily(tuesday)
+	require.NoError(t, err)
+	require.Len(t, d.Plan, 1)
+	assert.Equal(t, StateDone, d.Plan[0].State)
 }
 
 func TestStore_PostponeAndMoveToBacklog(t *testing.T) {
@@ -158,7 +196,10 @@ func TestStore_UnpostponeRemovesBacklogEntry(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"task b"}, backlog.NextWeek)
 
-	require.NoError(t, s.ApplyEvening(tuesday, []ItemState{StateDone, StateTodo}, nil))
+	require.NoError(t, s.ApplyEvening(tuesday, []EveningDecision{
+		{Text: "task a", State: StateDone},
+		{Text: "task b", State: StateTodo},
+	}, nil))
 	backlog, err = s.LoadBacklog()
 	require.NoError(t, err)
 	assert.Empty(t, backlog.NextWeek)
@@ -176,7 +217,10 @@ func TestStore_UnreviewedWeekAndReview(t *testing.T) {
 
 	// Week 28 has data with leftovers; backlog has a current and a postponed item.
 	require.NoError(t, s.ApplyMorning(tuesday, []string{"leftover a", "finished b"}, nil))
-	require.NoError(t, s.ApplyEvening(tuesday, []ItemState{StateTodo, StateDone}, nil))
+	require.NoError(t, s.ApplyEvening(tuesday, []EveningDecision{
+		{Text: "leftover a", State: StateTodo},
+		{Text: "finished b", State: StateDone},
+	}, nil))
 	require.NoError(t, s.SaveBacklog(&Backlog{
 		Current:  []string{"stale current"},
 		NextWeek: []string{"postponed to w29"},

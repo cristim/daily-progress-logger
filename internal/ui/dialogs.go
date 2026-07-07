@@ -172,11 +172,14 @@ func (a *App) buildEveningDialog(today time.Time) (*dialogSpec, error) {
 	attachButtons(dialog, layout)
 
 	apply := func() error {
-		states := make([]store.ItemState, len(plan))
-		for i, selector := range selectors {
-			states[i] = selector.state()
+		decisions := make([]store.EveningDecision, len(plan))
+		for i, item := range plan {
+			decisions[i] = store.EveningDecision{
+				Text:  item.Text,
+				State: selectors[i].state(),
+			}
 		}
-		return a.store.ApplyEvening(today, states, splitLines(editor.ToPlainText()))
+		return a.store.ApplyEvening(today, decisions, splitLines(editor.ToPlainText()))
 	}
 	return &dialogSpec{dialog: dialog, apply: apply}, nil
 }
