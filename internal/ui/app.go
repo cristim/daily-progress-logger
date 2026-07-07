@@ -488,6 +488,15 @@ func (a *App) reportError(err error) {
 		qt.QMessageBox__Ok, qt.QMessageBox__NoButton)
 }
 
+// notifyBacklogMove shows a tray balloon confirming that an item was moved
+// to the cross-week backlog. It is a no-op when the tray is unavailable.
+func (a *App) notifyBacklogMove(itemText string) {
+	if a.tray == nil {
+		return
+	}
+	a.tray.ShowMessage2("Moved to backlog", itemText)
+}
+
 // checkForUpdatesBackground runs an update check in a goroutine and, when a
 // newer version is found, shows a notification on the Qt main thread.
 // Errors are silently logged at debug level so offline machines are unaffected.

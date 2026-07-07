@@ -225,6 +225,8 @@ func (w *mainWindow) buildPlanRow(index int, item store.Item) *qt.QWidget {
 	backlog.OnClicked(func() {
 		if err := w.app.store.MoveToBacklog(time.Now(), index); err != nil {
 			w.app.reportError(err)
+		} else {
+			w.app.notifyBacklogMove(item.Text)
 		}
 		w.scheduleRefresh()
 	})

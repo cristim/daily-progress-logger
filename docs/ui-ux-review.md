@@ -297,7 +297,10 @@ shouldn't require a text editor.
 **Fix:** Add edit-in-place (double-click) and a Delete action to plan rows;
 show a transient status ("Moved to backlog") or a small backlog count next
 to the heading.
-**Status:** open
+**Status:** partially implemented (feedback); in-app backlog view deferred —
+after a successful MoveToBacklog the tray (if present) shows a balloon
+"Moved to backlog / <item text>" via `App.notifyBacklogMove`. Edit-in-place,
+delete, and an in-app backlog view are not yet implemented.
 
 ### 27. Re-running the morning check-in hides the existing plan
 **Severity:** low
