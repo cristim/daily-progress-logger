@@ -34,10 +34,6 @@ func newMainWindow(app *App) *mainWindow {
 	w.heading = qt.NewQLabel2()
 	layout.AddWidget(w.heading.QWidget)
 
-	w.planList = qt.NewQListWidget2()
-	w.planList.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
-	layout.AddWidget(w.planList.QWidget)
-
 	addRow := qt.NewQHBoxLayout2()
 	w.newItem = qt.NewQLineEdit2()
 	w.newItem.SetPlaceholderText("Add a task for today…")
@@ -47,6 +43,10 @@ func newMainWindow(app *App) *mainWindow {
 	addRow.AddWidget(w.newItem.QWidget)
 	addRow.AddWidget(addButton.QWidget)
 	layout.AddLayout(addRow.QLayout)
+
+	w.planList = qt.NewQListWidget2()
+	w.planList.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
+	layout.AddWidget(w.planList.QWidget)
 
 	checkIns := qt.NewQHBoxLayout2()
 	morningButton := qt.NewQPushButton3("Morning Check-in…")
@@ -105,7 +105,7 @@ func (w *mainWindow) refresh() {
 
 	w.planList.Clear()
 	if !exists || len(daily.Plan) == 0 {
-		placeholder := qt.NewQListWidgetItem2("No plan for today yet. Run the Morning Check-in below, or add a task.")
+		placeholder := qt.NewQListWidgetItem2("No plan for today yet. Run the Morning Check-in below, or add a task above.")
 		placeholder.SetFlags(qt.ItemFlag(0)) // informational, not selectable
 		w.planList.AddItemWithItem(placeholder)
 		return
