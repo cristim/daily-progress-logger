@@ -6,12 +6,14 @@ package ui
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"slices"
 	"time"
 
 	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/cristim/daily-progress-logger/internal/config"
+	"github.com/cristim/daily-progress-logger/internal/loginitem"
 	"github.com/cristim/daily-progress-logger/internal/schedule"
 	"github.com/cristim/daily-progress-logger/internal/store"
 )
@@ -91,6 +93,49 @@ func New(st *store.Store, cfg *config.Config) (*App, error) {
 func (a *App) Show() {
 	a.window.refresh()
 	a.window.win.Show()
+}
+
+// MaybeOfferLoginItem shows a one-time "start at login?" dialog when the
+// conditions are met (plist absent, not yet offered, not oneshot mode).
+// Call this after Show() so the window is visible behind the dialog.
+func (a *App) MaybeOfferLoginItem() {
+	plistPath, err := loginitem.PlistPath()
+	if err != nil {
+		slog.Debug("loginitem: could not determine plist path", "error", err)
+		return
+	}
+	if !loginitem.ShouldOffer(loginitem.Exists(plistPath), a.cfg.LoginItemOffered, a.oneshot) {
+		return
+	}
+
+	// Mark offered before showing the dialog so a crash cannot re-show it.
+	a.cfg.LoginItemOffered = true
+	if saveErr := a.cfg.Save(); saveErr != nil {
+		slog.Warn("loginitem: could not save config", "error", saveErr)
+	}
+
+	const question = "Start Daily Progress Logger at login?\n" +
+		"It will run quietly in the menu bar."
+	answer := qt.QMessageBox_Question2(
+		a.window.win.QWidget,
+		"Daily Progress Logger",
+		question,
+		qt.QMessageBox__Yes,
+		qt.QMessageBox__No,
+	)
+	if answer != int(qt.QMessageBox__Yes) {
+		return
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		a.reportError(fmt.Errorf("locating executable for login item: %w", err))
+		return
+	}
+	content := loginitem.RenderPlist(loginitem.BundleID, exe)
+	if err := loginitem.Install(plistPath, content); err != nil {
+		a.reportError(fmt.Errorf("installing login item: %w", err))
+	}
 }
 
 // HandleReopen installs an event handler on qapp so that clicking the Dock

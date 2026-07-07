@@ -66,6 +66,7 @@ func main() {
 	app.HandleReopen(qapp)
 	if !*hidden {
 		app.Show()
+		app.MaybeOfferLoginItem()
 	}
 
 	// Run the startup prompts once the event loop is up.
