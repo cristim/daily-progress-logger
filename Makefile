@@ -4,6 +4,7 @@
 # several minutes, later builds hit the cache. Qt headers require C++17+,
 # which Apple clang does not default to, hence CGO_CXXFLAGS.
 
+VERSION     := 0.1.0
 APP_NAME    := DailyProgressLogger
 BINARY      := daily-progress-logger
 BUNDLE_ID   := com.cristim.daily-progress-logger
@@ -15,7 +16,7 @@ MACDEPLOYQT   := /opt/homebrew/opt/qt/bin/macdeployqt
 
 export CGO_CXXFLAGS := -std=c++20
 
-.PHONY: build test lint run screenshot app install-agent uninstall-agent \
+.PHONY: build test lint run screenshot app dmg release install-agent uninstall-agent \
 	install-checkin-agent uninstall-checkin-agent clean
 
 build:
@@ -41,9 +42,26 @@ app: build
 	mkdir -p $(APP_BUNDLE)/Contents/MacOS
 	cp $(BUILD_DIR)/$(BINARY) $(APP_BUNDLE)/Contents/MacOS/$(BINARY)
 	sed -e 's/@BINARY@/$(BINARY)/g' -e 's/@BUNDLE_ID@/$(BUNDLE_ID)/g' \
-		-e 's/@APP_NAME@/$(APP_NAME)/g' \
+		-e 's/@APP_NAME@/$(APP_NAME)/g' -e 's/@VERSION@/$(VERSION)/g' \
 		packaging/Info.plist.template > $(APP_BUNDLE)/Contents/Info.plist
 	$(MACDEPLOYQT) $(APP_BUNDLE) -executable=$(APP_BUNDLE)/Contents/MacOS/$(BINARY)
+
+# Package the .app into a distributable DMG.
+dmg: app
+	rm -rf $(BUILD_DIR)/.dmg-staging
+	mkdir -p $(BUILD_DIR)/.dmg-staging
+	cp -r $(APP_BUNDLE) $(BUILD_DIR)/.dmg-staging/
+	ln -s /Applications $(BUILD_DIR)/.dmg-staging/Applications
+	hdiutil create -volname "Daily Progress Logger" \
+		-srcfolder $(BUILD_DIR)/.dmg-staging \
+		-ov -format UDZO \
+		$(BUILD_DIR)/$(APP_NAME)-$(VERSION).dmg
+	rm -rf $(BUILD_DIR)/.dmg-staging
+
+# Create a GitHub release and upload the DMG (requires gh CLI and a git tag).
+release: dmg
+	gh release create v$(VERSION) --generate-notes \
+		$(BUILD_DIR)/$(APP_NAME)-$(VERSION).dmg
 
 # Install a LaunchAgent so the app starts (hidden in the menu bar) at login.
 install-agent: app
