@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
 
+# contents:write is required for gh release create; the default token can be
+# repo-configured as read-only.
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: macos-15
