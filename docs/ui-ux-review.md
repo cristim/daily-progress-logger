@@ -214,7 +214,13 @@ does nothing.
 **Fix:** Don't record skip bookkeeping for user-invoked runs (or show a
 plain Close/Cancel instead of Skip Today there), and drop the snooze/skip
 buttons from manual review/summary dialogs.
-**Status:** open
+**Status:** implemented — `runPrompt` now takes a `manual bool`. For
+manual runs (tray menu, main-window buttons, `-checkin` flag): cancel
+closes without setting `skippedOn`; snooze sets `snoozeUntil` AND adds
+the prompt to `forced` so it re-fires after the hour. `runWeekReviewManually`
+and `runWeeklySummaryManually` now capture the dialog result and apply the
+same manual bookkeeping via `applyManualResult`. Scheduled behavior
+(`CheckPrompts`) is unchanged (manual=false).
 
 ### 20. Viewing "This Week's Summary…" mid-week kills the Friday prompt
 **Severity:** medium

@@ -186,8 +186,8 @@ func (a *App) setUpTray() {
 	menu := qt.NewQMenu2()
 	addMenuAction(menu, "Show Window", func() { a.Show() })
 	menu.AddSeparator()
-	addMenuAction(menu, "Morning Check-in…", func() { a.runPrompt(schedule.PromptMorning) })
-	addMenuAction(menu, "Evening Check-in…", func() { a.runPrompt(schedule.PromptEvening) })
+	addMenuAction(menu, "Morning Check-in…", func() { a.runPrompt(schedule.PromptMorning, true) })
+	addMenuAction(menu, "Evening Check-in…", func() { a.runPrompt(schedule.PromptEvening, true) })
 	addMenuAction(menu, "This Week's Summary…", a.runWeeklySummaryManually)
 	addMenuAction(menu, "Review Last Week…", a.runWeekReviewManually)
 	menu.AddSeparator()
@@ -232,7 +232,7 @@ func (a *App) CheckPrompts() {
 	}
 	show, _ := schedule.Filter(due, now, a.snoozeUntil, a.skippedOn)
 	for _, prompt := range show {
-		a.runPrompt(prompt)
+		a.runPrompt(prompt, false)
 	}
 	a.maybeQuitOneshot()
 }
@@ -300,7 +300,11 @@ func (a *App) scheduleState(now time.Time) (schedule.State, error) {
 // runPrompt opens the dialog for prompt, guarding against overlapping
 // dialogs (the timer keeps firing while a modal dialog runs its own event
 // loop), and records the user's snooze/skip choice.
-func (a *App) runPrompt(prompt schedule.Prompt) {
+// For scheduled invocations (timer/CheckPrompts) use manual=false.
+// For user-initiated invocations (tray menu, -checkin flag) use manual=true:
+// cancel just closes without setting skippedOn, and snooze keeps the prompt
+// forced so it re-fires after the snooze window even when not otherwise due.
+func (a *App) runPrompt(prompt schedule.Prompt, manual bool) {
 	if a.dialogOpen {
 		return
 	}
@@ -332,9 +336,16 @@ func (a *App) runPrompt(prompt schedule.Prompt) {
 	switch result {
 	case dialogSnoozed:
 		a.snoozeUntil[prompt] = now.Add(time.Hour)
+		if manual {
+			// Keep the prompt forced so it re-fires after the snooze window.
+			a.forced[prompt] = true
+		}
 	case dialogCanceled:
-		a.skippedOn[prompt] = now.Format(time.DateOnly)
-		delete(a.forced, prompt)
+		if !manual {
+			a.skippedOn[prompt] = now.Format(time.DateOnly)
+			delete(a.forced, prompt)
+		}
+		// manual cancel: just close, no bookkeeping
 	case dialogAccepted:
 		delete(a.snoozeUntil, prompt)
 		delete(a.skippedOn, prompt)
@@ -366,7 +377,7 @@ func (a *App) runWeekReviewLoop() (dialogResult, error) {
 }
 
 // runWeeklySummaryForNow resolves the current week's ID and shows the summary
-// dialog.
+// dialog for the scheduled path (marks the week summarized on accept).
 func (a *App) runWeeklySummaryForNow() (dialogResult, error) {
 	week, _, err := a.store.WeekSummaryPending(time.Now())
 	if err != nil {
@@ -375,10 +386,27 @@ func (a *App) runWeeklySummaryForNow() (dialogResult, error) {
 	return a.runWeeklySummaryDialog(week)
 }
 
+// applyManualResult applies the bookkeeping for a user-initiated (manual)
+// dialog result: snooze arms a forced re-fire in an hour; cancel just closes
+// without setting skippedOn; accept clears all bookkeeping as usual.
+func (a *App) applyManualResult(prompt schedule.Prompt, result dialogResult) {
+	now := time.Now()
+	switch result {
+	case dialogSnoozed:
+		a.snoozeUntil[prompt] = now.Add(time.Hour)
+		a.forced[prompt] = true // keep pending so it re-fires after snooze
+	case dialogCanceled:
+		// manual cancel: just close, no skippedOn bookkeeping
+	case dialogAccepted:
+		delete(a.snoozeUntil, prompt)
+		delete(a.skippedOn, prompt)
+		delete(a.forced, prompt)
+	}
+}
+
 // runWeekReviewManually reviews the most recent past week even if it was
 // already marked reviewed, so the user can re-triage the backlog on demand.
-// Snoozing a manual review is treated like closing it: it was user-invoked,
-// so nothing re-schedules it.
+// Snooze keeps a forced prompt alive so it re-fires; cancel just closes.
 func (a *App) runWeekReviewManually() {
 	if a.dialogOpen {
 		return
@@ -390,13 +418,18 @@ func (a *App) runWeekReviewManually() {
 		a.maybeQuitOneshot()
 	}()
 	week := store.WeekOf(time.Now().AddDate(0, 0, -7))
-	if _, err := a.runWeekReviewDialog(week); err != nil {
+	result, err := a.runWeekReviewDialog(week)
+	if err != nil {
 		a.reportError(err)
+		return
 	}
+	a.applyManualResult(schedule.PromptWeekReview, result)
 }
 
 // runWeeklySummaryManually shows the current week's summary on demand.
-// Accepting it marks the week as summarized, even when called manually.
+// It does not mark the week as summarized (that is reserved for the
+// scheduled Friday prompt). Snooze keeps a forced prompt alive; cancel
+// just closes.
 func (a *App) runWeeklySummaryManually() {
 	if a.dialogOpen {
 		return
@@ -408,9 +441,12 @@ func (a *App) runWeeklySummaryManually() {
 		a.maybeQuitOneshot()
 	}()
 	week := store.WeekOf(time.Now())
-	if _, err := a.runWeeklySummaryDialog(week); err != nil {
+	result, err := a.runWeeklySummaryDialog(week)
+	if err != nil {
 		a.reportError(err)
+		return
 	}
+	a.applyManualResult(schedule.PromptWeeklySummary, result)
 }
 
 // ForcePrompt runs the named check-in immediately, regardless of schedule:
@@ -435,7 +471,7 @@ func (a *App) ForcePrompt(name string) error {
 	delete(a.snoozeUntil, prompt)
 	delete(a.skippedOn, prompt)
 	a.forced[prompt] = true
-	a.runPrompt(prompt)
+	a.runPrompt(prompt, true)
 	return nil
 }
 

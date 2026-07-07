@@ -50,9 +50,9 @@ func newMainWindow(app *App) *mainWindow {
 
 	checkIns := qt.NewQHBoxLayout2()
 	morningButton := qt.NewQPushButton3("Morning Check-in…")
-	morningButton.OnClicked(func() { w.app.runPrompt(schedule.PromptMorning) })
+	morningButton.OnClicked(func() { w.app.runPrompt(schedule.PromptMorning, true) })
 	eveningButton := qt.NewQPushButton3("Evening Check-in…")
-	eveningButton.OnClicked(func() { w.app.runPrompt(schedule.PromptEvening) })
+	eveningButton.OnClicked(func() { w.app.runPrompt(schedule.PromptEvening, true) })
 	checkIns.AddWidget(morningButton.QWidget)
 	checkIns.AddWidget(eveningButton.QWidget)
 	layout.AddLayout(checkIns.QLayout)
