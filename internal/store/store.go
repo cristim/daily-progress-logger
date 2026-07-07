@@ -374,6 +374,63 @@ func (s *Store) PostponePlanItem(date time.Time, index int) error {
 	return s.SaveBacklog(backlog)
 }
 
+// AdoptFromBacklog adds text to today's plan (dedup by normalized text, same
+// as AddPlanItem) and then removes it from both backlog sections. If the item
+// was already in the plan, the plan is unchanged but the backlog is still
+// cleaned. If the item is no longer in the backlog (user edited the file
+// meanwhile), the removal is a no-op and no error is returned.
+func (s *Store) AdoptFromBacklog(today time.Time, text string) error {
+	if err := s.AddPlanItem(today, text); err != nil {
+		return err
+	}
+	backlog, err := s.LoadBacklog()
+	if err != nil {
+		return err
+	}
+	backlog.removeCurrent(text)
+	backlog.removeNextWeek(text)
+	return s.SaveBacklog(backlog)
+}
+
+// MoveBacklogItem moves text between the two backlog sections. When toNextWeek
+// is true the item moves from Current to NextWeek; when false from NextWeek to
+// Current. addCurrent/addNextWeek guard against duplicate entries. An error is
+// returned when the item is not found in the source section.
+func (s *Store) MoveBacklogItem(text string, toNextWeek bool) error {
+	backlog, err := s.LoadBacklog()
+	if err != nil {
+		return err
+	}
+	if err = backlog.moveItem(text, toNextWeek); err != nil {
+		return err
+	}
+	return s.SaveBacklog(backlog)
+}
+
+// moveItem moves text between sections. toNextWeek=true: Current -> NextWeek;
+// toNextWeek=false: NextWeek -> Current. Returns an error when the item is not
+// found in the source section.
+func (b *Backlog) moveItem(text string, toNextWeek bool) error {
+	norm := normalizeText(text)
+	if toNextWeek {
+		return b.moveTo(text, norm, b.Current, "Current", b.removeCurrent, b.addNextWeek)
+	}
+	return b.moveTo(text, norm, b.NextWeek, "Next week", b.removeNextWeek, b.addCurrent)
+}
+
+// moveTo is the generic inner helper for moveItem: it checks that norm exists
+// in src, invokes remove and add, returning an error when the item is absent.
+func (b *Backlog) moveTo(text, norm string, src []string, srcName string, remove, add func(string)) error {
+	for _, item := range src {
+		if normalizeText(item) == norm {
+			remove(text)
+			add(text)
+			return nil
+		}
+	}
+	return fmt.Errorf("item %q not found in the %s backlog section", text, srcName)
+}
+
 // MoveToBacklog removes a plan item from the day and stores it in the
 // backlog's Current list instead.
 func (s *Store) MoveToBacklog(date time.Time, index int) error {

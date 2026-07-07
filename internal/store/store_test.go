@@ -465,6 +465,125 @@ func TestStore_ApplyWeekReviewWithRollover(t *testing.T) {
 	assert.Empty(t, backlog.NextWeek)
 }
 
+func TestStore_AdoptFromBacklog(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	require.NoError(t, s.SaveBacklog(&Backlog{
+		Current:  []string{"task a", "task b"},
+		NextWeek: []string{"task c"},
+	}))
+
+	// Adopting from Current: item lands in today's plan and is removed from Current.
+	require.NoError(t, s.AdoptFromBacklog(tuesday, "task a"))
+	d, _, err := s.LoadDaily(tuesday)
+	require.NoError(t, err)
+	require.Len(t, d.Plan, 1)
+	assert.Equal(t, "task a", d.Plan[0].Text)
+	assert.Equal(t, StateTodo, d.Plan[0].State)
+
+	backlog, err := s.LoadBacklog()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"task b"}, backlog.Current)
+	assert.Equal(t, []string{"task c"}, backlog.NextWeek)
+
+	// Adopting from NextWeek: item lands in plan and is removed from NextWeek.
+	require.NoError(t, s.AdoptFromBacklog(tuesday, "task c"))
+	d, _, err = s.LoadDaily(tuesday)
+	require.NoError(t, err)
+	require.Len(t, d.Plan, 2)
+
+	backlog, err = s.LoadBacklog()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"task b"}, backlog.Current)
+	assert.Empty(t, backlog.NextWeek)
+}
+
+func TestStore_AdoptFromBacklogAlreadyPlanned(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	require.NoError(t, s.AddPlanItem(tuesday, "task a"))
+	require.NoError(t, s.SaveBacklog(&Backlog{
+		Current:  []string{"task a"},
+		NextWeek: []string{"task a"}, // same item in both sections
+	}))
+
+	// Already planned: plan stays at 1 item (no dup) but backlog is still cleaned.
+	require.NoError(t, s.AdoptFromBacklog(tuesday, "task a"))
+
+	d, _, err := s.LoadDaily(tuesday)
+	require.NoError(t, err)
+	assert.Len(t, d.Plan, 1, "already-planned item must not be duplicated")
+
+	backlog, err := s.LoadBacklog()
+	require.NoError(t, err)
+	assert.Empty(t, backlog.Current, "item must be removed from Current")
+	assert.Empty(t, backlog.NextWeek, "item must be removed from NextWeek")
+}
+
+func TestStore_AdoptFromBacklogNotPresent(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	// The item is not in the backlog at all (user may have edited the file).
+	require.NoError(t, s.SaveBacklog(&Backlog{Current: []string{"other"}}))
+
+	// Must not return an error; the item still lands in the plan.
+	require.NoError(t, s.AdoptFromBacklog(tuesday, "vanished item"))
+	d, _, err := s.LoadDaily(tuesday)
+	require.NoError(t, err)
+	require.Len(t, d.Plan, 1)
+	assert.Equal(t, "vanished item", d.Plan[0].Text)
+}
+
+func TestStore_MoveBacklogItem(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	require.NoError(t, s.SaveBacklog(&Backlog{
+		Current:  []string{"task a"},
+		NextWeek: []string{"task b"},
+	}))
+
+	// Current -> NextWeek
+	require.NoError(t, s.MoveBacklogItem("task a", true))
+	backlog, err := s.LoadBacklog()
+	require.NoError(t, err)
+	assert.Empty(t, backlog.Current)
+	assert.Equal(t, []string{"task b", "task a"}, backlog.NextWeek)
+
+	// NextWeek -> Current
+	require.NoError(t, s.MoveBacklogItem("task b", false))
+	backlog, err = s.LoadBacklog()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"task b"}, backlog.Current)
+	assert.Equal(t, []string{"task a"}, backlog.NextWeek)
+}
+
+func TestStore_MoveBacklogItemNotFound(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	require.NoError(t, s.SaveBacklog(&Backlog{
+		Current: []string{"task a"},
+	}))
+
+	require.ErrorContains(t, s.MoveBacklogItem("unknown", true), "not found")
+	require.ErrorContains(t, s.MoveBacklogItem("unknown", false), "not found")
+}
+
+func TestStore_MoveBacklogItemDedup(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	// "task a" is already in NextWeek; moving it there from Current must not duplicate.
+	require.NoError(t, s.SaveBacklog(&Backlog{
+		Current:  []string{"task a", "task b"},
+		NextWeek: []string{"task a"},
+	}))
+
+	require.NoError(t, s.MoveBacklogItem("task a", true))
+	backlog, err := s.LoadBacklog()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"task b"}, backlog.Current)
+	assert.Equal(t, []string{"task a"}, backlog.NextWeek, "duplicate must not be added on arrival")
+}
+
 // TestStore_ApplyWeekReviewWithoutRollover verifies that rollover=false leaves
 // NextWeek items untouched (manual mid-week re-triage behaviour).
 func TestStore_ApplyWeekReviewWithoutRollover(t *testing.T) {
