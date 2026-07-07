@@ -40,6 +40,8 @@ func newStateSelector(initial store.ItemState) *stateSelector {
 	add(store.StateTodo, "Not done", qt.QStyle__SP_DialogCancelButton, "Keep as an open todo")
 	add(store.StatePostponed, "Postpone", qt.QStyle__SP_ArrowForward, "Postpone to next week")
 
+	widget.SetStyleSheet(`QToolButton { padding: 3px 8px; border: 1px solid transparent; border-radius: 5px; } QToolButton:checked { background-color: palette(highlight); color: palette(highlighted-text); border-color: palette(highlight); }`)
+
 	return &stateSelector{widget: widget, group: group}
 }
 

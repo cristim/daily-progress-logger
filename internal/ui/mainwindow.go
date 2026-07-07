@@ -35,6 +35,7 @@ func newMainWindow(app *App) *mainWindow {
 	layout.AddWidget(w.heading.QWidget)
 
 	w.planList = qt.NewQListWidget2()
+	w.planList.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
 	layout.AddWidget(w.planList.QWidget)
 
 	addRow := qt.NewQHBoxLayout2()
