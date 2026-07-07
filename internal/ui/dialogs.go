@@ -82,8 +82,11 @@ func (a *App) runEveningDialog() (dialogResult, error) {
 	return spec.run()
 }
 
-func (a *App) runWeekReviewDialog(week store.WeekID) (dialogResult, error) {
-	spec, err := a.buildWeekReviewDialog(week)
+// runWeekReviewDialog shows the week-review dialog. Pass rollover=true for
+// the scheduled path (Monday review: NextWeek items roll into Current before
+// applying decisions) and rollover=false for on-demand manual re-triages.
+func (a *App) runWeekReviewDialog(week store.WeekID, rollover bool) (dialogResult, error) {
+	spec, err := a.buildWeekReviewDialog(week, rollover)
 	if err != nil {
 		return dialogCanceled, err
 	}
@@ -237,7 +240,10 @@ func (a *App) buildEveningDialog(today time.Time) (*dialogSpec, error) {
 }
 
 // buildWeekReviewDialog triages the given week's leftover items.
-func (a *App) buildWeekReviewDialog(week store.WeekID) (*dialogSpec, error) {
+// rollover controls whether NextWeek backlog items are promoted to Current
+// before applying decisions: true for the scheduled Monday review, false for
+// on-demand manual re-triages mid-week.
+func (a *App) buildWeekReviewDialog(week store.WeekID, rollover bool) (*dialogSpec, error) {
 	items, err := a.store.WeekReviewCandidates(week)
 	if err != nil {
 		return nil, err
@@ -288,7 +294,7 @@ func (a *App) buildWeekReviewDialog(week store.WeekID) (*dialogSpec, error) {
 				Action: store.ReviewAction(selectors[i].group.CheckedId()),
 			}
 		}
-		return a.store.ApplyWeekReview(week, decisions)
+		return a.store.ApplyWeekReview(week, decisions, rollover)
 	}
 	return &dialogSpec{dialog: dialog, apply: apply}, nil
 }

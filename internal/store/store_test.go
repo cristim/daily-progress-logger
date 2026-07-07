@@ -243,7 +243,7 @@ func TestStore_UnreviewedWeekAndReview(t *testing.T) {
 	require.NoError(t, s.ApplyWeekReview(week28, []ReviewDecision{
 		{Text: "leftover a", Action: ReviewKeep},
 		{Text: "stale current", Action: ReviewDrop},
-	}))
+	}, true))
 
 	backlog, err := s.LoadBacklog()
 	require.NoError(t, err)
@@ -289,14 +289,14 @@ func TestStore_UnreviewedWeeksOldestFirst(t *testing.T) {
 	assert.Equal(t, week27, week, "oldest unreviewed week must come first")
 
 	// After reviewing week 27, the next call should return week 28.
-	require.NoError(t, s.ApplyWeekReview(week27, nil))
+	require.NoError(t, s.ApplyWeekReview(week27, nil, true))
 	week, pending, err = s.UnreviewedWeek(nextMonday)
 	require.NoError(t, err)
 	require.True(t, pending)
 	assert.Equal(t, week28, week, "second call must return the next-oldest unreviewed week")
 
 	// After reviewing week 28 as well, nothing is pending.
-	require.NoError(t, s.ApplyWeekReview(week28, nil))
+	require.NoError(t, s.ApplyWeekReview(week28, nil, true))
 	_, pending, err = s.UnreviewedWeek(nextMonday)
 	require.NoError(t, err)
 	assert.False(t, pending)
@@ -347,7 +347,7 @@ func TestStore_ReviewPostpone(t *testing.T) {
 	require.NoError(t, s.ApplyMorning(tuesday, []string{"maybe later"}, nil))
 	require.NoError(t, s.ApplyWeekReview(week28, []ReviewDecision{
 		{Text: "maybe later", Action: ReviewPostpone},
-	}))
+	}, true))
 	backlog, err := s.LoadBacklog()
 	require.NoError(t, err)
 	assert.Empty(t, backlog.Current)
@@ -441,4 +441,49 @@ func TestStore_NormalizedDedup(t *testing.T) {
 	b2 := &Backlog{NextWeek: []string{"big refactor"}}
 	b2.addNextWeek("BIG REFACTOR")
 	assert.Len(t, b2.NextWeek, 1, "normalized duplicate must not be added to NextWeek")
+}
+
+// TestStore_ApplyWeekReviewWithRollover verifies that rollover=true promotes
+// NextWeek items into Current (scheduled Monday review behaviour).
+func TestStore_ApplyWeekReviewWithRollover(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	require.NoError(t, s.SaveBacklog(&Backlog{
+		NextWeek: []string{"deferred task"},
+	}))
+
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"open item"}, nil))
+	require.NoError(t, s.ApplyWeekReview(week28, []ReviewDecision{
+		{Text: "open item", Action: ReviewKeep},
+	}, true)) // rollover=true: NextWeek -> Current before decisions
+
+	backlog, err := s.LoadBacklog()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"deferred task", "open item"}, backlog.Current,
+		"rollover must promote NextWeek items and keep decision is applied")
+	assert.Empty(t, backlog.NextWeek)
+}
+
+// TestStore_ApplyWeekReviewWithoutRollover verifies that rollover=false leaves
+// NextWeek items untouched (manual mid-week re-triage behaviour).
+func TestStore_ApplyWeekReviewWithoutRollover(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	require.NoError(t, s.SaveBacklog(&Backlog{
+		NextWeek: []string{"deferred task"},
+	}))
+
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"open item"}, nil))
+	require.NoError(t, s.ApplyWeekReview(week28, []ReviewDecision{
+		{Text: "open item", Action: ReviewKeep},
+	}, false)) // rollover=false: NextWeek must not be touched
+
+	backlog, err := s.LoadBacklog()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"open item"}, backlog.Current,
+		"without rollover only the kept item enters Current")
+	assert.Equal(t, []string{"deferred task"}, backlog.NextWeek,
+		"NextWeek must remain untouched when rollover=false")
 }

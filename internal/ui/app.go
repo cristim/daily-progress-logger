@@ -365,7 +365,7 @@ func (a *App) runWeekReviewLoop() (dialogResult, error) {
 		if !pending {
 			break
 		}
-		result, err = a.runWeekReviewDialog(week)
+		result, err = a.runWeekReviewDialog(week, true) // scheduled: roll over NextWeek first
 		if err != nil {
 			return dialogCanceled, err
 		}
@@ -418,7 +418,7 @@ func (a *App) runWeekReviewManually() {
 		a.maybeQuitOneshot()
 	}()
 	week := store.WeekOf(time.Now().AddDate(0, 0, -7))
-	result, err := a.runWeekReviewDialog(week)
+	result, err := a.runWeekReviewDialog(week, false) // manual: do not roll over NextWeek
 	if err != nil {
 		a.reportError(err)
 		return
@@ -493,7 +493,7 @@ func (a *App) GrabScreenshots(dir string) error {
 	if err != nil {
 		return err
 	}
-	review, err := a.buildWeekReviewDialog(store.WeekOf(now.AddDate(0, 0, -7)))
+	review, err := a.buildWeekReviewDialog(store.WeekOf(now.AddDate(0, 0, -7)), false)
 	if err != nil {
 		return err
 	}

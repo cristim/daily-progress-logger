@@ -556,15 +556,20 @@ func (s *Store) MarkWeekSummarized(week WeekID) error {
 	})
 }
 
-// ApplyWeekReview records the review of week: items postponed to this week
-// roll over into Current, then each decision is applied, the dropped items
+// ApplyWeekReview records the review of week: if rollover is true, items
+// postponed to this week first roll over into Current (correct for the
+// scheduled Monday review); then each decision is applied, the dropped items
 // are recorded in the weekly file, and the week is marked reviewed.
-func (s *Store) ApplyWeekReview(week WeekID, decisions []ReviewDecision) error {
+// Pass rollover=false for on-demand (manual) re-triages so that NextWeek
+// items are not prematurely promoted mid-week.
+func (s *Store) ApplyWeekReview(week WeekID, decisions []ReviewDecision, rollover bool) error {
 	backlog, err := s.LoadBacklog()
 	if err != nil {
 		return err
 	}
-	backlog.rollOver()
+	if rollover {
+		backlog.rollOver()
+	}
 	var dropped []string
 	for _, dec := range decisions {
 		switch dec.Action {

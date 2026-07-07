@@ -250,7 +250,11 @@ boundary that has actually passed since the last rollover (e.g. skip
 `rollOver()` when the reviewed week's successor is still the current week
 and a rollover already happened), or confirm before rolling over on manual
 runs.
-**Status:** open
+**Status:** implemented — `ApplyWeekReview` now takes `rollover bool`.
+The scheduled path (`runWeekReviewLoop`) passes `true`, keeping existing
+behaviour. The manual path (`runWeekReviewManually`) passes `false` so
+NextWeek items are not promoted mid-week. Two new store tests assert both
+paths independently.
 
 ### 22. Morning and evening dialogs fire back-to-back, in an odd order
 **Severity:** medium
