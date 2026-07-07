@@ -529,6 +529,33 @@ func (s *Store) WeekReviewCandidates(week WeekID) ([]string, error) {
 	return texts, nil
 }
 
+// WeekSummaryPending reports whether now's current week has any daily data
+// and has not yet been marked summarized. The WeekID of the current week is
+// also returned so callers can open the summary dialog without recomputing it.
+func (s *Store) WeekSummaryPending(now time.Time) (WeekID, bool, error) {
+	week := WeekOf(now)
+	dailies, err := s.DailiesInWeek(week)
+	if err != nil {
+		return WeekID{}, false, err
+	}
+	if len(dailies) == 0 {
+		return week, false, nil
+	}
+	meta, _, err := s.loadWeeklyMeta(week)
+	if err != nil {
+		return WeekID{}, false, err
+	}
+	return week, !meta.Summarized, nil
+}
+
+// MarkWeekSummarized regenerates the weekly file for week with the summarized
+// flag set to true, preserving all other meta.
+func (s *Store) MarkWeekSummarized(week WeekID) error {
+	return s.regenerateWeekly(week, func(meta *weeklyMeta) {
+		meta.Summarized = true
+	})
+}
+
 // ApplyWeekReview records the review of week: items postponed to this week
 // roll over into Current, then each decision is applied, the dropped items
 // are recorded in the weekly file, and the week is marked reviewed.

@@ -14,6 +14,9 @@ const (
 	PromptMorning
 	// PromptEvening asks what the user accomplished today.
 	PromptEvening
+	// PromptWeeklySummary shows the current week's summary for review on
+	// the configured summary day (default: Friday afternoon).
+	PromptWeeklySummary
 )
 
 // String returns a human-readable prompt name.
@@ -25,6 +28,8 @@ func (p Prompt) String() string {
 		return "morning check-in"
 	case PromptEvening:
 		return "evening check-in"
+	case PromptWeeklySummary:
+		return "weekly summary"
 	}
 	return "unknown prompt"
 }
@@ -48,13 +53,18 @@ type State struct {
 	EveningDone bool
 	// WeekReviewPending: an earlier week has data but was never reviewed.
 	WeekReviewPending bool
+	// SummaryPending: the current week has data but has not yet been summarized.
+	SummaryPending bool
 }
 
 // Due returns the prompts due at now, in the order they should be shown:
 // the week review gates the week, then the morning plan, then the evening
-// report. The week review is due at any hour; the daily check-ins only once
-// their configured time has passed.
-func Due(now time.Time, morning, evening TimeOfDay, st State) []Prompt {
+// report, then the weekly summary (on the configured summary day once the
+// summary time has passed). The week review is due at any hour; the daily
+// check-ins and the weekly summary only once their configured time has passed.
+func Due(now time.Time, morning, evening TimeOfDay, st State,
+	summaryDay time.Weekday, summary TimeOfDay,
+) []Prompt {
 	var due []Prompt
 	if st.WeekReviewPending {
 		due = append(due, PromptWeekReview)
@@ -64,6 +74,9 @@ func Due(now time.Time, morning, evening TimeOfDay, st State) []Prompt {
 	}
 	if !st.EveningDone && evening.reached(now) {
 		due = append(due, PromptEvening)
+	}
+	if st.SummaryPending && now.Weekday() == summaryDay && summary.reached(now) {
+		due = append(due, PromptWeeklySummary)
 	}
 	return due
 }

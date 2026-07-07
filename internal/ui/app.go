@@ -21,10 +21,12 @@ const checkInterval = 60 * time.Second
 
 // App owns the Qt widgets and drives the check-in prompts.
 type App struct {
-	store   *store.Store
-	cfg     *config.Config
-	morning schedule.TimeOfDay
-	evening schedule.TimeOfDay
+	store      *store.Store
+	cfg        *config.Config
+	morning    schedule.TimeOfDay
+	evening    schedule.TimeOfDay
+	summaryDay time.Weekday
+	summary    schedule.TimeOfDay
 
 	window     *mainWindow
 	tray       *qt.QSystemTrayIcon
@@ -54,11 +56,21 @@ func New(st *store.Store, cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	summaryHour, summaryMinute, err := config.ParseTimeOfDay(cfg.SummaryTime)
+	if err != nil {
+		return nil, err
+	}
+	summaryDay, err := config.ParseDay(cfg.SummaryDay)
+	if err != nil {
+		return nil, err
+	}
 	app := &App{
 		store:       st,
 		cfg:         cfg,
 		morning:     schedule.TimeOfDay{Hour: morningHour, Minute: morningMinute},
 		evening:     schedule.TimeOfDay{Hour: eveningHour, Minute: eveningMinute},
+		summaryDay:  summaryDay,
+		summary:     schedule.TimeOfDay{Hour: summaryHour, Minute: summaryMinute},
 		snoozeUntil: map[schedule.Prompt]time.Time{},
 		skippedOn:   map[schedule.Prompt]string{},
 		forced:      map[schedule.Prompt]bool{},
@@ -106,6 +118,7 @@ func (a *App) setUpTray() {
 	menu.AddSeparator()
 	addMenuAction(menu, "Morning Check-in…", func() { a.runPrompt(schedule.PromptMorning) })
 	addMenuAction(menu, "Evening Check-in…", func() { a.runPrompt(schedule.PromptEvening) })
+	addMenuAction(menu, "This Week's Summary…", a.runWeeklySummaryManually)
 	addMenuAction(menu, "Review Last Week…", a.runWeekReviewManually)
 	menu.AddSeparator()
 	addMenuAction(menu, "Quit", qt.QCoreApplication_Quit)
@@ -159,7 +172,7 @@ func (a *App) duePrompts(now time.Time) ([]schedule.Prompt, error) {
 	if err != nil {
 		return nil, err
 	}
-	due := schedule.Due(now, a.morning, a.evening, state)
+	due := schedule.Due(now, a.morning, a.evening, state, a.summaryDay, a.summary)
 	for prompt := range a.forced {
 		if !slices.Contains(due, prompt) {
 			due = append(due, prompt)
@@ -204,6 +217,11 @@ func (a *App) scheduleState(now time.Time) (schedule.State, error) {
 		return st, err
 	}
 	st.WeekReviewPending = pending
+	_, summaryPending, err := a.store.WeekSummaryPending(now)
+	if err != nil {
+		return st, err
+	}
+	st.SummaryPending = summaryPending
 	return st, nil
 }
 
@@ -229,20 +247,9 @@ func (a *App) runPrompt(prompt schedule.Prompt) {
 	case schedule.PromptEvening:
 		result, err = a.runEveningDialog()
 	case schedule.PromptWeekReview:
-		// Loop oldest-first through all unreviewed weeks; stop if the user
-		// snoozes or skips (result != dialogAccepted).
-		for {
-			var pending bool
-			var week store.WeekID
-			week, pending, err = a.store.UnreviewedWeek(time.Now())
-			if err != nil || !pending {
-				break
-			}
-			result, err = a.runWeekReviewDialog(week)
-			if err != nil || result != dialogAccepted {
-				break
-			}
-		}
+		result, err = a.runWeekReviewLoop()
+	case schedule.PromptWeeklySummary:
+		result, err = a.runWeeklySummaryForNow()
 	}
 	if err != nil {
 		a.reportError(err)
@@ -261,6 +268,39 @@ func (a *App) runPrompt(prompt schedule.Prompt) {
 		delete(a.skippedOn, prompt)
 		delete(a.forced, prompt)
 	}
+}
+
+// runWeekReviewLoop iterates oldest-first through all unreviewed past weeks,
+// stopping when the user snoozes or skips (result != dialogAccepted).
+func (a *App) runWeekReviewLoop() (dialogResult, error) {
+	result := dialogAccepted
+	for {
+		week, pending, err := a.store.UnreviewedWeek(time.Now())
+		if err != nil {
+			return dialogCanceled, err
+		}
+		if !pending {
+			break
+		}
+		result, err = a.runWeekReviewDialog(week)
+		if err != nil {
+			return dialogCanceled, err
+		}
+		if result != dialogAccepted {
+			break
+		}
+	}
+	return result, nil
+}
+
+// runWeeklySummaryForNow resolves the current week's ID and shows the summary
+// dialog.
+func (a *App) runWeeklySummaryForNow() (dialogResult, error) {
+	week, _, err := a.store.WeekSummaryPending(time.Now())
+	if err != nil {
+		return dialogCanceled, err
+	}
+	return a.runWeeklySummaryDialog(week)
 }
 
 // runWeekReviewManually reviews the most recent past week even if it was
@@ -283,6 +323,24 @@ func (a *App) runWeekReviewManually() {
 	}
 }
 
+// runWeeklySummaryManually shows the current week's summary on demand.
+// Accepting it marks the week as summarized, even when called manually.
+func (a *App) runWeeklySummaryManually() {
+	if a.dialogOpen {
+		return
+	}
+	a.dialogOpen = true
+	defer func() {
+		a.dialogOpen = false
+		a.window.refresh()
+		a.maybeQuitOneshot()
+	}()
+	week := store.WeekOf(time.Now())
+	if _, err := a.runWeeklySummaryDialog(week); err != nil {
+		a.reportError(err)
+	}
+}
+
 // ForcePrompt runs the named check-in immediately, regardless of schedule:
 // "morning", "evening" or "review". A forced prompt stays pending (so a
 // snooze re-shows it in an hour) until answered or canceled.
@@ -296,8 +354,11 @@ func (a *App) ForcePrompt(name string) error {
 	case "review":
 		a.runWeekReviewManually()
 		return nil
+	case "summary":
+		a.runWeeklySummaryManually()
+		return nil
 	default:
-		return fmt.Errorf("unknown check-in %q, want morning, evening or review", name)
+		return fmt.Errorf("unknown check-in %q, want morning, evening, review or summary", name)
 	}
 	delete(a.snoozeUntil, prompt)
 	delete(a.skippedOn, prompt)
@@ -324,12 +385,17 @@ func (a *App) GrabScreenshots(dir string) error {
 	if err != nil {
 		return err
 	}
+	weeklySummary, err := a.buildWeeklySummaryDialog(store.WeekOf(now))
+	if err != nil {
+		return err
+	}
 
 	for name, widget := range map[string]*qt.QWidget{
-		"main-window": a.window.win.QWidget,
-		"morning":     morning.dialog.QWidget,
-		"evening":     evening.dialog.QWidget,
-		"week-review": review.dialog.QWidget,
+		"main-window":    a.window.win.QWidget,
+		"morning":        morning.dialog.QWidget,
+		"evening":        evening.dialog.QWidget,
+		"week-review":    review.dialog.QWidget,
+		"weekly-summary": weeklySummary.dialog.QWidget,
 	} {
 		path := dir + "/" + name + ".png"
 		if !widget.Grab().Save(path) {

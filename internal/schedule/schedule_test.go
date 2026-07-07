@@ -11,10 +11,21 @@ func at(hour, minute int) time.Time {
 	return time.Date(2026, 7, 7, hour, minute, 0, 0, time.Local)
 }
 
+// at returns a time on the test date 2026-07-07 (Tuesday) at hour:minute.
+// Use atDay to get a time on a specific weekday for summary tests.
+func atDay(weekday time.Weekday, hour, minute int) time.Time {
+	// 2026-07-07 is Tuesday. Offset from Tuesday to get the desired weekday.
+	offset := (int(weekday) - int(time.Tuesday) + 7) % 7
+	base := time.Date(2026, 7, 7, hour, minute, 0, 0, time.Local)
+	return base.AddDate(0, 0, offset)
+}
+
 func TestDue(t *testing.T) {
 	t.Parallel()
 	morning := TimeOfDay{Hour: 9, Minute: 0}
 	evening := TimeOfDay{Hour: 17, Minute: 30}
+	summaryTOD := TimeOfDay{Hour: 17, Minute: 0}
+	summaryDay := time.Friday
 
 	tests := []struct {
 		name  string
@@ -64,11 +75,38 @@ func TestDue(t *testing.T) {
 			state: State{WeekReviewPending: true},
 			want:  []Prompt{PromptWeekReview, PromptMorning, PromptEvening},
 		},
+		{
+			name:  "weekly summary due on friday after summary time when daily done",
+			now:   atDay(time.Friday, 17, 0),
+			state: State{MorningDone: true, EveningDone: true, SummaryPending: true},
+			want:  []Prompt{PromptWeeklySummary},
+		},
+		{
+			name:  "weekly summary not due before summary time on friday",
+			now:   atDay(time.Friday, 16, 59),
+			state: State{MorningDone: true, EveningDone: true, SummaryPending: true},
+		},
+		{
+			name:  "weekly summary not due on non-summary day even after time",
+			now:   atDay(time.Thursday, 18, 0),
+			state: State{MorningDone: true, EveningDone: true, SummaryPending: true},
+		},
+		{
+			name:  "weekly summary not due when not pending",
+			now:   atDay(time.Friday, 18, 0),
+			state: State{MorningDone: true, EveningDone: true, SummaryPending: false},
+		},
+		{
+			name:  "full friday stack: morning, evening, then summary",
+			now:   atDay(time.Friday, 18, 0),
+			state: State{SummaryPending: true},
+			want:  []Prompt{PromptMorning, PromptEvening, PromptWeeklySummary},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, Due(tt.now, morning, evening, tt.state))
+			assert.Equal(t, tt.want, Due(tt.now, morning, evening, tt.state, summaryDay, summaryTOD))
 		})
 	}
 }
@@ -135,5 +173,6 @@ func TestPromptString(t *testing.T) {
 	assert.Equal(t, "week review", PromptWeekReview.String())
 	assert.Equal(t, "morning check-in", PromptMorning.String())
 	assert.Equal(t, "evening check-in", PromptEvening.String())
+	assert.Equal(t, "weekly summary", PromptWeeklySummary.String())
 	assert.Equal(t, "unknown prompt", Prompt(99).String())
 }

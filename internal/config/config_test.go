@@ -26,6 +26,8 @@ func TestLoadCreatesDefaults(t *testing.T) {
 	assert.Equal(t, filepath.Join(home, "DailyProgress"), cfg.DataDir)
 	assert.Equal(t, "09:30", cfg.MorningTime)
 	assert.Equal(t, "17:30", cfg.EveningTime)
+	assert.Equal(t, "Friday", cfg.SummaryDay)
+	assert.Equal(t, "17:00", cfg.SummaryTime)
 
 	path, err := Path()
 	require.NoError(t, err)
@@ -62,6 +64,16 @@ func TestLoadFailsLoud(t *testing.T) {
 		},
 		{name: "bad morning time", content: `{"data_dir": "/d", "morning_time": "9am", "evening_time": "17:30"}`, wantErr: "morning_time"},
 		{name: "bad evening time", content: `{"data_dir": "/d", "morning_time": "09:00", "evening_time": "25:00"}`, wantErr: "evening_time"},
+		{
+			name:    "bad summary day",
+			content: `{"data_dir": "/d", "morning_time": "09:00", "evening_time": "17:30", "summary_day": "Funday", "summary_time": "17:00"}`,
+			wantErr: "summary_day",
+		},
+		{
+			name:    "bad summary time",
+			content: `{"data_dir": "/d", "morning_time": "09:00", "evening_time": "17:30", "summary_day": "Friday", "summary_time": "99:00"}`,
+			wantErr: "summary_time",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -74,6 +86,32 @@ func TestLoadFailsLoud(t *testing.T) {
 			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
+}
+
+func TestParseDay(t *testing.T) {
+	t.Parallel()
+	for _, good := range []string{"Friday", "friday", "FRIDAY", "Monday", "Sunday"} {
+		_, err := ParseDay(good)
+		require.NoError(t, err, "input %q", good)
+	}
+	for _, bad := range []string{"", "Funday", "Mon", "TGIF"} {
+		_, err := ParseDay(bad)
+		require.Errorf(t, err, "input %q should produce an error", bad)
+	}
+	wd, err := ParseDay("Friday")
+	require.NoError(t, err)
+	assert.Equal(t, 5, int(wd)) // time.Friday == 5
+}
+
+func TestConfigSave(t *testing.T) {
+	isolateHome(t)
+	cfg, err := Load()
+	require.NoError(t, err)
+	cfg.LoginItemOffered = true
+	require.NoError(t, cfg.Save())
+	cfg2, err := Load()
+	require.NoError(t, err)
+	assert.True(t, cfg2.LoginItemOffered)
 }
 
 func TestParseTimeOfDay(t *testing.T) {

@@ -79,6 +79,7 @@ func (w *mainWindow) setUpMenu() {
 	menuBar := qt.NewQMenuBar2()
 	fileMenu := menuBar.AddMenuWithTitle("File")
 	addMenuAction(fileMenu, "Open Data Folder", w.openDataFolder)
+	addMenuAction(fileMenu, "This Week's Summary…", w.app.runWeeklySummaryManually)
 	addMenuAction(fileMenu, "Review Last Week…", w.app.runWeekReviewManually)
 	fileMenu.AddSeparator()
 	quit := addMenuAction(fileMenu, "Quit", qt.QCoreApplication_Quit)

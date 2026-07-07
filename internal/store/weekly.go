@@ -6,17 +6,19 @@ import (
 )
 
 // weeklyMeta is the state carried by a weekly file across regenerations: the
-// summary sections are derived from the daily files, but the review flag and
-// the record of items dropped at review exist only in the weekly file.
+// summary sections are derived from the daily files, but the review flag, the
+// summarized flag, and the record of items dropped at review exist only in the
+// weekly file.
 type weeklyMeta struct {
-	Reviewed bool
-	Dropped  []string
+	Reviewed   bool
+	Summarized bool
+	Dropped    []string
 }
 
 const sectionDropped = "Dropped at review"
 
-// parseWeeklyMeta extracts the reviewed flag and dropped items from an
-// existing weekly file. Other sections are derived and not parsed.
+// parseWeeklyMeta extracts the reviewed/summarized flags and dropped items
+// from an existing weekly file. Other sections are derived and not parsed.
 func parseWeeklyMeta(content string) (weeklyMeta, error) {
 	var meta weeklyMeta
 	front, body, err := splitFrontmatter(content)
@@ -25,6 +27,12 @@ func parseWeeklyMeta(content string) (weeklyMeta, error) {
 	}
 	if value, ok := front["reviewed"]; ok {
 		meta.Reviewed, err = parseBool("reviewed", value)
+		if err != nil {
+			return meta, err
+		}
+	}
+	if value, ok := front["summarized"]; ok {
+		meta.Summarized, err = parseBool("summarized", value)
 		if err != nil {
 			return meta, err
 		}
@@ -51,6 +59,7 @@ func renderWeekly(week WeekID, dailies []*Daily, meta weeklyMeta) string {
 	fmt.Fprintf(&b, "start: %s\n", week.Start().Format(dateLayout))
 	fmt.Fprintf(&b, "end: %s\n", week.End().Format(dateLayout))
 	fmt.Fprintf(&b, "reviewed: %t\n", meta.Reviewed)
+	fmt.Fprintf(&b, "summarized: %t\n", meta.Summarized)
 	b.WriteString("---\n\n")
 	fmt.Fprintf(&b, "# Week %d, %d (%s - %s)\n",
 		week.Week, week.Year,

@@ -302,6 +302,45 @@ func TestStore_UnreviewedWeeksOldestFirst(t *testing.T) {
 	assert.False(t, pending)
 }
 
+func TestStore_WeekSummaryPendingAndMark(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	// No daily data: summary is not pending.
+	_, pending, err := s.WeekSummaryPending(tuesday)
+	require.NoError(t, err)
+	assert.False(t, pending, "no data means summary not pending")
+
+	// Add data for the current week.
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"task a"}, nil))
+
+	_, pending, err = s.WeekSummaryPending(tuesday)
+	require.NoError(t, err)
+	assert.True(t, pending, "week with data must be pending")
+
+	// Mark summarized.
+	require.NoError(t, s.MarkWeekSummarized(week28))
+
+	_, pending, err = s.WeekSummaryPending(tuesday)
+	require.NoError(t, err)
+	assert.False(t, pending, "after marking summarized the week must not be pending")
+
+	// Summarized flag survives regeneration.
+	require.NoError(t, s.RegenerateWeekly(week28))
+	meta, _, err := s.loadWeeklyMeta(week28)
+	require.NoError(t, err)
+	assert.True(t, meta.Summarized, "summarized flag must survive regeneration")
+}
+
+func TestStore_WeekSummaryPendingWeekID(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"task"}, nil))
+	week, _, err := s.WeekSummaryPending(tuesday)
+	require.NoError(t, err)
+	assert.Equal(t, week28, week, "WeekSummaryPending must return the current week's WeekID")
+}
+
 func TestStore_ReviewPostpone(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)

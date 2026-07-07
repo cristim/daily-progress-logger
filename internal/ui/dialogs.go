@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
@@ -50,6 +51,14 @@ func (s *dialogSpec) run() (dialogResult, error) {
 	default:
 		return dialogCanceled, nil
 	}
+}
+
+func (a *App) runWeeklySummaryDialog(week store.WeekID) (dialogResult, error) {
+	spec, err := a.buildWeeklySummaryDialog(week)
+	if err != nil {
+		return dialogCanceled, err
+	}
+	return spec.run()
 }
 
 func (a *App) runMorningDialog() (dialogResult, error) {
@@ -236,6 +245,71 @@ func (a *App) buildWeekReviewDialog(week store.WeekID) (*dialogSpec, error) {
 			}
 		}
 		return a.store.ApplyWeekReview(week, decisions)
+	}
+	return &dialogSpec{dialog: dialog, apply: apply}, nil
+}
+
+// buildWeeklySummaryDialog shows the current week's accomplishments for a
+// quick Friday review and lets the user open the weekly file.
+func (a *App) buildWeeklySummaryDialog(week store.WeekID) (*dialogSpec, error) {
+	dailies, err := a.store.DailiesInWeek(week)
+	if err != nil {
+		return nil, err
+	}
+
+	dialog := qt.NewQDialog(a.window.win.QWidget)
+	dialog.SetWindowTitle(fmt.Sprintf("Week Summary: %s", week))
+	dialog.SetMinimumWidth(500)
+	layout := qt.NewQVBoxLayout(dialog.QWidget)
+
+	// Build the HTML content for the browser.
+	var sb strings.Builder
+	sb.WriteString("<h3>Done this week</h3>")
+	totalDone := 0
+	for _, d := range dailies {
+		var done []string
+		for _, item := range d.Plan {
+			if item.State == store.StateDone {
+				done = append(done, item.Text)
+			}
+		}
+		done = append(done, d.Done...)
+		if len(done) == 0 {
+			continue
+		}
+		fmt.Fprintf(&sb, "<b>%s, %d %s</b><ul>",
+			d.Date.Weekday(), d.Date.Day(), d.Date.Month())
+		for _, text := range done {
+			fmt.Fprintf(&sb, "<li>%s</li>", html.EscapeString(text))
+		}
+		sb.WriteString("</ul>")
+		totalDone += len(done)
+	}
+	if totalDone == 0 {
+		sb.WriteString("<p><i>Nothing completed yet this week.</i></p>")
+	}
+	fmt.Fprintf(&sb, "<p><i>%d item(s) completed.</i></p>", totalDone)
+
+	browser := qt.NewQTextBrowser2()
+	browser.SetHtml(sb.String())
+	browser.SetReadOnly(true)
+	browser.SetMinimumHeight(240)
+	layout.AddWidget(browser.QWidget)
+
+	// "Open Weekly File" button regenerates the file so it exists, then opens it.
+	openBtn := qt.NewQPushButton3("Open Weekly File")
+	weeklyPath := a.store.WeeklyPath(week)
+	openBtn.OnClicked(func() {
+		// Regenerate so the file exists even if this is an early-week view.
+		_ = a.store.RegenerateWeekly(week)
+		qt.QDesktopServices_OpenUrl(qt.QUrl_FromLocalFile(weeklyPath))
+	})
+	layout.AddWidget(openBtn.QWidget)
+
+	attachButtons(dialog, layout)
+
+	apply := func() error {
+		return a.store.MarkWeekSummarized(week)
 	}
 	return &dialogSpec{dialog: dialog, apply: apply}, nil
 }
