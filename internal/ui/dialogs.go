@@ -34,8 +34,14 @@ type dialogSpec struct {
 	apply  func() error
 }
 
-// run shows the dialog modally and applies the answers if accepted.
+// run shows the dialog modally and applies the answers if accepted. The
+// dialog is raised to the front: the app usually sits in the background, so
+// without this a timer-triggered check-in can open unnoticed behind the
+// active application.
 func (s *dialogSpec) run() (dialogResult, error) {
+	s.dialog.Show()
+	s.dialog.Raise()
+	s.dialog.ActivateWindow()
 	switch s.dialog.Exec() {
 	case int(qt.QDialog__Accepted):
 		return dialogAccepted, s.apply()
