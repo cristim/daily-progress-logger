@@ -266,7 +266,10 @@ func (a *App) buildWeekReviewDialog(week store.WeekID, rollover bool) (*dialogSp
 	layout.AddWidget(label.QWidget)
 
 	reviewChoices := []choice{
-		{id: int(store.ReviewKeep), icon: qt.QStyle__SP_DialogApplyButton, tooltip: "Keep this week"},
+		// "Keep on backlog" is the honest label: the item stays in backlog
+		// Current (not in today's plan), and will surface again at the next
+		// morning check-in with the "(backlog)" suffix.
+		{id: int(store.ReviewKeep), icon: qt.QStyle__SP_DialogApplyButton, tooltip: "Keep on backlog"},
 		{id: int(store.ReviewPostpone), customIcon: postponeIcon(), tooltip: "Postpone to next week"},
 		{id: int(store.ReviewDrop), icon: qt.QStyle__SP_TrashIcon, tooltip: "Drop"},
 	}

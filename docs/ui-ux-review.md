@@ -574,7 +574,7 @@ by hand every morning after.
 which they were kept at review (needs a small kept-at-review marker in the
 weekly meta or backlog), or rename the review choice to "Keep on backlog"
 so expectations match behavior.
-**Status:** open
+**Status:** implemented
 
 ### 40. Manual-review Drop can resurrect via the Next week section
 **Severity:** low
