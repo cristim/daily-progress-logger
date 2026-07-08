@@ -15,6 +15,10 @@ func normalizeText(s string) string {
 	return strings.ToLower(strings.Join(strings.Fields(s), " "))
 }
 
+// NormalizeItemText is the exported form of normalizeText for callers outside
+// the store package (e.g. the UI) that need the same canonical comparison.
+func NormalizeItemText(s string) string { return normalizeText(s) }
+
 const dateLayout = "2006-01-02"
 
 // Daily is one day's log: the plan checklist filled in each morning and the

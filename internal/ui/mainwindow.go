@@ -20,6 +20,9 @@ type mainWindow struct {
 	planList     *qt.QListWidget
 	newItem      *qt.QLineEdit
 	refreshTimer *qt.QTimer
+	// renderedDate records the date (time.DateOnly) of the last refresh so the
+	// midnight watchdog in CheckPrompts can detect a day rollover and refresh.
+	renderedDate string
 }
 
 func newMainWindow(app *App) *mainWindow {
@@ -124,6 +127,7 @@ func (w *mainWindow) rowWidth() int {
 // refresh reloads today's plan into the list.
 func (w *mainWindow) refresh() {
 	today := time.Now()
+	w.renderedDate = today.Format(time.DateOnly)
 	daily, exists, err := w.app.store.LoadDaily(today)
 	if err != nil {
 		w.app.reportError(err)
@@ -174,9 +178,32 @@ func elideText(s string, maxRunes int) (display string, truncated bool) {
 	return string(runes[:maxRunes]) + "…", true
 }
 
+// findPlanIndex loads today's daily and returns the index of the first plan
+// item whose normalized text matches text. Returns -1 when not found (the
+// item was deleted from the file while the window was open). The found index
+// is safe to pass to index-based store methods within the same tick.
+func (w *mainWindow) findPlanIndex(today time.Time, text string) (int, error) {
+	d, _, err := w.app.store.LoadDaily(today)
+	if err != nil {
+		return -1, err
+	}
+	if d == nil {
+		return -1, nil
+	}
+	norm := store.NormalizeItemText(text)
+	for i, it := range d.Plan {
+		if store.NormalizeItemText(it.Text) == norm {
+			return i, nil
+		}
+	}
+	return -1, nil
+}
+
 // buildPlanRow renders one plan item: its text, the Done / Not done /
-// Postpone selector, and a move-to-backlog button.
-func (w *mainWindow) buildPlanRow(index int, item store.Item) *qt.QWidget {
+// Postpone selector, and a move-to-backlog button. Row actions look up the
+// item by text at click time so stale row indexes after midnight or hand-edits
+// do not hit the wrong item.
+func (w *mainWindow) buildPlanRow(_ int, item store.Item) *qt.QWidget {
 	row := qt.NewQWidget2()
 	layout := qt.NewQHBoxLayout(row)
 	layout.SetContentsMargins(6, 2, 6, 2)
@@ -207,13 +234,27 @@ func (w *mainWindow) buildPlanRow(index int, item store.Item) *qt.QWidget {
 		label.SetToolTip(item.Text)
 	}
 
+	// Capture text by value so click handlers can resolve the index freshly.
+	capturedText := item.Text
+
 	selector := newStateSelector(item.State)
 	selector.onChanged(func(state store.ItemState) {
-		var err error
+		now := time.Now()
+		idx, err := w.findPlanIndex(now, capturedText)
+		if err != nil {
+			w.app.reportError(err)
+			w.scheduleRefresh()
+			return
+		}
+		if idx < 0 {
+			// Item was removed while window was open; just refresh.
+			w.scheduleRefresh()
+			return
+		}
 		if state == store.StatePostponed {
-			err = w.app.store.PostponePlanItem(time.Now(), index)
+			err = w.app.store.PostponePlanItem(now, idx)
 		} else {
-			err = w.app.store.SetPlanItemState(time.Now(), index, state)
+			err = w.app.store.SetPlanItemState(now, idx, state)
 		}
 		if err != nil {
 			w.app.reportError(err)
@@ -227,10 +268,22 @@ func (w *mainWindow) buildPlanRow(index int, item store.Item) *qt.QWidget {
 	backlog.SetToolTip("Move to the cross-week backlog")
 	backlog.SetAccessibleName("Move to the cross-week backlog")
 	backlog.OnClicked(func() {
-		if err := w.app.store.MoveToBacklog(time.Now(), index); err != nil {
+		now := time.Now()
+		idx, err := w.findPlanIndex(now, capturedText)
+		if err != nil {
+			w.app.reportError(err)
+			w.scheduleRefresh()
+			return
+		}
+		if idx < 0 {
+			// Item was removed while window was open; just refresh.
+			w.scheduleRefresh()
+			return
+		}
+		if err := w.app.store.MoveToBacklog(now, idx); err != nil {
 			w.app.reportError(err)
 		} else {
-			w.app.notifyBacklogMove(item.Text)
+			w.app.notifyBacklogMove(capturedText)
 		}
 		w.scheduleRefresh()
 	})

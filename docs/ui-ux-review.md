@@ -482,7 +482,7 @@ but not for the main window rows.
 changes (e.g. from the existing 60 s `CheckPrompts` tick); address row
 actions by item text like `ApplyEvening` does, or at least verify the text
 at `index` still matches before applying.
-**Status:** open
+**Status:** implemented
 
 ### 34. "Skip Today" is inaccurate on manual dialogs, and its meaning flips after a manual snooze
 **Severity:** low

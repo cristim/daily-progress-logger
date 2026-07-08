@@ -227,6 +227,13 @@ func (a *App) CheckPrompts() {
 		return
 	}
 	now := time.Now()
+
+	// Midnight watchdog: if the main window still shows yesterday's plan,
+	// refresh it so the heading and item list reflect the new day.
+	if today := now.Format(time.DateOnly); a.window.renderedDate != "" && a.window.renderedDate != today {
+		a.window.scheduleRefresh()
+	}
+
 	due, err := a.duePrompts(now)
 	if err != nil {
 		a.reportError(err)
