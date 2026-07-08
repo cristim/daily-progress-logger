@@ -48,8 +48,11 @@ type App struct {
 	// skippedOn records the day (time.DateOnly) a prompt was canceled, so
 	// it stays quiet until the next day (or app restart).
 	skippedOn map[schedule.Prompt]string
-	// forced prompts were requested explicitly (-checkin flag) and are kept
-	// pending even when the schedule alone would not show them.
+	// forced prompts were requested explicitly (-checkin flag or tray menu) and
+	// are kept pending even when the schedule alone would not show them. The
+	// bool value records whether the prompt originated from a manual invocation
+	// (true) or a scheduled one (false), so a snoozed manual prompt re-fires
+	// with "Close" semantics rather than "Skip Today".
 	forced map[schedule.Prompt]bool
 	// oneshot mode (cron/launchd): quit once nothing is pending.
 	oneshot bool
@@ -311,8 +314,9 @@ func (a *App) scheduleState(now time.Time) (schedule.State, error) {
 // loop), and records the user's snooze/skip choice.
 // For scheduled invocations (timer/CheckPrompts) use manual=false.
 // For user-initiated invocations (tray menu, -checkin flag) use manual=true:
-// cancel just closes without setting skippedOn, and snooze keeps the prompt
-// forced so it re-fires after the snooze window even when not otherwise due.
+// the reject button shows "Close" instead of "Skip Today", cancel just closes
+// without setting skippedOn, and snooze keeps the prompt forced (with the
+// manual bit) so the re-fired dialog also shows "Close" semantics.
 func (a *App) runPrompt(prompt schedule.Prompt, manual bool) {
 	if a.dialogOpen {
 		return
@@ -324,13 +328,19 @@ func (a *App) runPrompt(prompt schedule.Prompt, manual bool) {
 		a.maybeQuitOneshot()
 	}()
 
+	// A snoozed manual prompt re-fires via forced with the manual bit set:
+	// honour that origin so the re-fire also shows "Close" semantics.
+	if isForced, ok := a.forced[prompt]; ok && isForced {
+		manual = true
+	}
+
 	result := dialogAccepted
 	var err error
 	switch prompt {
 	case schedule.PromptMorning:
-		result, err = a.runMorningDialog()
+		result, err = a.runMorningDialog(manual)
 	case schedule.PromptEvening:
-		result, err = a.runEveningDialog()
+		result, err = a.runEveningDialog(manual)
 	case schedule.PromptWeekReview:
 		result, err = a.runWeekReviewLoop()
 	case schedule.PromptWeeklySummary:
@@ -346,7 +356,8 @@ func (a *App) runPrompt(prompt schedule.Prompt, manual bool) {
 	case dialogSnoozed:
 		a.snoozeUntil[prompt] = now.Add(time.Hour)
 		if manual {
-			// Keep the prompt forced so it re-fires after the snooze window.
+			// Keep the prompt forced and record the manual origin so the
+			// re-fired dialog after the snooze also shows "Close" semantics.
 			a.forced[prompt] = true
 		}
 	case dialogCanceled:
@@ -517,11 +528,11 @@ func (a *App) GrabScreenshots(dir string) error {
 	qt.QCoreApplication_ProcessEvents()
 	a.window.refresh()
 
-	morning, err := a.buildMorningDialog(now)
+	morning, err := a.buildMorningDialog(now, false) // screenshots: use scheduled appearance
 	if err != nil {
 		return err
 	}
-	evening, err := a.buildEveningDialog(now)
+	evening, err := a.buildEveningDialog(now, false)
 	if err != nil {
 		return err
 	}

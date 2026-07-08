@@ -66,16 +66,16 @@ func (a *App) runWeeklySummaryDialog(week store.WeekID, markOnAccept bool) (dial
 	return spec.run()
 }
 
-func (a *App) runMorningDialog() (dialogResult, error) {
-	spec, err := a.buildMorningDialog(time.Now())
+func (a *App) runMorningDialog(manual bool) (dialogResult, error) {
+	spec, err := a.buildMorningDialog(time.Now(), manual)
 	if err != nil {
 		return dialogCanceled, err
 	}
 	return spec.run()
 }
 
-func (a *App) runEveningDialog() (dialogResult, error) {
-	spec, err := a.buildEveningDialog(time.Now())
+func (a *App) runEveningDialog(manual bool) (dialogResult, error) {
+	spec, err := a.buildEveningDialog(time.Now(), manual)
 	if err != nil {
 		return dialogCanceled, err
 	}
@@ -95,7 +95,8 @@ func (a *App) runWeekReviewDialog(week store.WeekID, rollover bool) (dialogResul
 
 // buildMorningDialog asks what the user plans to work on today, offering
 // carry-over candidates from earlier in the week and the backlog.
-func (a *App) buildMorningDialog(today time.Time) (*dialogSpec, error) {
+// manual mirrors runPrompt's manual flag and is forwarded to attachButtons.
+func (a *App) buildMorningDialog(today time.Time, manual bool) (*dialogSpec, error) {
 	candidates, err := a.store.MorningCandidates(today)
 	if err != nil {
 		return nil, err
@@ -163,7 +164,7 @@ func (a *App) buildMorningDialog(today time.Time) (*dialogSpec, error) {
 		}
 		layout.AddWidget(candidateList.QWidget)
 	}
-	attachButtons(dialog, layout)
+	attachButtons(dialog, layout, manual)
 
 	apply := func() error {
 		var adopted []store.Candidate
@@ -181,7 +182,8 @@ func (a *App) buildMorningDialog(today time.Time) (*dialogSpec, error) {
 
 // buildEveningDialog asks what happened to each planned item and what else
 // was accomplished.
-func (a *App) buildEveningDialog(today time.Time) (*dialogSpec, error) {
+// manual mirrors runPrompt's manual flag and is forwarded to attachButtons.
+func (a *App) buildEveningDialog(today time.Time, manual bool) (*dialogSpec, error) {
 	daily, _, err := a.store.LoadDaily(today)
 	if err != nil {
 		return nil, err
@@ -224,7 +226,7 @@ func (a *App) buildEveningDialog(today time.Time) (*dialogSpec, error) {
 	editor.SetPlaceholderText("One accomplishment per line…")
 	editor.SetFocus()
 	layout.AddWidget(editor.QWidget)
-	attachButtons(dialog, layout)
+	attachButtons(dialog, layout, manual)
 
 	apply := func() error {
 		decisions := make([]store.EveningDecision, len(plan))
@@ -243,6 +245,7 @@ func (a *App) buildEveningDialog(today time.Time) (*dialogSpec, error) {
 // rollover controls whether NextWeek backlog items are promoted to Current
 // before applying decisions: true for the scheduled Monday review, false for
 // on-demand manual re-triages mid-week.
+// manual is forwarded to attachButtons (Close vs Skip Today label).
 func (a *App) buildWeekReviewDialog(week store.WeekID, rollover bool) (*dialogSpec, error) {
 	items, err := a.store.WeekReviewCandidates(week)
 	if err != nil {
@@ -284,7 +287,8 @@ func (a *App) buildWeekReviewDialog(week store.WeekID, rollover bool) (*dialogSp
 		}
 		layout.AddWidget(area.QWidget)
 	}
-	attachButtons(dialog, layout)
+	// rollover=true means scheduled Monday review; rollover=false means manual.
+	attachButtons(dialog, layout, !rollover)
 
 	apply := func() error {
 		decisions := make([]store.ReviewDecision, len(items))
@@ -354,7 +358,8 @@ func (a *App) buildWeeklySummaryDialog(week store.WeekID, markOnAccept bool) (*d
 	})
 	layout.AddWidget(openBtn.QWidget)
 
-	attachButtons(dialog, layout)
+	// markOnAccept=true is the scheduled path; markOnAccept=false is the manual view.
+	attachButtons(dialog, layout, !markOnAccept)
 
 	apply := func() error {
 		if !markOnAccept {
@@ -365,15 +370,21 @@ func (a *App) buildWeeklySummaryDialog(week store.WeekID, markOnAccept bool) (*d
 	return &dialogSpec{dialog: dialog, apply: apply}, nil
 }
 
-// attachButtons appends an OK / Postpone 1h / Skip Today button box wired
-// to the dialog. "Postpone 1h" snoozes the check-in; "Skip Today" (the
-// reject role, so Escape triggers it) silences it until tomorrow.
-func attachButtons(dialog *qt.QDialog, layout *qt.QVBoxLayout) {
+// attachButtons appends an OK / Postpone 1h / reject button box to the
+// dialog. When manual is true (tray-invoked check-in) the reject button
+// says "Close" with no tooltip and no skippedOn side effect; when false
+// (scheduled prompt) it says "Skip Today" and silences the check-in until
+// tomorrow. "Remind me in 1h" always snoozes.
+func attachButtons(dialog *qt.QDialog, layout *qt.QVBoxLayout, manual bool) {
 	buttons := qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel)
 	buttons.Button(qt.QDialogButtonBox__Ok).SetDefault(true)
-	skip := buttons.Button(qt.QDialogButtonBox__Cancel)
-	skip.SetText("Skip Today")
-	skip.SetToolTip("Don't ask again today")
+	reject := buttons.Button(qt.QDialogButtonBox__Cancel)
+	if manual {
+		reject.SetText("Close")
+	} else {
+		reject.SetText("Skip Today")
+		reject.SetToolTip("Don't ask again today")
+	}
 	snooze := buttons.AddButton2("Remind me in 1h", qt.QDialogButtonBox__ActionRole)
 	snooze.SetToolTip("Ask again in an hour")
 	snooze.OnClicked(func() { dialog.Done(snoozeCode) })

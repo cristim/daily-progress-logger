@@ -499,7 +499,7 @@ which one is on screen.
 "Close" (no tooltip) on manual runs; carry the manual origin through the
 `forced` map (e.g. `forced[prompt] = manual`) so a snoozed manual prompt
 re-fires with manual semantics.
-**Status:** open
+**Status:** implemented
 
 ### 35. "Remind me in 1h" late in the evening silently drops the check-in at midnight
 **Severity:** low
