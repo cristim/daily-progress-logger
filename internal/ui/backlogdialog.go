@@ -27,6 +27,9 @@ func (a *App) buildBacklogDialog() (*backlogDialog, error) {
 	bd.scrollArea = qt.NewQScrollArea2()
 	bd.scrollArea.SetWidgetResizable(true)
 	bd.scrollArea.SetMaximumHeight(360)
+	// Suppress the horizontal scrollbar: a single long item must not push the
+	// "Add to today's plan" / "Move" buttons of every row off the right edge.
+	bd.scrollArea.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
 	mainLayout.AddWidget(bd.scrollArea.QWidget)
 
 	buttons := qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Close)
@@ -93,6 +96,12 @@ func (bd *backlogDialog) populateRows() error {
 	return nil
 }
 
+// backlogLabelWidth is the pixel budget for the item label in a backlog row:
+// 460 px dialog minus 12 px row margins minus ~76 px for two 32 px icon
+// buttons with 4 px spacing between them and 4 px between the label and the
+// first button.  Using a fixed constant avoids reading the unshown viewport.
+const backlogLabelWidth = 360
+
 // buildRow renders one backlog item as a horizontal row with a text label
 // and two icon tool buttons: "Plan Today" and "Move to next/this week".
 func (bd *backlogDialog) buildRow(text string, isCurrent bool) *qt.QWidget {
@@ -100,14 +109,14 @@ func (bd *backlogDialog) buildRow(text string, isCurrent bool) *qt.QWidget {
 	layout := qt.NewQHBoxLayout(row)
 	layout.SetContentsMargins(6, 2, 6, 2)
 
-	const maxDisplayRunes = 120
-	displayText, wasTruncated := elideText(text, maxDisplayRunes)
+	// Elide using pixel width so CJK / emoji runes do not overflow the label
+	// budget.  The full text is always available via the tooltip.
+	fm := qt.QApplication_FontMetrics()
+	displayText := fm.ElidedText(text, qt.ElideRight, backlogLabelWidth)
 
 	label := qt.NewQLabel3(displayText)
 	label.SetTextFormat(qt.PlainText)
-	if wasTruncated {
-		label.SetToolTip(text)
-	}
+	label.SetToolTip(text) // always set so the full text is reachable on hover
 
 	// Plan Today: adopt into today's plan and remove from backlog.
 	planBtn := qt.NewQToolButton2()

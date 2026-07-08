@@ -442,7 +442,7 @@ items, buttons fine).
 (`QFontMetrics::elidedText`) or size rows to the scroll-area viewport width
 instead of a fixed rune count; keep the full text in the tooltip; disable
 the horizontal scrollbar as the main window does.
-**Status:** open
+**Status:** implemented
 
 ### 32. "Add to today's plan" on an already-planned item silently voids its state
 **Severity:** medium
