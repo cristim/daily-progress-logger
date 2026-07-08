@@ -601,7 +601,7 @@ reviews, which catch up via the `UnreviewedWeek` oldest-first loop
 **Fix:** Make the pending check look back like `UnreviewedWeek` does (most
 recent week with data and `summarized: false`) and let the prompt fire on
 any later day, or fold a missed summary into the Monday review flow.
-**Status:** open
+**Status:** implemented
 
 ### Checked and found fine (round 3)
 - Backlog dialog with 30 short items: sections render in order, vertical

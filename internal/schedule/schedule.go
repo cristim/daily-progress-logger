@@ -55,6 +55,10 @@ type State struct {
 	WeekReviewPending bool
 	// SummaryPending: the current week has data but has not yet been summarized.
 	SummaryPending bool
+	// SummaryPendingPastWeek is true when the pending summary is for a past
+	// week (missed Friday, holiday). In that case the prompt fires on any day
+	// regardless of the configured summary day and time.
+	SummaryPendingPastWeek bool
 }
 
 // Due returns the prompts due at now, in the order they should be shown:
@@ -85,7 +89,12 @@ func Due(now time.Time, morning, evening TimeOfDay, st State,
 	if eveningDue {
 		due = append(due, PromptEvening)
 	}
-	if st.SummaryPending && now.Weekday() == summaryDay && summary.reached(now) {
+	summaryDue := st.SummaryPending && now.Weekday() == summaryDay && summary.reached(now)
+	// A past week's missed summary fires on any day (finding 41).
+	if st.SummaryPendingPastWeek {
+		summaryDue = st.SummaryPending
+	}
+	if summaryDue {
 		due = append(due, PromptWeeklySummary)
 	}
 	return due

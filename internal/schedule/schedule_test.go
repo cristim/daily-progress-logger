@@ -108,6 +108,20 @@ func TestDue(t *testing.T) {
 			state: State{MorningDone: true, EveningDone: true, SummaryPending: false},
 		},
 		{
+			// Past-week summary (missed Friday) fires on any day (finding 41).
+			name:  "missed Friday summary fires on Monday via SummaryPendingPastWeek",
+			now:   atDay(time.Monday, 9, 30),
+			state: State{MorningDone: false, SummaryPending: true, SummaryPendingPastWeek: true},
+			want:  []Prompt{PromptMorning, PromptWeeklySummary},
+		},
+		{
+			// Without the past-week flag, a summary pending on Monday is NOT shown.
+			name:  "current-week summary not due on Monday before summary day",
+			now:   atDay(time.Monday, 9, 30),
+			state: State{MorningDone: false, SummaryPending: true, SummaryPendingPastWeek: false},
+			want:  []Prompt{PromptMorning},
+		},
+		{
 			// At Friday 18:00 both morning and evening are overdue; morning
 			// is dropped. Weekly summary follows evening.
 			name:  "full friday stack: evening then summary (morning dropped)",

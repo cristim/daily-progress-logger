@@ -611,23 +611,77 @@ func (s *Store) WeekReviewCandidates(week WeekID) ([]string, error) {
 	return texts, nil
 }
 
-// WeekSummaryPending reports whether now's current week has any daily data
-// and has not yet been marked summarized. The WeekID of the current week is
-// also returned so callers can open the summary dialog without recomputing it.
+// WeekSummaryPending reports whether there is an unsummarized week. It checks
+// the current week first (scheduled behavior: the configured summary day and
+// time have been reached); if the current week is already summarized or has no
+// data, it looks back at all prior weeks that have data and returns the most
+// recent one that has not yet been summarized. This ensures a missed Friday
+// summary (app not running, holiday) is offered on Saturday or any later day
+// rather than being silently lost (finding 41).
+//
+// The WeekID of the pending week is also returned so callers can open the
+// summary dialog without recomputing it.
 func (s *Store) WeekSummaryPending(now time.Time) (WeekID, bool, error) {
-	week := WeekOf(now)
-	dailies, err := s.DailiesInWeek(week)
+	current := WeekOf(now)
+
+	// Check the current week first: daily data exists and not yet summarized.
+	dailies, err := s.DailiesInWeek(current)
 	if err != nil {
 		return WeekID{}, false, err
 	}
-	if len(dailies) == 0 {
-		return week, false, nil
+	if len(dailies) > 0 {
+		meta, _, err := s.loadWeeklyMeta(current)
+		if err != nil {
+			return WeekID{}, false, err
+		}
+		if !meta.Summarized {
+			return current, true, nil
+		}
 	}
-	meta, _, err := s.loadWeeklyMeta(week)
+
+	// Look back: find the most recent prior week with data that was not
+	// summarized (mirrors UnreviewedWeek's look-back approach).
+	pattern := filepath.Join(s.DataDir, "daily", "*", "*", "*.md")
+	paths, err := filepath.Glob(pattern)
 	if err != nil {
-		return WeekID{}, false, err
+		return WeekID{}, false, fmt.Errorf("listing daily files: %w", err)
 	}
-	return week, !meta.Summarized, nil
+	weekSet := map[WeekID]bool{}
+	for _, path := range paths {
+		name := filepath.Base(path)
+		d, err := time.ParseInLocation(dateLayout, name[:len(name)-len(".md")], time.Local)
+		if err != nil {
+			continue
+		}
+		week := WeekOf(d)
+		if week.Before(current) {
+			weekSet[week] = true
+		}
+	}
+	var newest WeekID
+	found := false
+	for week := range weekSet {
+		meta, _, err := s.loadWeeklyMeta(week)
+		if err != nil {
+			return WeekID{}, false, err
+		}
+		if meta.Summarized {
+			continue
+		}
+		// Check the week actually has daily data.
+		pastDailies, err := s.DailiesInWeek(week)
+		if err != nil {
+			return WeekID{}, false, err
+		}
+		if len(pastDailies) == 0 {
+			continue
+		}
+		if !found || newest.Before(week) {
+			newest = week
+			found = true
+		}
+	}
+	return newest, found, nil
 }
 
 // MarkWeekSummarized regenerates the weekly file for week with the summarized

@@ -310,11 +310,17 @@ func (a *App) scheduleState(now time.Time) (schedule.State, error) {
 		return st, err
 	}
 	st.WeekReviewPending = pending
-	_, summaryPending, err := a.store.WeekSummaryPending(now)
+	pendingWeek, summaryPending, err := a.store.WeekSummaryPending(now)
 	if err != nil {
 		return st, err
 	}
 	st.SummaryPending = summaryPending
+	// If the pending week is before the current week, the summary was missed
+	// (e.g. Friday away) and should fire on any day, not just the summary day.
+	if summaryPending {
+		currentWeek := store.WeekOf(now)
+		st.SummaryPendingPastWeek = pendingWeek.Before(currentWeek)
+	}
 	return st, nil
 }
 
@@ -414,14 +420,28 @@ func (a *App) runWeekReviewLoop() (dialogResult, error) {
 	return result, nil
 }
 
-// runWeeklySummaryForNow resolves the current week's ID and shows the summary
-// dialog for the scheduled path (marks the week summarized on accept).
+// runWeeklySummaryForNow shows the summary dialog for the oldest unsummarized
+// week. When multiple past weeks are pending it loops oldest-first (mirroring
+// runWeekReviewLoop), stopping when the user snoozes or cancels.
 func (a *App) runWeeklySummaryForNow() (dialogResult, error) {
-	week, _, err := a.store.WeekSummaryPending(time.Now())
-	if err != nil {
-		return dialogCanceled, err
+	result := dialogAccepted
+	for {
+		week, pending, err := a.store.WeekSummaryPending(time.Now())
+		if err != nil {
+			return dialogCanceled, err
+		}
+		if !pending {
+			break
+		}
+		result, err = a.runWeeklySummaryDialog(week, true) // mark summarized on accept
+		if err != nil {
+			return dialogCanceled, err
+		}
+		if result != dialogAccepted {
+			break
+		}
 	}
-	return a.runWeeklySummaryDialog(week, true) // scheduled: mark summarized on accept
+	return result, nil
 }
 
 // applyManualResult applies the bookkeeping for a user-initiated (manual)

@@ -621,6 +621,31 @@ func TestStore_MoveBacklogItemDedup(t *testing.T) {
 	assert.Equal(t, []string{"task a"}, backlog.NextWeek, "duplicate must not be added on arrival")
 }
 
+// TestStore_WeekSummaryPendingLookBack verifies that WeekSummaryPending returns
+// a past week when the app was not running during the scheduled Friday window
+// (finding 41: the old implementation only inspected the current week).
+func TestStore_WeekSummaryPendingLookBack(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	nextMonday := date("2026-07-13") // first day of week 29
+
+	// Week 28 has data but no summary yet.
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"task"}, nil))
+
+	// Querying on the following Monday (week 29): the current week (29) has no
+	// data, so the look-back should find week 28.
+	pendingWeek, pending, err := s.WeekSummaryPending(nextMonday)
+	require.NoError(t, err)
+	require.True(t, pending, "missed Friday summary must be pending on a later day")
+	assert.Equal(t, week28, pendingWeek, "look-back must return week 28")
+
+	// After marking week 28 summarized, nothing is pending.
+	require.NoError(t, s.MarkWeekSummarized(week28))
+	_, pending, err = s.WeekSummaryPending(nextMonday)
+	require.NoError(t, err)
+	assert.False(t, pending, "after marking summarized nothing must be pending")
+}
+
 // TestStore_ApplyWeekReviewWithoutRollover verifies that rollover=false leaves
 // NextWeek items untouched (manual mid-week re-triage behaviour).
 func TestStore_ApplyWeekReviewWithoutRollover(t *testing.T) {
