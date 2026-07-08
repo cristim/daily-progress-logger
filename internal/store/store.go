@@ -409,10 +409,17 @@ func (s *Store) AdoptFromBacklog(today time.Time, text string) error {
 	return s.SaveBacklog(backlog)
 }
 
+// ErrBacklogItemNotFound is returned by MoveBacklogItem when the item cannot
+// be located in the expected source section (e.g. the file was edited while
+// the dialog was open). UI code can test for it with errors.Is to show a
+// user-friendly message instead of a raw store error.
+var ErrBacklogItemNotFound = fmt.Errorf("backlog item not found")
+
 // MoveBacklogItem moves text between the two backlog sections. When toNextWeek
 // is true the item moves from Current to NextWeek; when false from NextWeek to
-// Current. addCurrent/addNextWeek guard against duplicate entries. An error is
-// returned when the item is not found in the source section.
+// Current. addCurrent/addNextWeek guard against duplicate entries. An error
+// wrapping ErrBacklogItemNotFound is returned when the item is not found in
+// the source section.
 func (s *Store) MoveBacklogItem(text string, toNextWeek bool) error {
 	backlog, err := s.LoadBacklog()
 	if err != nil {
@@ -436,7 +443,8 @@ func (b *Backlog) moveItem(text string, toNextWeek bool) error {
 }
 
 // moveTo is the generic inner helper for moveItem: it checks that norm exists
-// in src, invokes remove and add, returning an error when the item is absent.
+// in src, invokes remove and add, returning an error wrapping
+// ErrBacklogItemNotFound when the item is absent.
 func (b *Backlog) moveTo(text, norm string, src []string, srcName string, remove, add func(string)) error {
 	for _, item := range src {
 		if normalizeText(item) == norm {
@@ -445,7 +453,7 @@ func (b *Backlog) moveTo(text, norm string, src []string, srcName string, remove
 			return nil
 		}
 	}
-	return fmt.Errorf("item %q not found in the %s backlog section", text, srcName)
+	return fmt.Errorf("item %q not found in the %s backlog section: %w", text, srcName, ErrBacklogItemNotFound)
 }
 
 // MoveToBacklog removes a plan item from the day and stores it in the

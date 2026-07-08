@@ -544,7 +544,7 @@ the item lands in "This week".
 dialog headers to "Current" / "Next week"); on a missing-item action,
 refresh the rows and show a friendly one-liner ("This item is no longer in
 the backlog.") instead of the store error.
-**Status:** open
+**Status:** implemented
 
 ### 38. The adopt button reuses the checkmark icon that means Done/Keep everywhere else
 **Severity:** low

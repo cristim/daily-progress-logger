@@ -1,9 +1,12 @@
 package ui
 
 import (
+	"errors"
 	"time"
 
 	qt "github.com/mappu/miqt/qt6"
+
+	"github.com/cristim/daily-progress-logger/internal/store"
 )
 
 // backlogDialog is the non-check-in dialog that lists all backlog items and
@@ -143,7 +146,7 @@ func (bd *backlogDialog) buildRow(text string, isCurrent bool) *qt.QWidget {
 		moveBtn.SetAccessibleName("Move to next week")
 		moveBtn.OnClicked(func() {
 			if err := bd.app.store.MoveBacklogItem(text, true); err != nil {
-				bd.app.reportError(err)
+				bd.handleBacklogMoveErr(err)
 			}
 			bd.scheduleRefresh()
 		})
@@ -153,7 +156,7 @@ func (bd *backlogDialog) buildRow(text string, isCurrent bool) *qt.QWidget {
 		moveBtn.SetAccessibleName("Move to this week")
 		moveBtn.OnClicked(func() {
 			if err := bd.app.store.MoveBacklogItem(text, false); err != nil {
-				bd.app.reportError(err)
+				bd.handleBacklogMoveErr(err)
 			}
 			bd.scheduleRefresh()
 		})
@@ -163,6 +166,20 @@ func (bd *backlogDialog) buildRow(text string, isCurrent bool) *qt.QWidget {
 	layout.AddWidget(planBtn.QWidget)
 	layout.AddWidget(moveBtn.QWidget)
 	return row
+}
+
+// handleBacklogMoveErr distinguishes a not-found error (the file was edited
+// while the dialog was open) from real I/O errors. Not-found shows a friendly
+// one-liner; other errors go to reportError.
+func (bd *backlogDialog) handleBacklogMoveErr(err error) {
+	if errors.Is(err, store.ErrBacklogItemNotFound) {
+		qt.QMessageBox_Information2(bd.dialog.QWidget,
+			"Daily Progress Logger",
+			"This item is no longer in the backlog.",
+			qt.QMessageBox__Ok)
+		return
+	}
+	bd.app.reportError(err)
 }
 
 // thisWeekIcon draws a left-pointing chevron mirroring postponeIcon, used for

@@ -28,6 +28,8 @@ markdown files you can grep, sync, or feed to an LLM at review time.
   backlog) and *Move to next/this week* (shuttles it between sections). The
   backlog file (`backlog.md`) remains plain markdown and can be edited
   directly via File → Open Data Folder for renaming or deleting items.
+  Note: the dialog shows "This week" for the section stored as `## Current`
+  in the file, and "Next week" for `## Next week`.
 - The app stays resident in the menu bar; the main window shows today's plan
   with add / check off / postpone / move-to-backlog actions.
 
