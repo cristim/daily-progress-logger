@@ -662,6 +662,11 @@ func (s *Store) ApplyWeekReview(week WeekID, decisions []ReviewDecision, rollove
 			backlog.addNextWeek(dec.Text)
 		case ReviewDrop:
 			backlog.removeCurrent(dec.Text)
+			// Also remove from NextWeek: an item can appear in both sections
+			// (postponed on one day, open as a review candidate from another).
+			// Without this, the dropped item survives in NextWeek and
+			// resurfaces in Current after the next scheduled rollover (finding 40).
+			backlog.removeNextWeek(dec.Text)
 			dropped = append(dropped, dec.Text)
 		default:
 			return fmt.Errorf("unknown review action %d for %q", dec.Action, dec.Text)

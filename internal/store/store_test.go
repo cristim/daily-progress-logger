@@ -643,3 +643,28 @@ func TestStore_ApplyWeekReviewWithoutRollover(t *testing.T) {
 	assert.Equal(t, []string{"deferred task"}, backlog.NextWeek,
 		"NextWeek must remain untouched when rollover=false")
 }
+
+// TestStore_ReviewDropClearsNextWeek verifies that a Drop decision removes the
+// item from the NextWeek section as well as Current, so it cannot resurface via
+// rollover (finding 40). Tests both the scheduled (rollover=true) and manual
+// (rollover=false) paths.
+func TestStore_ReviewDropClearsNextWeek(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	// An item is both a review candidate (open in the week) and in NextWeek
+	// (e.g. postponed on a different day of the same week).
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"item to drop"}, nil))
+	require.NoError(t, s.SaveBacklog(&Backlog{
+		NextWeek: []string{"item to drop"},
+	}))
+
+	require.NoError(t, s.ApplyWeekReview(week28, []ReviewDecision{
+		{Text: "item to drop", Action: ReviewDrop},
+	}, false)) // rollover=false: manual review, NextWeek must still be cleared on drop
+
+	backlog, err := s.LoadBacklog()
+	require.NoError(t, err)
+	assert.Empty(t, backlog.Current, "dropped item must not appear in Current")
+	assert.Empty(t, backlog.NextWeek, "dropped item must be removed from NextWeek")
+}

@@ -587,7 +587,7 @@ reappears in Current and hence in morning candidates.
 **Fix:** Drop (and Postpone-to-Drop symmetry aside) should also call
 `removeNextWeek(dec.Text)`; harmless on the scheduled path where the
 rollover has already emptied NextWeek.
-**Status:** open
+**Status:** implemented
 
 ### 41. A Friday away silently kills that week's summary prompt
 **Severity:** low
