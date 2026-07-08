@@ -528,7 +528,7 @@ while one of these dialogs is up pops the hidden main window beneath it.
 **Fix:** Route every modal surface through a shared guard, e.g. a small
 helper that sets/clears `dialogOpen` around any exec'd dialog or message
 box.
-**Status:** open
+**Status:** implemented
 
 ### 37. Backlog nomenclature differs between the dialog and the file; store errors surface raw
 **Severity:** low

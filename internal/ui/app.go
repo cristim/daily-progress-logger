@@ -142,15 +142,24 @@ func (a *App) MaybeOfferLoginItem() {
 		slog.Warn("loginitem: could not save config", "error", saveErr)
 	}
 
+	// If a check-in dialog is already open, skip the login offer this launch:
+	// LoginItemOffered is already set, so the offer will not repeat.
+	if a.dialogOpen {
+		return
+	}
+
 	const question = "Start Daily Progress Logger at login?\n" +
 		"It will run quietly in the menu bar."
-	answer := qt.QMessageBox_Question2(
-		a.window.win.QWidget,
-		"Daily Progress Logger",
-		question,
-		qt.QMessageBox__Yes,
-		qt.QMessageBox__No,
-	)
+	var answer int
+	a.withModalGuard(func() {
+		answer = qt.QMessageBox_Question2(
+			a.window.win.QWidget,
+			"Daily Progress Logger",
+			question,
+			qt.QMessageBox__Yes,
+			qt.QMessageBox__No,
+		)
+	})
 	if answer != int(qt.QMessageBox__Yes) {
 		return
 	}
@@ -580,8 +589,23 @@ func (a *App) GrabScreenshots(dir string) error {
 	return nil
 }
 
+// withModalGuard sets dialogOpen while f runs (a modal exec loop) and clears
+// it afterward via defer, so the 60 s timer and HandleReopen cannot stack a
+// check-in or re-show the main window on top of update/error/offer dialogs.
+// When dialogOpen is already set the call is a no-op and f is not invoked.
+func (a *App) withModalGuard(f func()) {
+	if a.dialogOpen {
+		return
+	}
+	a.dialogOpen = true
+	defer func() { a.dialogOpen = false }()
+	f()
+}
+
 func (a *App) reportError(err error) {
 	slog.Error("ui error", "error", err)
+	a.dialogOpen = true
+	defer func() { a.dialogOpen = false }()
 	qt.QMessageBox_Critical2(a.window.win.QWidget, "Daily Progress Logger", err.Error(),
 		qt.QMessageBox__Ok, qt.QMessageBox__NoButton)
 }
@@ -619,10 +643,12 @@ func (a *App) checkForUpdatesBackground(silent bool) {
 		if !newer {
 			if silent {
 				mainthread.Start(func() {
-					qt.QMessageBox_Information2(a.window.win.QWidget,
-						"Daily Progress Logger",
-						"You are running the latest version.",
-						qt.QMessageBox__Ok)
+					a.withModalGuard(func() {
+						qt.QMessageBox_Information2(a.window.win.QWidget,
+							"Daily Progress Logger",
+							"You are running the latest version.",
+							qt.QMessageBox__Ok)
+					})
 				})
 			}
 			return
@@ -643,17 +669,21 @@ func (a *App) checkForUpdatesManual() {
 		mainthread.Start(func() {
 			if err != nil {
 				slog.Debug("manual update check failed", "error", err)
-				qt.QMessageBox_Information2(a.window.win.QWidget,
-					"Daily Progress Logger",
-					"Could not check for updates: "+err.Error(),
-					qt.QMessageBox__Ok)
+				a.withModalGuard(func() {
+					qt.QMessageBox_Information2(a.window.win.QWidget,
+						"Daily Progress Logger",
+						"Could not check for updates: "+err.Error(),
+						qt.QMessageBox__Ok)
+				})
 				return
 			}
 			if !newer {
-				qt.QMessageBox_Information2(a.window.win.QWidget,
-					"Daily Progress Logger",
-					"You are running the latest version.",
-					qt.QMessageBox__Ok)
+				a.withModalGuard(func() {
+					qt.QMessageBox_Information2(a.window.win.QWidget,
+						"Daily Progress Logger",
+						"You are running the latest version.",
+						qt.QMessageBox__Ok)
+				})
 				return
 			}
 			a.showUpdateDialog(latest, pageURL)
@@ -668,25 +698,27 @@ func (a *App) showUpdateDialog(latest, pageURL string) {
 		"Daily Progress Logger %s is available (you have %s).",
 		latest, a.version)
 
-	dialog := qt.NewQDialog(a.window.win.QWidget)
-	dialog.SetWindowTitle("Update Available")
-	layout := qt.NewQVBoxLayout(dialog.QWidget)
+	a.withModalGuard(func() {
+		dialog := qt.NewQDialog(a.window.win.QWidget)
+		dialog.SetWindowTitle("Update Available")
+		layout := qt.NewQVBoxLayout(dialog.QWidget)
 
-	label := qt.NewQLabel3(msg)
-	label.SetWordWrap(true)
-	layout.AddWidget(label.QWidget)
+		label := qt.NewQLabel3(msg)
+		label.SetWordWrap(true)
+		layout.AddWidget(label.QWidget)
 
-	buttons := qt.NewQDialogButtonBox2()
-	openBtn := buttons.AddButton2("Open Release Page", qt.QDialogButtonBox__AcceptRole)
-	laterBtn := buttons.AddButton2("Later", qt.QDialogButtonBox__RejectRole)
-	openBtn.OnClicked(func() {
-		qt.QDesktopServices_OpenUrl(qt.QUrl_FromEncoded([]byte(pageURL)))
-		dialog.Accept()
+		buttons := qt.NewQDialogButtonBox2()
+		openBtn := buttons.AddButton2("Open Release Page", qt.QDialogButtonBox__AcceptRole)
+		laterBtn := buttons.AddButton2("Later", qt.QDialogButtonBox__RejectRole)
+		openBtn.OnClicked(func() {
+			qt.QDesktopServices_OpenUrl(qt.QUrl_FromEncoded([]byte(pageURL)))
+			dialog.Accept()
+		})
+		laterBtn.OnClicked(dialog.Reject)
+		layout.AddWidget(buttons.QWidget)
+
+		dialog.Exec()
 	})
-	laterBtn.OnClicked(dialog.Reject)
-	layout.AddWidget(buttons.QWidget)
-
-	dialog.Exec()
 }
 
 // addMenuAction creates a triggered action on menu.
