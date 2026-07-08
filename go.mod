@@ -1,6 +1,6 @@
 module github.com/cristim/daily-progress-logger
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/mappu/miqt v0.14.0
