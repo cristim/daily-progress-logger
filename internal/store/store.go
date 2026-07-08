@@ -11,6 +11,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -413,7 +414,7 @@ func (s *Store) AdoptFromBacklog(today time.Time, text string) error {
 // be located in the expected source section (e.g. the file was edited while
 // the dialog was open). UI code can test for it with errors.Is to show a
 // user-friendly message instead of a raw store error.
-var ErrBacklogItemNotFound = fmt.Errorf("backlog item not found")
+var ErrBacklogItemNotFound = errors.New("backlog item not found")
 
 // MoveBacklogItem moves text between the two backlog sections. When toNextWeek
 // is true the item moves from Current to NextWeek; when false from NextWeek to
@@ -639,8 +640,13 @@ func (s *Store) WeekSummaryPending(now time.Time) (WeekID, bool, error) {
 		}
 	}
 
-	// Look back: find the most recent prior week with data that was not
-	// summarized (mirrors UnreviewedWeek's look-back approach).
+	// Look back at past weeks that have data and are not yet summarized.
+	return s.newestUnsummarizedPastWeek(current)
+}
+
+// newestUnsummarizedPastWeek scans the daily file tree for the most recent
+// past week (before current) that has daily data and has not been summarized.
+func (s *Store) newestUnsummarizedPastWeek(current WeekID) (WeekID, bool, error) {
 	pattern := filepath.Join(s.DataDir, "daily", "*", "*", "*.md")
 	paths, err := filepath.Glob(pattern)
 	if err != nil {
@@ -653,35 +659,38 @@ func (s *Store) WeekSummaryPending(now time.Time) (WeekID, bool, error) {
 		if err != nil {
 			continue
 		}
-		week := WeekOf(d)
-		if week.Before(current) {
+		if week := WeekOf(d); week.Before(current) {
 			weekSet[week] = true
 		}
 	}
 	var newest WeekID
 	found := false
 	for week := range weekSet {
-		meta, _, err := s.loadWeeklyMeta(week)
-		if err != nil {
+		if ok, err := s.isUnsummarizedWithData(week); err != nil {
 			return WeekID{}, false, err
-		}
-		if meta.Summarized {
-			continue
-		}
-		// Check the week actually has daily data.
-		pastDailies, err := s.DailiesInWeek(week)
-		if err != nil {
-			return WeekID{}, false, err
-		}
-		if len(pastDailies) == 0 {
-			continue
-		}
-		if !found || newest.Before(week) {
+		} else if ok && (!found || newest.Before(week)) {
 			newest = week
 			found = true
 		}
 	}
 	return newest, found, nil
+}
+
+// isUnsummarizedWithData reports whether week has at least one daily file and
+// its weekly meta does not yet have summarized=true.
+func (s *Store) isUnsummarizedWithData(week WeekID) (bool, error) {
+	meta, _, err := s.loadWeeklyMeta(week)
+	if err != nil {
+		return false, err
+	}
+	if meta.Summarized {
+		return false, nil
+	}
+	dailies, err := s.DailiesInWeek(week)
+	if err != nil {
+		return false, err
+	}
+	return len(dailies) > 0, nil
 }
 
 // MarkWeekSummarized regenerates the weekly file for week with the summarized
