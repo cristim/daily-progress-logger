@@ -559,7 +559,7 @@ metaphor.
 **Fix:** Draw a distinct adopt glyph (a "+" or a down-arrow-into-list, in
 the style of `postponeIcon`) so the icon language stays consistent:
 check = done/keep, arrows = move.
-**Status:** open
+**Status:** implemented
 
 ### 39. "Keep this week" at review demotes items to unchecked morning candidates
 **Severity:** low

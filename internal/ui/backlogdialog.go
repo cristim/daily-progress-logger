@@ -123,7 +123,7 @@ func (bd *backlogDialog) buildRow(text string, isCurrent bool) *qt.QWidget {
 
 	// Plan Today: adopt into today's plan and remove from backlog.
 	planBtn := qt.NewQToolButton2()
-	planBtn.SetIcon(standardIcon(qt.QStyle__SP_DialogApplyButton))
+	planBtn.SetIcon(adoptIcon())
 	planBtn.SetToolButtonStyle(qt.ToolButtonIconOnly)
 	planBtn.SetToolTip("Add to today's plan")
 	planBtn.SetAccessibleName("Add to today's plan")
@@ -166,6 +166,27 @@ func (bd *backlogDialog) buildRow(text string, isCurrent bool) *qt.QWidget {
 	layout.AddWidget(planBtn.QWidget)
 	layout.AddWidget(moveBtn.QWidget)
 	return row
+}
+
+// adoptIcon draws a downward-pointing arrow (the mirror of the up-arrow used
+// for move-to-backlog), so the icon language stays consistent: up = park for
+// later, down = bring into today's plan. Drawn in mid-gray like postponeIcon.
+func adoptIcon() *qt.QIcon {
+	const size = 16
+	pixmap := qt.NewQPixmap2(size, size)
+	pixmap.FillWithFillColor(qt.NewQColor11(0, 0, 0, 0))
+	painter := qt.NewQPainter2(pixmap.QPaintDevice)
+	painter.SetRenderHint(qt.QPainter__Antialiasing)
+	pen := qt.NewQPen3(qt.NewQColor3(140, 140, 140))
+	pen.SetWidth(2)
+	painter.SetPenWithPen(pen)
+	// Vertical shaft of the arrow.
+	painter.DrawLine2(8, 2, 8, 12)
+	// Downward arrowhead: two lines meeting at the bottom tip.
+	painter.DrawLine2(4, 8, 8, 13)
+	painter.DrawLine2(12, 8, 8, 13)
+	painter.End()
+	return qt.NewQIcon2(pixmap)
 }
 
 // handleBacklogMoveErr distinguishes a not-found error (the file was edited
