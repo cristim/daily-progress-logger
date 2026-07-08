@@ -413,6 +413,234 @@ skipped (not trivially easy with the current menu API).
   horizontal scrolling for long texts (inconsistent with finding 12 but
   functional).
 
+## Review round 3 — Fable (2026-07-09)
+
+Fresh-eyes adversarial pass over everything shipped through round 2, with
+extra weight on the new Backlog dialog and the manual/scheduled prompt
+split. Evidence screenshots live under `/tmp/claude/dpl-r3-shots/`
+(subdirs: `backlog30`, `nextonly`), rendered offscreen against homes under
+`/tmp/claude/dpl-r3-home-*`. The `backlog30` home has 30 backlog items
+(incl. a 200+ char item, `<`/`&` texts, emoji, Cyrillic, Hebrew, Arabic)
+plus a 3-item plan where one item is postponed and also present in the
+backlog; `nextonly` has an empty Current section and 3 Next-week items.
+Store-level claims were verified with throwaway tests against
+`internal/store` (run and then deleted, not committed).
+
+### 31. One long backlog item hides every row's buttons in the Backlog dialog
+**Severity:** high
+**Problem:** `buildRow` labels do not word-wrap, and the 120-rune elision cap
+still allows ~800 px of text in a 460 px dialog. The widget-resizable scroll
+area then scrolls horizontally: the "Add to today's plan" / "Move to next
+week" buttons of **every** row sit past the right edge and are invisible
+until the user h-scrolls, and RTL items (Hebrew, Arabic) right-align inside
+their over-wide labels and render as blank rows. This is the same failure
+class as finding 16, reintroduced in the newest dialog. Repro: one backlog
+item longer than ~70 chars; see `backlog30/backlog.png` (h-scrollbar, no
+buttons anywhere, two blank RTL rows) vs `nextonly/backlog.png` (short
+items, buttons fine).
+**Fix:** Reuse the finding-16 recipe: elide to the available pixel width
+(`QFontMetrics::elidedText`) or size rows to the scroll-area viewport width
+instead of a fixed rune count; keep the full text in the tooltip; disable
+the horizontal scrollbar as the main window does.
+**Status:** open
+
+### 32. "Add to today's plan" on an already-planned item silently voids its state
+**Severity:** medium
+**Problem:** The normal flow puts a postponed plan item into the backlog's
+Next week list, so the same item is visible in the main window (dimmed,
+postponed) and in the Backlog dialog at once (the `backlog30` home models
+this with "update the deployment runbook"). Clicking "Add to today's plan"
+on it calls `AdoptFromBacklog`: `AddPlanItem` dedups against the existing
+plan entry (no-op) and both backlog entries are removed. Verified at the
+store level: the plan item stays in the postponed state, nothing visibly
+joins today's plan, and the item lost its next-week resurfacing, so the
+user's postpone is silently undone halfway. Adopting an item that matches a
+*done* plan item likewise just drains the backlog entry with no visible
+effect. There is also no feedback at all when the main window is hidden
+(tray-opened dialog), unlike the move-to-backlog balloon.
+**Fix:** When the adopted text already exists in today's plan, reset that
+item's state to todo (that is what "add to today's plan" means) and refresh;
+optionally show an "Added to today's plan" tray balloon mirroring
+`notifyBacklogMove`.
+**Status:** open
+
+### 33. Main window goes stale at midnight; row actions hit today's file by index
+**Severity:** medium
+**Problem:** `refresh()` only runs on user actions and dialog closes, so a
+window left open overnight keeps yesterday's heading and plan until the
+next interaction. Worse, the row handlers call
+`SetPlanItemState(time.Now(), index)` / `PostponePlanItem` /
+`MoveToBacklog` with the index captured at render time against *today's*
+file: after midnight the new day's plan is empty, so clicking any state
+button on the stale list produces "plan item index 0 out of range
+(0 items)" in an error dialog. The same index addressing means a hand-edit
+of today's file (item deleted in an editor) makes a click on a stale row
+silently toggle the *wrong* item; the store already fixed this class for
+the evening dialog (text-matched `EveningDecision`, see known-issues.md)
+but not for the main window rows.
+**Fix:** Remember the date the list was rendered for and refresh when it
+changes (e.g. from the existing 60 s `CheckPrompts` tick); address row
+actions by item text like `ApplyEvening` does, or at least verify the text
+at `index` still matches before applying.
+**Status:** open
+
+### 34. "Skip Today" is inaccurate on manual dialogs, and its meaning flips after a manual snooze
+**Severity:** low
+**Problem:** Residue of finding 19. On a tray-invoked check-in the reject
+button still says "Skip Today" (tooltip "Don't ask again today") but now
+deliberately does nothing beyond closing: the scheduled prompt fires later
+anyway, contradicting the label. Conversely, a manual "Remind me in 1h"
+arms a `forced` re-fire that arrives via `CheckPrompts` with
+`manual=false`, so on the visually identical re-fired dialog "Skip Today"
+*does* record `skippedOn` and silences that day's real scheduled prompt.
+Two same-looking dialogs, opposite Skip semantics, with no way to tell
+which one is on screen.
+**Fix:** Pass `manual` into `attachButtons` and label the reject button
+"Close" (no tooltip) on manual runs; carry the manual origin through the
+`forced` map (e.g. `forced[prompt] = manual`) so a snoozed manual prompt
+re-fires with manual semantics.
+**Status:** open
+
+### 35. "Remind me in 1h" late in the evening silently drops the check-in at midnight
+**Severity:** low
+**Problem:** Snoozing at 23:30 sets `snoozeUntil` 00:30. At 00:30 the
+evening prompt is no longer due (the new day's evening time has not been
+reached), so the promised reminder never comes; the previous day's evening
+check-in is silently lost, and a re-fire would target the new date anyway
+because the dialog is built for `time.Now()`. `skippedOn` handles the day
+boundary correctly; only snooze leaks across it.
+**Fix:** Cap snooze deadlines at the end of the current day, or when a
+snooze crosses midnight re-target the re-fired evening dialog at the day
+the snooze was created for.
+**Status:** open
+
+### 36. Update dialog, login-item offer and error boxes bypass the dialogOpen guard
+**Severity:** low
+**Problem:** `showUpdateDialog`, the message boxes in
+`checkForUpdatesManual`/`checkForUpdatesBackground`, `reportError` and
+`MaybeOfferLoginItem` all run modal exec loops without setting
+`dialogOpen`. The 60 s timer keeps firing during them, so a scheduled
+check-in can stack on top of the update dialog; the 200 ms startup
+`CheckPrompts` can stack on the login-item question; the first background
+update check (t+2 min) can put its dialog on top of an open check-in; and
+`HandleReopen`'s `!dialogOpen` exclusion does not apply, so an activation
+while one of these dialogs is up pops the hidden main window beneath it.
+**Fix:** Route every modal surface through a shared guard, e.g. a small
+helper that sets/clears `dialogOpen` around any exec'd dialog or message
+box.
+**Status:** open
+
+### 37. Backlog nomenclature differs between the dialog and the file; store errors surface raw
+**Severity:** low
+**Problem:** The dialog's sections are "This week" / "Next week" while
+backlog.md, the advertised hand-editable interface, uses "## Current" /
+"## Next week"; nothing connects the two names. When the file is
+hand-edited while the dialog is open and the user clicks Move on a removed
+row, the raw store error appears in a critical dialog: `item "…" not found
+in the Current backlog section`, leaking the file-side name into UI copy.
+The main-window tooltip "Move to the cross-week backlog" also never says
+the item lands in "This week".
+**Fix:** Pick one name pair (rename the file section to "This week" or the
+dialog headers to "Current" / "Next week"); on a missing-item action,
+refresh the rows and show a friendly one-liner ("This item is no longer in
+the backlog.") instead of the store error.
+**Status:** open
+
+### 38. The adopt button reuses the checkmark icon that means Done/Keep everywhere else
+**Severity:** low
+**Problem:** `SP_DialogApplyButton` (green check) means "Done" in the main
+window and evening dialog and "Keep this week" in the week review; in the
+Backlog dialog the same glyph means "Add to today's plan". A first-time
+user scanning icons may click the check on a backlog row to mark it
+done/acknowledged and instead schedule it for today
+(`nextonly/backlog.png`). The main window uses an up-arrow for
+plan-to-backlog, but the reverse operation does not use the mirrored
+metaphor.
+**Fix:** Draw a distinct adopt glyph (a "+" or a down-arrow-into-list, in
+the style of `postponeIcon`) so the icon language stays consistent:
+check = done/keep, arrows = move.
+**Status:** open
+
+### 39. "Keep this week" at review demotes items to unchecked morning candidates
+**Severity:** low
+**Problem:** Interaction between the finding-14 and finding-18 fixes.
+Review "Keep this week" does `addCurrent`, so a leftover plan item the user
+just explicitly affirmed becomes a backlog item; the very next morning it
+shows up with the "(backlog)" suffix and defaults *unchecked* under
+finding 18's rule ("parked away from today's plan"), which is exactly what
+the user did not do. The affirmative triage decision must be re-confirmed
+by hand every morning after.
+**Fix:** Either pre-check backlog candidates on mornings of the week in
+which they were kept at review (needs a small kept-at-review marker in the
+weekly meta or backlog), or rename the review choice to "Keep on backlog"
+so expectations match behavior.
+**Status:** open
+
+### 40. Manual-review Drop can resurrect via the Next week section
+**Severity:** low
+**Problem:** `ApplyWeekReview` with `rollover=false` (manual "Review Last
+Week…") handles Drop with `removeCurrent` only. An item that is both a
+review candidate (open on one day of the week) and present in NextWeek
+(postponed on another day, or hand-placed) survives the drop: verified at
+the store level, after the next scheduled rollover the dropped item
+reappears in Current and hence in morning candidates.
+**Fix:** Drop (and Postpone-to-Drop symmetry aside) should also call
+`removeNextWeek(dec.Text)`; harmless on the scheduled path where the
+rollover has already emptied NextWeek.
+**Status:** open
+
+### 41. A Friday away silently kills that week's summary prompt
+**Severity:** low
+**Problem:** `PromptWeeklySummary` is only due while `now.Weekday() ==
+summaryDay`, and `WeekSummaryPending` only inspects the *current* week. If
+the app is not running during Friday 17:00-24:00 (holiday, laptop shut),
+the prompt is gone for good: on Saturday the weekday no longer matches, and
+from Monday the pending check looks at the new week. Contrast with week
+reviews, which catch up via the `UnreviewedWeek` oldest-first loop
+(known-issues.md fixed exactly this class for reviews).
+**Fix:** Make the pending check look back like `UnreviewedWeek` does (most
+recent week with data and `summarized: false`) and let the prompt fire on
+any later day, or fold a missed summary into the Monday review flow.
+**Status:** open
+
+### Checked and found fine (round 3)
+- Backlog dialog with 30 short items: sections render in order, vertical
+  scrolling works, per-row buttons align (`nextonly/backlog.png`); an empty
+  Current section correctly shows only "Next week"; Esc and Close both
+  dismiss; "Nothing in the backlog." empty state reads fine.
+- `<`/`&` texts, emoji and Cyrillic render literally (PlainText holds up) in
+  the Backlog dialog rows, morning candidates and week review; no candidate
+  duplication with 20 backlog items (`backlog30/morning.png`).
+- Hand-editing backlog.md while the dialog is open cannot corrupt data:
+  every button action is a fresh read-modify-write; adopting a
+  since-deleted item no-ops gracefully; a move on a deleted item errors
+  loudly then the deferred refresh resyncs the rows (wording covered by 37).
+- Duplicate-path sweep: `ApplyMorning`, `AddPlanItem`, `addCurrent`,
+  `addNextWeek` all dedup by normalized text, so adopting from the dialog
+  and then accepting a previously built morning dialog cannot double-add;
+  an adopted item flows correctly into the evening triage and, once done,
+  into the weekly summary; an item present in both backlog sections
+  collapses to one on adopt or move.
+- Scheduled review path: `rollOver()` runs before decisions, so Drop
+  correctly removes items living in NextWeek there (only the manual path
+  has finding 40); morning-drop-when-evening-due behaves sensibly on a
+  fresh late-day launch ("No plan was recorded for today.").
+- Schedule edges: `TimeOfDay.reached` is wall-clock so DST transitions do
+  not shift the 09:30/17:30 prompts; the 60 s timer catches a just-passed
+  check-in time within a minute; `skippedOn` day-scoping resets naturally
+  at midnight; week IDs and Monday `Start()` are DST-safe (midnight local).
+- The evening dialog built before midnight applies to the day it was opened
+  for (`today` captured at build time), so answers filed at 00:05 land in
+  the correct file.
+- Manual async update check: responsive UI, result marshalled to the main
+  thread, errors shown; only the guard gap (finding 36) remains. Not
+  re-filed: no in-flight indicator / double-click double-dialog (already
+  noted as skipped in finding 30).
+- Not verifiable offscreen, flagged for the live-session pass already
+  tracked in known-issues.md: whether opening the tray menu itself
+  triggers `ApplicationActive` and pops the hidden main window via
+  `HandleReopen` before a tray action's `dialogOpen` guard engages.
+
 ## Other notes
 
 - **[wontfix] Dock icon visibility:** hiding the Dock icon (LSUIElement) is
