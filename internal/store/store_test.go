@@ -507,17 +507,54 @@ func TestStore_AdoptFromBacklogAlreadyPlanned(t *testing.T) {
 		NextWeek: []string{"task a"}, // same item in both sections
 	}))
 
-	// Already planned: plan stays at 1 item (no dup) but backlog is still cleaned.
+	// Already planned: plan stays at 1 item (no dup) but backlog is still cleaned,
+	// and the item is reset to StateTodo.
 	require.NoError(t, s.AdoptFromBacklog(tuesday, "task a"))
 
 	d, _, err := s.LoadDaily(tuesday)
 	require.NoError(t, err)
 	assert.Len(t, d.Plan, 1, "already-planned item must not be duplicated")
+	assert.Equal(t, StateTodo, d.Plan[0].State, "adopted item must be reset to todo")
 
 	backlog, err := s.LoadBacklog()
 	require.NoError(t, err)
 	assert.Empty(t, backlog.Current, "item must be removed from Current")
 	assert.Empty(t, backlog.NextWeek, "item must be removed from NextWeek")
+}
+
+// TestStore_AdoptFromBacklogPostponedResetsState verifies that adopting a
+// postponed plan item resets its state to todo so it is re-planned for today
+// (finding 32: the old AddPlanItem no-op left the item in StatePostponed).
+func TestStore_AdoptFromBacklogPostponedResetsState(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	// Postpone an item so it appears in both the plan (as StatePostponed) and
+	// the backlog NextWeek section.
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"update the runbook"}, nil))
+	require.NoError(t, s.PostponePlanItem(tuesday, 0))
+
+	// Confirm the setup: plan has the item as postponed, backlog has it in NextWeek.
+	d, _, err := s.LoadDaily(tuesday)
+	require.NoError(t, err)
+	require.Equal(t, StatePostponed, d.Plan[0].State)
+
+	backlog, err := s.LoadBacklog()
+	require.NoError(t, err)
+	require.Equal(t, []string{"update the runbook"}, backlog.NextWeek)
+
+	// Adopt from the backlog dialog: plan item becomes todo, backlog is cleared.
+	require.NoError(t, s.AdoptFromBacklog(tuesday, "update the runbook"))
+
+	d, _, err = s.LoadDaily(tuesday)
+	require.NoError(t, err)
+	require.Len(t, d.Plan, 1)
+	assert.Equal(t, StateTodo, d.Plan[0].State, "adopted postponed item must be reset to todo")
+
+	backlog, err = s.LoadBacklog()
+	require.NoError(t, err)
+	assert.Empty(t, backlog.Current, "Current backlog must be empty after adopt")
+	assert.Empty(t, backlog.NextWeek, "NextWeek backlog must be empty after adopt")
 }
 
 func TestStore_AdoptFromBacklogNotPresent(t *testing.T) {

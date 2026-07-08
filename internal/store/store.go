@@ -374,13 +374,30 @@ func (s *Store) PostponePlanItem(date time.Time, index int) error {
 	return s.SaveBacklog(backlog)
 }
 
-// AdoptFromBacklog adds text to today's plan (dedup by normalized text, same
-// as AddPlanItem) and then removes it from both backlog sections. If the item
-// was already in the plan, the plan is unchanged but the backlog is still
-// cleaned. If the item is no longer in the backlog (user edited the file
-// meanwhile), the removal is a no-op and no error is returned.
+// AdoptFromBacklog adds text to today's plan and removes it from both backlog
+// sections. When the item already exists in the plan (e.g. it was postponed),
+// its state is reset to StateTodo so it is re-planned for today. The backlog
+// is cleaned in either case. If the item is no longer in the backlog (user
+// edited the file meanwhile), the removal is a no-op and no error is returned.
 func (s *Store) AdoptFromBacklog(today time.Time, text string) error {
-	if err := s.AddPlanItem(today, text); err != nil {
+	d, err := s.loadOrNewDaily(today)
+	if err != nil {
+		return err
+	}
+	norm := normalizeText(text)
+	found := false
+	for i, item := range d.Plan {
+		if normalizeText(item.Text) == norm {
+			// Re-plan: reset to todo regardless of the current state.
+			d.Plan[i].State = StateTodo
+			found = true
+			break
+		}
+	}
+	if !found {
+		d.Plan = append(d.Plan, Item{Text: text, State: StateTodo})
+	}
+	if err := s.SaveDaily(d); err != nil {
 		return err
 	}
 	backlog, err := s.LoadBacklog()

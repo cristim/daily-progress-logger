@@ -563,6 +563,15 @@ func (a *App) notifyBacklogMove(itemText string) {
 	a.tray.ShowMessage2("Moved to backlog", itemText)
 }
 
+// notifyAdopt shows a tray balloon confirming that a backlog item was added
+// (or re-planned) into today's plan. It is a no-op when the tray is unavailable.
+func (a *App) notifyAdopt(itemText string) {
+	if a.tray == nil {
+		return
+	}
+	a.tray.ShowMessage2("Planned for today", itemText)
+}
+
 // checkForUpdatesBackground runs an update check in a goroutine and, when a
 // newer version is found, shows a notification on the Qt main thread.
 // Errors are silently logged at debug level so offline machines are unaffected.

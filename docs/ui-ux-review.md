@@ -462,7 +462,7 @@ effect. There is also no feedback at all when the main window is hidden
 item's state to todo (that is what "add to today's plan" means) and refresh;
 optionally show an "Added to today's plan" tray balloon mirroring
 `notifyBacklogMove`.
-**Status:** open
+**Status:** implemented
 
 ### 33. Main window goes stale at midnight; row actions hit today's file by index
 **Severity:** medium

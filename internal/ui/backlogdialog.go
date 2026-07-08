@@ -127,6 +127,8 @@ func (bd *backlogDialog) buildRow(text string, isCurrent bool) *qt.QWidget {
 	planBtn.OnClicked(func() {
 		if err := bd.app.store.AdoptFromBacklog(time.Now(), text); err != nil {
 			bd.app.reportError(err)
+		} else {
+			bd.app.notifyAdopt(text)
 		}
 		bd.app.window.scheduleRefresh() // today's plan may have gained the item
 		bd.scheduleRefresh()
