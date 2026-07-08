@@ -512,7 +512,7 @@ boundary correctly; only snooze leaks across it.
 **Fix:** Cap snooze deadlines at the end of the current day, or when a
 snooze crosses midnight re-target the re-fired evening dialog at the day
 the snooze was created for.
-**Status:** open
+**Status:** implemented
 
 ### 36. Update dialog, login-item offer and error boxes bypass the dialogOpen guard
 **Severity:** low

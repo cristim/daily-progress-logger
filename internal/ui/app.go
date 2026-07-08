@@ -354,7 +354,16 @@ func (a *App) runPrompt(prompt schedule.Prompt, manual bool) {
 	now := time.Now()
 	switch result {
 	case dialogSnoozed:
-		a.snoozeUntil[prompt] = now.Add(time.Hour)
+		// Cap the snooze deadline at 23:59:59 of the current day. A snooze set
+		// at 23:30 would otherwise expire at 00:30 the next day, at which point
+		// the evening prompt is no longer due and the promised reminder never
+		// arrives (finding 35).
+		snoozeTarget := now.Add(time.Hour)
+		eod := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+		if snoozeTarget.After(eod) {
+			snoozeTarget = eod
+		}
+		a.snoozeUntil[prompt] = snoozeTarget
 		if manual {
 			// Keep the prompt forced and record the manual origin so the
 			// re-fired dialog after the snooze also shows "Close" semantics.
@@ -413,7 +422,12 @@ func (a *App) applyManualResult(prompt schedule.Prompt, result dialogResult) {
 	now := time.Now()
 	switch result {
 	case dialogSnoozed:
-		a.snoozeUntil[prompt] = now.Add(time.Hour)
+		snoozeTarget := now.Add(time.Hour)
+		eod := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+		if snoozeTarget.After(eod) {
+			snoozeTarget = eod
+		}
+		a.snoozeUntil[prompt] = snoozeTarget
 		a.forced[prompt] = true // keep pending so it re-fires after snooze
 	case dialogCanceled:
 		// manual cancel: just close, no skippedOn bookkeeping
