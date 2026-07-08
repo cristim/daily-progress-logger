@@ -163,16 +163,17 @@ func (a *App) MaybeOfferLoginItem() {
 	}
 }
 
-// HandleReopen installs an event handler on qapp so that clicking the Dock
-// icon while the main window is hidden brings it back to the front.
-// Qt delivers QEvent::ApplicationActivate (type 121) when the application
-// becomes active, including on a Dock-icon click on macOS.
+// HandleReopen re-shows the hidden main window when the application is
+// activated (Dock-icon click, `open` on the bundle). Qt 6 no longer
+// delivers the deprecated QEvent::ApplicationActivate, so this hooks the
+// applicationStateChanged signal instead. Activations caused by a check-in
+// dialog raising itself are excluded via the dialogOpen guard so a prompt
+// on a hidden app does not drag the main window out with it.
 func (a *App) HandleReopen(qapp *qt.QApplication) {
-	qapp.OnEvent(func(super func(*qt.QEvent) bool, e *qt.QEvent) bool {
-		if e.Type() == qt.QEvent__ApplicationActivate && !a.window.win.IsVisible() {
+	qapp.OnApplicationStateChanged(func(state qt.ApplicationState) {
+		if state == qt.ApplicationActive && !a.window.win.IsVisible() && !a.dialogOpen {
 			a.Show()
 		}
-		return super(e)
 	})
 }
 
