@@ -780,3 +780,61 @@ func TestStore_ReviewDropClearsNextWeek(t *testing.T) {
 	assert.Empty(t, backlog.Current, "dropped item must not appear in Current")
 	assert.Empty(t, backlog.NextWeek, "dropped item must be removed from NextWeek")
 }
+
+func TestStore_WeeklyPlan(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	// Before planning, the current week is pending.
+	wk, pending, err := s.WeeklyPlanPending(tuesday)
+	require.NoError(t, err)
+	assert.Equal(t, week28, wk)
+	assert.True(t, pending)
+
+	// Set the big things: one already done, plus a blank and a normalized
+	// duplicate that must be dropped.
+	require.NoError(t, s.SetWeeklyPlan(week28, []Item{
+		{Text: "Ship v2", State: StateDone},
+		{Text: "Hire designer", State: StateTodo},
+		{Text: "  ", State: StateTodo},
+		{Text: "ship v2", State: StateTodo},
+	}))
+
+	goals, planned, err := s.WeeklyPlan(week28)
+	require.NoError(t, err)
+	assert.True(t, planned)
+	assert.Equal(t, []Item{
+		{Text: "Ship v2", State: StateDone},
+		{Text: "Hire designer", State: StateTodo},
+	}, goals)
+
+	// No longer pending once planned.
+	_, pending, err = s.WeeklyPlanPending(tuesday)
+	require.NoError(t, err)
+	assert.False(t, pending)
+}
+
+func TestStore_WeeklyPlanSurvivesRegeneration(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	require.NoError(t, s.SetWeeklyPlan(week28, []Item{{Text: "Big goal", State: StateDone}}))
+
+	// A daily edit regenerates the weekly file; the plan and its ticks must
+	// survive because they live in the carried-over meta, not a derived section.
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"task"}, nil))
+	require.NoError(t, s.ApplyEvening(tuesday, []EveningDecision{
+		{Text: "task", Action: EveningActionDone},
+	}, nil))
+
+	goals, planned, err := s.WeeklyPlan(week28)
+	require.NoError(t, err)
+	assert.True(t, planned)
+	assert.Equal(t, []Item{{Text: "Big goal", State: StateDone}}, goals)
+
+	// An empty plan still marks the week planned (so it is not re-prompted).
+	require.NoError(t, s.SetWeeklyPlan(week29, nil))
+	goals, planned, err = s.WeeklyPlan(week29)
+	require.NoError(t, err)
+	assert.True(t, planned)
+	assert.Empty(t, goals)
+}

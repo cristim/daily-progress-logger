@@ -813,6 +813,49 @@ func (s *Store) MarkWeekSummarized(week WeekID) error {
 	})
 }
 
+// WeeklyPlan returns the week's goals ("big things") and whether a weekly plan
+// has been set for it.
+func (s *Store) WeeklyPlan(week WeekID) (goals []Item, planned bool, err error) {
+	meta, _, err := s.loadWeeklyMeta(week)
+	if err != nil {
+		return nil, false, err
+	}
+	return meta.Plan, meta.Planned, nil
+}
+
+// SetWeeklyPlan replaces the week's goals and marks the week planned. Blank and
+// duplicate (normalized) goals are dropped. The caller supplies each goal's
+// state, so the weekly-plan dialog is authoritative over the done ticks; the
+// file is written even when the week has no daily data yet (Monday morning).
+func (s *Store) SetWeeklyPlan(week WeekID, goals []Item) error {
+	return s.regenerateWeekly(week, func(meta *weeklyMeta) {
+		var next []Item
+		seen := map[string]bool{}
+		for _, g := range goals {
+			norm := normalizeText(g.Text)
+			if norm == "" || seen[norm] {
+				continue
+			}
+			seen[norm] = true
+			next = append(next, g)
+		}
+		meta.Plan = next
+		meta.Planned = true
+	})
+}
+
+// WeeklyPlanPending reports whether the current week has no weekly plan yet.
+// It returns the current WeekID so callers can open the dialog without
+// recomputing it. Which day the prompt fires on is the schedule's concern.
+func (s *Store) WeeklyPlanPending(now time.Time) (WeekID, bool, error) {
+	week := WeekOf(now)
+	meta, _, err := s.loadWeeklyMeta(week)
+	if err != nil {
+		return WeekID{}, false, err
+	}
+	return week, !meta.Planned, nil
+}
+
 // ApplyWeekReview records the review of week: if rollover is true, items
 // postponed to this week first roll over into Current (correct for the
 // scheduled Monday review); then each decision is applied, the dropped items
