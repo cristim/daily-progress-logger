@@ -43,6 +43,11 @@ type App struct {
 	updateTimer *qt.QTimer
 	dialogOpen  bool
 
+	// shortcuts holds the app-wide QShortcut per action ID (config.Shortcut*),
+	// so applyShortcuts can rebind keys in place when Preferences change rather
+	// than leaking a fresh set. app.quit is bound on the menu action instead.
+	shortcuts map[string]*qt.QShortcut
+
 	// snoozeUntil holds "Postpone 1h" deadlines per prompt.
 	snoozeUntil map[schedule.Prompt]time.Time
 	// skippedOn records the day (time.DateOnly) a prompt was canceled, so
@@ -62,29 +67,9 @@ type App struct {
 // exist. appVersion is the running binary's version string (e.g. "0.1.0" or
 // "dev") and is used by the auto-updater.
 func New(st *store.Store, cfg *config.Config, appVersion string) (*App, error) {
-	morningHour, morningMinute, err := config.ParseTimeOfDay(cfg.MorningTime)
-	if err != nil {
-		return nil, err
-	}
-	eveningHour, eveningMinute, err := config.ParseTimeOfDay(cfg.EveningTime)
-	if err != nil {
-		return nil, err
-	}
-	summaryHour, summaryMinute, err := config.ParseTimeOfDay(cfg.SummaryTime)
-	if err != nil {
-		return nil, err
-	}
-	summaryDay, err := config.ParseDay(cfg.SummaryDay)
-	if err != nil {
-		return nil, err
-	}
 	app := &App{
 		store:       st,
 		cfg:         cfg,
-		morning:     schedule.TimeOfDay{Hour: morningHour, Minute: morningMinute},
-		evening:     schedule.TimeOfDay{Hour: eveningHour, Minute: eveningMinute},
-		summaryDay:  summaryDay,
-		summary:     schedule.TimeOfDay{Hour: summaryHour, Minute: summaryMinute},
 		version:     appVersion,
 		snoozeUntil: map[schedule.Prompt]time.Time{},
 		skippedOn:   map[schedule.Prompt]string{},
@@ -92,6 +77,11 @@ func New(st *store.Store, cfg *config.Config, appVersion string) (*App, error) {
 	}
 	app.window = newMainWindow(app)
 	app.setUpTray()
+
+	// Derive the schedule times from cfg and install the keyboard shortcuts.
+	if err := app.applyConfig(cfg); err != nil {
+		return nil, err
+	}
 
 	// Closing the window keeps the app resident in the menu bar.
 	qt.QGuiApplication_SetQuitOnLastWindowClosed(false)
@@ -115,6 +105,35 @@ func New(st *store.Store, cfg *config.Config, appVersion string) (*App, error) {
 	firstCheck.Start(int((2 * time.Minute).Milliseconds()))
 
 	return app, nil
+}
+
+// applyConfig re-derives the schedule times from cfg and (re)installs the
+// keyboard shortcuts, so a Preferences save takes effect without a restart.
+// cfg must already be valid (Preferences validates before calling this).
+func (a *App) applyConfig(cfg *config.Config) error {
+	morningHour, morningMinute, err := config.ParseTimeOfDay(cfg.MorningTime)
+	if err != nil {
+		return err
+	}
+	eveningHour, eveningMinute, err := config.ParseTimeOfDay(cfg.EveningTime)
+	if err != nil {
+		return err
+	}
+	summaryHour, summaryMinute, err := config.ParseTimeOfDay(cfg.SummaryTime)
+	if err != nil {
+		return err
+	}
+	summaryDay, err := config.ParseDay(cfg.SummaryDay)
+	if err != nil {
+		return err
+	}
+	a.cfg = cfg
+	a.morning = schedule.TimeOfDay{Hour: morningHour, Minute: morningMinute}
+	a.evening = schedule.TimeOfDay{Hour: eveningHour, Minute: eveningMinute}
+	a.summary = schedule.TimeOfDay{Hour: summaryHour, Minute: summaryMinute}
+	a.summaryDay = summaryDay
+	a.applyShortcuts(cfg)
+	return nil
 }
 
 // Show displays the main window.
@@ -205,6 +224,7 @@ func (a *App) setUpTray() {
 	addMenuAction(menu, "Review Last Week…", a.runWeekReviewManually)
 	addMenuAction(menu, "Backlog…", a.openBacklogDialog)
 	menu.AddSeparator()
+	addMenuAction(menu, "Preferences…", a.openPreferencesDialog)
 	addMenuAction(menu, "Check for Updates…", a.checkForUpdatesManual)
 	menu.AddSeparator()
 	addMenuAction(menu, "Quit", qt.QCoreApplication_Quit)
@@ -599,6 +619,7 @@ func (a *App) GrabScreenshots(dir string) error {
 		"week-review":    review.dialog.QWidget,
 		"weekly-summary": weeklySummary.dialog.QWidget,
 		"backlog":        backlogDlg.dialog.QWidget,
+		"preferences":    a.buildPreferencesDialog().QWidget,
 	} {
 		path := dir + "/" + name + ".png"
 		if !widget.Grab().Save(path) {

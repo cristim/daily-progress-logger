@@ -12,9 +12,10 @@ markdown files you can grep, sync, or feed to an LLM at review time.
   on today?"* — one task per line — and offers to carry over still-open items
   from earlier in the week and from the backlog. Saves the plan as a checkbox
   list in the day's file.
-- **Evening check-in** (default 17:30): shows the day's plan with
-  *Done / Not done / Postpone to next week* buttons per item, plus anything
-  else you accomplished. Regenerates the weekly summary afterwards.
+- **Evening check-in** (default 17:30): shows the day's plan with per-item
+  buttons — *Done*, *Not done*, *Postpone to next day*, *Postpone to next week*,
+  and *Move to backlog* — plus anything else you accomplished. Regenerates the
+  weekly summary afterwards.
 - Every check-in offers **Remind me in 1h** (snooze: it re-appears an hour
   later) and **Skip Today** (it stays quiet until tomorrow).
 - **Week review** (first launch in a new ISO week): lists the previous week's
@@ -30,8 +31,20 @@ markdown files you can grep, sync, or feed to an LLM at review time.
   directly via File → Open Data Folder for renaming or deleting items.
   Note: the dialog shows "This week" for the section stored as `## Current`
   in the file, and "Next week" for `## Next week`.
-- The app stays resident in the menu bar; the main window shows today's plan
-  with add / check off / postpone / move-to-backlog actions.
+- The app stays resident in the menu bar; the main window shows today's plan.
+  Each item has *Done* / *Not done* buttons plus three defer actions —
+  *Postpone to next day* (`>`), *Postpone to next week* (`^`, queues it in the
+  backlog), and *Add to backlog* — and there is an add-task field at the top.
+  Postponing to the next day removes the item from today and re-adds it to
+  tomorrow's plan; postponing to next week leaves it as `- [>]` and queues it in
+  the backlog's *Next week* section.
+- **Keyboard shortcuts & Preferences**: every action has a configurable keyboard
+  shortcut — the per-item *Done / Not done / next day / next week / backlog* on
+  the selected plan row, each check-in, and window show/hide, focus-add-task and
+  quit. Open *Preferences…* (File menu, tray menu, or ⌘,) to edit the shortcuts
+  along with the check-in times, weekly-summary day/time and data folder; changes
+  take effect immediately. Item shortcuts act on the selected row and fire while
+  the app window is focused.
 
 ## Data layout
 
@@ -54,15 +67,26 @@ preserved across regenerations.
 ## Configuration
 
 `~/Library/Application Support/DailyProgressLogger/config.json` (created on
-first run):
+first run) holds the check-in times, weekly-summary schedule, data folder and
+keyboard shortcuts. Edit it directly, or use *Preferences…* (⌘,):
 
 ```json
 {
   "data_dir": "~/DailyProgress",
   "morning_time": "09:30",
-  "evening_time": "17:30"
+  "evening_time": "17:30",
+  "summary_day": "Friday",
+  "summary_time": "17:00",
+  "shortcuts": {
+    "item.next_day": "Ctrl+Shift+D",
+    "item.next_week": "Ctrl+Shift+W",
+    "item.backlog": "Ctrl+Shift+B"
+  }
 }
 ```
+
+Shortcuts use Qt key-sequence strings (`Ctrl` renders as ⌘ on macOS); any
+omitted action falls back to its default, and each must be unique.
 
 ## Running it
 

@@ -20,9 +20,15 @@ type mainWindow struct {
 	planList     *qt.QListWidget
 	newItem      *qt.QLineEdit
 	refreshTimer *qt.QTimer
+	// quitAction is the File-menu Quit action; its shortcut is set from config
+	// in App.applyShortcuts.
+	quitAction *qt.QAction
 	// renderedDate records the date (time.DateOnly) of the last refresh so the
 	// midnight watchdog in CheckPrompts can detect a day rollover and refresh.
 	renderedDate string
+	// planTexts holds the text of each plan row in display order, so keyboard
+	// shortcuts can resolve the selected row (planList.CurrentRow()) to an item.
+	planTexts []string
 }
 
 func newMainWindow(app *App) *mainWindow {
@@ -96,8 +102,11 @@ func (w *mainWindow) setUpMenu() {
 	addMenuAction(fileMenu, "This Week's Summary…", w.app.runWeeklySummaryManually)
 	addMenuAction(fileMenu, "Review Last Week…", w.app.runWeekReviewManually)
 	fileMenu.AddSeparator()
-	quit := addMenuAction(fileMenu, "Quit", qt.QCoreApplication_Quit)
-	quit.SetShortcut(qt.NewQKeySequence6(qt.QKeySequence__Quit))
+	prefs := addMenuAction(fileMenu, "Preferences…", w.app.openPreferencesDialog)
+	prefs.SetShortcut(qt.NewQKeySequence6(qt.QKeySequence__Preferences))
+	fileMenu.AddSeparator()
+	// The Quit shortcut is bound from config in App.applyShortcuts.
+	w.quitAction = addMenuAction(fileMenu, "Quit", qt.QCoreApplication_Quit)
 	w.win.SetMenuBar(menuBar)
 }
 
@@ -142,6 +151,7 @@ func (w *mainWindow) refresh() {
 	targetWidth := w.rowWidth()
 
 	w.planList.Clear()
+	w.planTexts = nil
 	if !exists || len(daily.Plan) == 0 {
 		placeholder := qt.NewQListWidgetItem2("No plan for today yet. Run the Morning Check-in below, or add a task above.")
 		placeholder.SetFlags(qt.ItemFlag(0)) // informational, not selectable
@@ -149,6 +159,7 @@ func (w *mainWindow) refresh() {
 		return
 	}
 	for i, item := range daily.Plan {
+		w.planTexts = append(w.planTexts, item.Text)
 		row := w.buildPlanRow(i, item)
 		naturalHint := row.SizeHint()
 		// Span each row to the full viewport width so the right-side buttons
@@ -239,59 +250,79 @@ func (w *mainWindow) buildPlanRow(_ int, item store.Item) *qt.QWidget {
 
 	selector := newStateSelector(item.State)
 	selector.onChanged(func(state store.ItemState) {
-		now := time.Now()
-		idx, err := w.findPlanIndex(now, capturedText)
-		if err != nil {
-			w.app.reportError(err)
-			w.scheduleRefresh()
-			return
-		}
-		if idx < 0 {
-			// Item was removed while window was open; just refresh.
-			w.scheduleRefresh()
-			return
-		}
-		if state == store.StatePostponed {
-			err = w.app.store.PostponePlanItem(now, idx)
-		} else {
-			err = w.app.store.SetPlanItemState(now, idx, state)
-		}
-		if err != nil {
-			w.app.reportError(err)
-		}
-		w.scheduleRefresh()
+		w.runItemAction(capturedText, func(now time.Time, idx int) error {
+			return w.app.store.SetPlanItemState(now, idx, state)
+		})
 	})
 
-	backlog := qt.NewQToolButton2()
-	backlog.SetIcon(standardIcon(qt.QStyle__SP_ArrowUp))
-	backlog.SetToolButtonStyle(qt.ToolButtonIconOnly)
-	backlog.SetToolTip("Move to the cross-week backlog")
-	backlog.SetAccessibleName("Move to the cross-week backlog")
-	backlog.OnClicked(func() {
-		now := time.Now()
-		idx, err := w.findPlanIndex(now, capturedText)
-		if err != nil {
-			w.app.reportError(err)
-			w.scheduleRefresh()
-			return
-		}
-		if idx < 0 {
-			// Item was removed while window was open; just refresh.
-			w.scheduleRefresh()
-			return
-		}
-		if err := w.app.store.MoveToBacklog(now, idx); err != nil {
-			w.app.reportError(err)
-		} else {
+	nextDay := w.planActionButton(postponeIcon(), "Postpone to the next day", capturedText,
+		func(now time.Time, idx int) error {
+			return w.app.store.PostponeToNextDay(now, idx)
+		})
+	nextWeek := w.planActionButton(standardIcon(qt.QStyle__SP_ArrowUp), "Postpone to next week", capturedText,
+		func(now time.Time, idx int) error {
+			return w.app.store.PostponePlanItem(now, idx)
+		})
+	backlog := w.planActionButton(backlogIcon(), "Move to the cross-week backlog", capturedText,
+		func(now time.Time, idx int) error {
+			if err := w.app.store.MoveToBacklog(now, idx); err != nil {
+				return err
+			}
 			w.app.notifyBacklogMove(capturedText)
-		}
-		w.scheduleRefresh()
-	})
+			return nil
+		})
 
 	layout.AddWidget2(label.QWidget, 1)
 	layout.AddWidget(selector.widget)
+	layout.AddWidget(nextDay.QWidget)
+	layout.AddWidget(nextWeek.QWidget)
 	layout.AddWidget(backlog.QWidget)
 	return row
+}
+
+// runItemAction resolves text to its current plan index and applies action,
+// then refreshes. Shared by the row action buttons and the keyboard shortcuts.
+// A missing item (deleted or hand-edited away while the window was open) just
+// triggers a refresh. Errors are surfaced to the user. Refreshes are deferred
+// (scheduleRefresh) so it is safe to call from a row widget's own handler.
+func (w *mainWindow) runItemAction(text string, action func(now time.Time, idx int) error) {
+	now := time.Now()
+	idx, err := w.findPlanIndex(now, text)
+	if err != nil {
+		w.app.reportError(err)
+		w.scheduleRefresh()
+		return
+	}
+	if idx < 0 {
+		w.scheduleRefresh()
+		return
+	}
+	if err := action(now, idx); err != nil {
+		w.app.reportError(err)
+	}
+	w.scheduleRefresh()
+}
+
+// planActionButton builds an icon-only tool button that applies action to the
+// row's item (resolved freshly by text at click time) via runItemAction.
+func (w *mainWindow) planActionButton(icon *qt.QIcon, tooltip, text string, action func(now time.Time, idx int) error) *qt.QToolButton {
+	btn := qt.NewQToolButton2()
+	btn.SetIcon(icon)
+	btn.SetToolButtonStyle(qt.ToolButtonIconOnly)
+	btn.SetToolTip(tooltip)
+	btn.SetAccessibleName(tooltip)
+	btn.OnClicked(func() { w.runItemAction(text, action) })
+	return btn
+}
+
+// currentItemText returns the text of the currently selected plan row, or
+// false when no selectable row is focused. Used by the item keyboard shortcuts.
+func (w *mainWindow) currentItemText() (string, bool) {
+	row := w.planList.CurrentRow()
+	if row < 0 || row >= len(w.planTexts) {
+		return "", false
+	}
+	return w.planTexts[row], true
 }
 
 func (w *mainWindow) addItem() {
