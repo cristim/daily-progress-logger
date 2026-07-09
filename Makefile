@@ -37,6 +37,15 @@ screenshot: build
 
 # Assemble a .app bundle and vendor the Qt frameworks into it with
 # macdeployqt, so the app survives Homebrew Qt upgrades.
+#
+# macdeployqt notes (Homebrew Qt on Apple Silicon):
+#   * It speculatively deploys optional plugins this app never uses (SVG,
+#     PDF, virtual keyboard) whose frameworks it cannot resolve; it prints
+#     "Cannot resolve rpath ..." warnings but still exits 0. We strip those
+#     broken/unused components below so the shipped bundle stays clean.
+#   * Its own ad-hoc code signing leaves invalid signatures on the dylibs it
+#     rewrites, so the bundle fails to launch on Apple Silicon. We pass
+#     -no-codesign and re-sign the finished bundle ourselves, then verify.
 app:
 	go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY) ./cmd/$(BINARY)
 	rm -rf $(APP_BUNDLE)
@@ -45,7 +54,16 @@ app:
 	sed -e 's/@BINARY@/$(BINARY)/g' -e 's/@BUNDLE_ID@/$(BUNDLE_ID)/g' \
 		-e 's/@APP_NAME@/$(APP_NAME)/g' -e 's/@VERSION@/$(VERSION)/g' \
 		packaging/Info.plist.template > $(APP_BUNDLE)/Contents/Info.plist
-	$(MACDEPLOYQT) $(APP_BUNDLE) -executable=$(APP_BUNDLE)/Contents/MacOS/$(BINARY)
+	$(MACDEPLOYQT) $(APP_BUNDLE) -executable=$(APP_BUNDLE)/Contents/MacOS/$(BINARY) -no-codesign
+	rm -rf $(APP_BUNDLE)/Contents/PlugIns/platforminputcontexts \
+		$(APP_BUNDLE)/Contents/PlugIns/iconengines
+	rm -f $(APP_BUNDLE)/Contents/PlugIns/imageformats/libqpdf.dylib
+	rm -rf $(APP_BUNDLE)/Contents/Frameworks/QtQml*.framework \
+		$(APP_BUNDLE)/Contents/Frameworks/QtQuick*.framework \
+		$(APP_BUNDLE)/Contents/Frameworks/QtSvg.framework \
+		$(APP_BUNDLE)/Contents/Frameworks/QtPdf.framework
+	codesign --force --deep --sign - $(APP_BUNDLE)
+	codesign --verify --deep --strict $(APP_BUNDLE)
 
 # Package the .app into a distributable DMG.
 dmg: app
