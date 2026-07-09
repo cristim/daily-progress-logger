@@ -88,6 +88,49 @@ func TestLoadFailsLoud(t *testing.T) {
 	}
 }
 
+func TestLoadSeedsDefaultShortcuts(t *testing.T) {
+	isolateHome(t)
+	cfg, err := Load()
+	require.NoError(t, err)
+	// Every known action is present with its default.
+	for _, a := range ShortcutActions {
+		assert.Equal(t, a.Default, cfg.Shortcuts[a.ID], "action %q", a.ID)
+	}
+	// The defaults are all distinct (no accidental collisions in the table).
+	require.NoError(t, cfg.validate())
+}
+
+func TestLoadMigratesShortcuts(t *testing.T) {
+	isolateHome(t)
+	path, err := Path()
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
+	// A pre-existing config that overrides one shortcut, omits the rest, and
+	// carries an unknown ID that must be dropped.
+	require.NoError(t, os.WriteFile(path, []byte(
+		`{"data_dir": "/d", "morning_time": "09:00", "evening_time": "17:30",`+
+			`"shortcuts": {"item.done": "Ctrl+K", "legacy.action": "Ctrl+9"}}`), 0o600))
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "Ctrl+K", cfg.Shortcuts[ShortcutItemDone], "explicit override kept")
+	assert.Equal(t, "Ctrl+Shift+T", cfg.Shortcuts[ShortcutItemTodo], "missing entry seeded")
+	_, ok := cfg.Shortcuts["legacy.action"]
+	assert.False(t, ok, "unknown shortcut ID dropped")
+}
+
+func TestLoadFailsOnShortcutConflict(t *testing.T) {
+	isolateHome(t)
+	path, err := Path()
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
+	require.NoError(t, os.WriteFile(path, []byte(
+		`{"data_dir": "/d", "morning_time": "09:00", "evening_time": "17:30",`+
+			`"shortcuts": {"item.done": "Ctrl+1", "checkin.morning": "ctrl+1"}}`), 0o600))
+	_, err = Load()
+	require.ErrorContains(t, err, "conflicts")
+}
+
 func TestParseDay(t *testing.T) {
 	t.Parallel()
 	for _, good := range []string{"Friday", "friday", "FRIDAY", "Monday", "Sunday"} {
