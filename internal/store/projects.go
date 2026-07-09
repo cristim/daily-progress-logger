@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 )
@@ -352,6 +354,30 @@ func (s *Store) SetStoryStatus(storyID string, status ItemStatus) error {
 	return s.SaveProjects(projects)
 }
 
+// MoveStory reparents a story to another project, keeping its ID (so the tasks
+// tagged to it follow automatically) and its position at the end of the target.
+func (s *Store) MoveStory(storyID, toProjectID string) error {
+	projects, err := s.LoadProjects()
+	if err != nil {
+		return err
+	}
+	pi, si := findStory(projects, storyID)
+	if pi < 0 {
+		return fmt.Errorf("story %q not found", storyID)
+	}
+	ti := findProject(projects, toProjectID)
+	if ti < 0 {
+		return fmt.Errorf("project %q not found", toProjectID)
+	}
+	if pi == ti {
+		return nil
+	}
+	story := projects[pi].Stories[si]
+	projects[pi].Stories = slices.Delete(projects[pi].Stories, si, si+1)
+	projects[ti].Stories = append(projects[ti].Stories, story)
+	return s.SaveProjects(projects)
+}
+
 // splitStoryTag separates a trailing "@<slug>" story tag from a task's text.
 // The tag is recognised only when <slug> is a known project/story ID, so an
 // ordinary trailing "@mention" in the text is left untouched.
@@ -471,13 +497,30 @@ func (s *Store) BuildProjectTree() (*ProjectTree, error) {
 	return &ProjectTree{Projects: openProjectTree(projects, agg), Unfiled: agg.unfiled}, nil
 }
 
-// scanTaggedTasks walks every daily file and buckets its plan items by story tag.
+// taskKey identifies a logical task by story tag and normalized text, so the
+// same task carried across several days collapses to a single tree entry.
+type taskKey struct{ slug, norm string }
+
+// scannedTask is a TreeTask plus its index within its day's plan, so same-day
+// tasks keep their original plan order after the dedup map (which is unordered).
+type scannedTask struct {
+	TreeTask
+
+	order int
+}
+
+// scanTaggedTasks walks every daily file and buckets its plan items by story
+// tag. A task carried across days (still open in each day's file) is deduped to
+// its most recent occurrence, so its latest state wins and it is listed once.
 func (s *Store) scanTaggedTasks(known map[string]bool) (taggedTasks, error) {
 	agg := taggedTasks{openByStory: map[string][]TreeTask{}, seenByStory: map[string]bool{}}
 	paths, err := filepath.Glob(filepath.Join(s.DataDir, "daily", "*", "*", "*.md"))
 	if err != nil {
 		return agg, fmt.Errorf("listing daily files: %w", err)
 	}
+	// Glob returns paths in lexical (chronological) order, so a later file
+	// overwrites an earlier one and "latest occurrence wins".
+	latest := map[taskKey]scannedTask{}
 	for _, path := range paths {
 		date, perr := time.ParseInLocation(dateLayout, strings.TrimSuffix(filepath.Base(path), ".md"), time.Local)
 		if perr != nil {
@@ -490,22 +533,54 @@ func (s *Store) scanTaggedTasks(known map[string]bool) (taggedTasks, error) {
 		if !exists {
 			continue
 		}
-		for _, item := range d.Plan {
+		for i, item := range d.Plan {
 			clean, slug := splitStoryTag(item.Text, known)
-			task := TreeTask{Text: clean, State: item.State, Date: date}
-			if slug == "" {
-				if isOpenState(item.State) {
-					agg.unfiled = append(agg.unfiled, task)
-				}
-				continue
-			}
-			agg.seenByStory[slug] = true
-			if isOpenState(item.State) {
-				agg.openByStory[slug] = append(agg.openByStory[slug], task)
+			latest[taskKey{slug, normalizeText(clean)}] = scannedTask{
+				TreeTask: TreeTask{Text: clean, State: item.State, Date: date},
+				order:    i,
 			}
 		}
 	}
+
+	openScanned := map[string][]scannedTask{}
+	var unfiledScanned []scannedTask
+	for key, st := range latest {
+		if key.slug == "" {
+			if isOpenState(st.State) {
+				unfiledScanned = append(unfiledScanned, st)
+			}
+			continue
+		}
+		agg.seenByStory[key.slug] = true
+		if isOpenState(st.State) {
+			openScanned[key.slug] = append(openScanned[key.slug], st)
+		}
+	}
+	agg.unfiled = sortAndStrip(unfiledScanned)
+	for slug, list := range openScanned {
+		agg.openByStory[slug] = sortAndStrip(list)
+	}
 	return agg, nil
+}
+
+// sortAndStrip orders tasks by date, then original plan index, then text (a
+// stable tree layout, chronological across days and plan-ordered within a day)
+// and returns the bare TreeTasks.
+func sortAndStrip(list []scannedTask) []TreeTask {
+	sort.Slice(list, func(i, j int) bool {
+		if !list[i].Date.Equal(list[j].Date) {
+			return list[i].Date.Before(list[j].Date)
+		}
+		if list[i].order != list[j].order {
+			return list[i].order < list[j].order
+		}
+		return list[i].Text < list[j].Text
+	})
+	out := make([]TreeTask, len(list))
+	for i, st := range list {
+		out[i] = st.TreeTask
+	}
+	return out
 }
 
 // openProjectTree assembles the open projects/stories with their open tasks and

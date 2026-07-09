@@ -223,6 +223,71 @@ func TestStore_BuildProjectTree(t *testing.T) {
 	assert.Equal(t, "hotfix refund rounding", story.Tasks[0].Text)
 }
 
+func TestStore_BuildProjectTreeDedupsCarryover(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	pid, err := s.AddProject("Ship v2")
+	require.NoError(t, err)
+	sid, err := s.AddStory(pid, "Payments")
+	require.NoError(t, err)
+
+	// The same task, open on Monday and carried over (still open) to Tuesday.
+	require.NoError(t, s.AddPlanItem(monday, "wire refunds"))
+	require.NoError(t, s.AssignTaskStory(monday, 0, sid))
+	require.NoError(t, s.AddPlanItem(tuesday, "wire refunds"))
+	require.NoError(t, s.AssignTaskStory(tuesday, 0, sid))
+
+	tree, err := s.BuildProjectTree()
+	require.NoError(t, err)
+	story := tree.Projects[0].Stories[0]
+	require.Len(t, story.Tasks, 1, "carried-over task listed once")
+	assert.Equal(t, tuesday.Format(dateLayout), story.Tasks[0].Date.Format(dateLayout),
+		"latest occurrence wins")
+
+	// Marking the latest (Tuesday) done makes the story done even though the
+	// Monday copy is still todo in its own file.
+	require.NoError(t, s.SetPlanItemState(tuesday, 0, StateDone))
+	tree, err = s.BuildProjectTree()
+	require.NoError(t, err)
+	story = tree.Projects[0].Stories[0]
+	assert.True(t, story.Done)
+	assert.Empty(t, story.Tasks)
+}
+
+func TestStore_MoveStory(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	p1, err := s.AddProject("Ship v2")
+	require.NoError(t, err)
+	p2, err := s.AddProject("Internal tooling")
+	require.NoError(t, err)
+	sid, err := s.AddStory(p1, "Payments")
+	require.NoError(t, err)
+
+	// A task tagged to the story keeps its tag (the story ID is stable).
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"wire refunds"}, nil))
+	require.NoError(t, s.AssignTaskStory(tuesday, 0, sid))
+
+	require.NoError(t, s.MoveStory(sid, p2))
+	projects, err := s.LoadProjects()
+	require.NoError(t, err)
+	assert.Empty(t, projects[0].Stories, "story left the source project")
+	require.Len(t, projects[1].Stories, 1)
+	assert.Equal(t, sid, projects[1].Stories[0].ID)
+
+	// The tagged task now aggregates under the new project.
+	tree, err := s.BuildProjectTree()
+	require.NoError(t, err)
+	require.Len(t, tree.Projects, 2)
+	assert.Empty(t, tree.Projects[0].Stories)
+	require.Len(t, tree.Projects[1].Stories, 1)
+	require.Len(t, tree.Projects[1].Stories[0].Tasks, 1)
+	assert.Equal(t, "wire refunds", tree.Projects[1].Stories[0].Tasks[0].Text)
+
+	require.ErrorContains(t, s.MoveStory("nope", p2), "not found")
+	require.ErrorContains(t, s.MoveStory(sid, "nope"), "not found")
+}
+
 func TestStore_BuildProjectTreeExcludesClosed(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)
