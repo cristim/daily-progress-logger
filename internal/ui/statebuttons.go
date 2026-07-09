@@ -60,23 +60,39 @@ func newChoiceSelector(choices []choice, initialID int) *choiceSelector {
 	return &choiceSelector{widget: widget, group: group}
 }
 
-// stateSelector is a row of three mutually exclusive icon buttons for an
-// item's state: Done / Not done / Postpone to next week. It is shared by
-// the evening check-in dialog and the main window's plan list.
+// stateSelector is a row of two mutually exclusive icon buttons for an item's
+// completion state: Done / Not done. Deferring an item (next day, next week,
+// backlog) is handled by separate action buttons, not this selector. It is
+// used by the main window's plan list.
 type stateSelector struct {
 	widget *qt.QWidget
 	group  *qt.QButtonGroup
 }
 
 // newStateSelector returns a stateSelector pre-set to initial, built as a
-// thin wrapper over newChoiceSelector.
+// thin wrapper over newChoiceSelector. An item in the postponed state leaves
+// neither button checked (postpone is no longer a selectable state here).
 func newStateSelector(initial store.ItemState) *stateSelector {
 	cs := newChoiceSelector([]choice{
 		{id: int(store.StateDone), icon: qt.QStyle__SP_DialogApplyButton, tooltip: "Done"},
 		{id: int(store.StateTodo), icon: qt.QStyle__SP_DialogCancelButton, tooltip: "Not done (keep as an open todo)"},
-		{id: int(store.StatePostponed), customIcon: postponeIcon(), tooltip: "Postpone to next week"},
 	}, int(initial))
 	return &stateSelector{widget: cs.widget, group: cs.group}
+}
+
+// eveningChoices are the per-item outcome buttons in the evening check-in:
+// Done, Not done, and the three defer targets. The button ids are
+// store.EveningAction values so the checked group id maps straight back to an
+// action. The next-day/next-week/backlog glyphs match the main window's row
+// buttons for consistency.
+func eveningChoices() []choice {
+	return []choice{
+		{id: int(store.EveningActionDone), icon: qt.QStyle__SP_DialogApplyButton, tooltip: "Done"},
+		{id: int(store.EveningActionTodo), icon: qt.QStyle__SP_DialogCancelButton, tooltip: "Not done (keep as an open todo)"},
+		{id: int(store.EveningActionNextDay), customIcon: postponeIcon(), tooltip: "Postpone to the next day"},
+		{id: int(store.EveningActionNextWeek), icon: qt.QStyle__SP_ArrowUp, tooltip: "Postpone to next week"},
+		{id: int(store.EveningActionBacklog), customIcon: backlogIcon(), tooltip: "Move to the cross-week backlog"},
+	}
 }
 
 // postponeIcon draws a right-pointing chevron in a visible mid-gray on a
@@ -98,9 +114,23 @@ func postponeIcon() *qt.QIcon {
 	return qt.NewQIcon2(pixmap)
 }
 
-// state returns the currently selected item state.
-func (s *stateSelector) state() store.ItemState {
-	return store.ItemState(s.group.CheckedId())
+// backlogIcon draws a small three-line "list" glyph for the cross-week backlog,
+// in the same mid-gray as postponeIcon so unchecked buttons stay legible in
+// dark mode and the glyph reads distinctly from the next-day/next-week arrows.
+func backlogIcon() *qt.QIcon {
+	const size = 16
+	pixmap := qt.NewQPixmap2(size, size)
+	pixmap.FillWithFillColor(qt.NewQColor11(0, 0, 0, 0))
+	painter := qt.NewQPainter2(pixmap.QPaintDevice)
+	painter.SetRenderHint(qt.QPainter__Antialiasing)
+	pen := qt.NewQPen3(qt.NewQColor3(140, 140, 140))
+	pen.SetWidth(2)
+	painter.SetPenWithPen(pen)
+	painter.DrawLine2(3, 4, 13, 4)
+	painter.DrawLine2(3, 8, 13, 8)
+	painter.DrawLine2(3, 12, 13, 12)
+	painter.End()
+	return qt.NewQIcon2(pixmap)
 }
 
 // onChanged registers a handler invoked when the user picks a state.

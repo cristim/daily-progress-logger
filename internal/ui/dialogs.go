@@ -204,7 +204,7 @@ func (a *App) buildEveningDialog(today time.Time, manual bool) (*dialogSpec, err
 
 	layout.AddWidget(qt.NewQLabel3("<b>How did today go?</b>").QWidget)
 
-	selectors := make([]*stateSelector, len(plan))
+	selectors := make([]*choiceSelector, len(plan))
 	if len(plan) > 0 {
 		area, rows := newRowsArea()
 		for i, item := range plan {
@@ -212,7 +212,7 @@ func (a *App) buildEveningDialog(today time.Time, manual bool) (*dialogSpec, err
 			label := qt.NewQLabel3(item.Text)
 			label.SetTextFormat(qt.PlainText)
 			label.SetWordWrap(true)
-			selector := newStateSelector(item.State)
+			selector := newChoiceSelector(eveningChoices(), int(store.EveningActionForState(item.State)))
 			selectors[i] = selector
 			row.AddWidget2(label.QWidget, 1)
 			row.AddWidget(selector.widget)
@@ -236,8 +236,8 @@ func (a *App) buildEveningDialog(today time.Time, manual bool) (*dialogSpec, err
 		decisions := make([]store.EveningDecision, len(plan))
 		for i, item := range plan {
 			decisions[i] = store.EveningDecision{
-				Text:  item.Text,
-				State: selectors[i].state(),
+				Text:   item.Text,
+				Action: store.EveningAction(selectors[i].group.CheckedId()),
 			}
 		}
 		return a.store.ApplyEvening(today, decisions, splitLines(editor.ToPlainText()))

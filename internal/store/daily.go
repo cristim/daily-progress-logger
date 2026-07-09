@@ -155,6 +155,27 @@ func (d *Daily) render() string {
 	return b.String()
 }
 
+// appendUniqueDone appends each non-empty entry of extra to d.Done, skipping
+// any whose normalized text already appears there.
+func (d *Daily) appendUniqueDone(extra []string) {
+	for _, text := range extra {
+		if text == "" {
+			continue
+		}
+		norm := normalizeText(text)
+		dup := false
+		for _, s := range d.Done {
+			if normalizeText(s) == norm {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			d.Done = append(d.Done, text)
+		}
+	}
+}
+
 // hasPlanItem reports whether the plan already contains an item whose
 // normalized text matches text, in any state.
 func (d *Daily) hasPlanItem(text string) bool {

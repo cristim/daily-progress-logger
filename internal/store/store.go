@@ -221,94 +221,180 @@ func (s *Store) ApplyMorning(today time.Time, newItems []string, adopted []Candi
 	return s.SaveBacklog(backlog)
 }
 
-// EveningDecision pairs a plan item's text with the state chosen for it in
-// the evening check-in dialog.
-type EveningDecision struct {
-	Text  string
-	State ItemState
+// EveningAction is the outcome chosen for a plan item in the evening check-in.
+type EveningAction int
+
+const (
+	// EveningActionTodo keeps the item as an open todo.
+	EveningActionTodo EveningAction = iota
+	// EveningActionDone marks the item done.
+	EveningActionDone
+	// EveningActionNextDay removes the item from today and adds it to
+	// tomorrow's plan.
+	EveningActionNextDay
+	// EveningActionNextWeek marks the item postponed ('>') and queues it in
+	// next week's backlog.
+	EveningActionNextWeek
+	// EveningActionBacklog removes the item from today and adds it to this
+	// week's backlog.
+	EveningActionBacklog
+)
+
+// EveningActionForState returns the default evening action reflecting an item's
+// current state, so the dialog pre-selects the choice matching the file.
+func EveningActionForState(state ItemState) EveningAction {
+	switch state {
+	case StateDone:
+		return EveningActionDone
+	case StatePostponed:
+		return EveningActionNextWeek
+	case StateTodo:
+		return EveningActionTodo
+	}
+	return EveningActionTodo
 }
 
-// findDecisionState looks up the state chosen for itemText in decisions by
-// normalized text comparison. It returns the found state and true, or the
-// default state and false when no decision matches.
-func findDecisionState(decisions []EveningDecision, itemText string) (ItemState, bool) {
+// EveningDecision pairs a plan item's text with the action chosen for it in
+// the evening check-in dialog.
+type EveningDecision struct {
+	Text   string
+	Action EveningAction
+}
+
+// findDecisionAction looks up the action chosen for itemText in decisions by
+// normalized text comparison. It returns the found action and true, or the
+// zero action and false when no decision matches.
+func findDecisionAction(decisions []EveningDecision, itemText string) (EveningAction, bool) {
 	norm := normalizeText(itemText)
 	for _, dec := range decisions {
 		if normalizeText(dec.Text) == norm {
-			return dec.State, true
+			return dec.Action, true
 		}
 	}
 	return 0, false
 }
 
+// eveningOutcome is the disposition of one plan item after an evening action:
+// whether it stays in today's plan (and in what state), and which re-homing /
+// backlog side effects it triggers.
+type eveningOutcome struct {
+	keep         bool
+	item         Item // the (possibly restated) item to keep; valid when keep
+	toNextDay    bool
+	toBacklog    bool
+	addNextWeek  bool
+	dropNextWeek bool
+}
+
+// eveningOutcomeFor maps an item + chosen action to its outcome. Done/Todo/
+// NextWeek keep the item in place with an updated state; NextDay/Backlog remove
+// it. Leaving the postponed state (any action but NextWeek) drops the stale
+// next-week backlog entry.
+func eveningOutcomeFor(item Item, action EveningAction) eveningOutcome {
+	wasPostponed := item.State == StatePostponed
+	out := eveningOutcome{dropNextWeek: wasPostponed && action != EveningActionNextWeek}
+	switch action {
+	case EveningActionDone:
+		item.State = StateDone
+		out.keep, out.item = true, item
+	case EveningActionTodo:
+		item.State = StateTodo
+		out.keep, out.item = true, item
+	case EveningActionNextWeek:
+		item.State = StatePostponed
+		out.keep, out.item = true, item
+		out.addNextWeek = !wasPostponed
+	case EveningActionNextDay:
+		out.toNextDay = true
+	case EveningActionBacklog:
+		out.toBacklog = true
+	}
+	return out
+}
+
 // ApplyEvening records the evening check-in. Each decision is matched to a
 // plan item by normalized text (first match wins); items not mentioned in
-// decisions keep their current state; decisions whose text no longer exists
-// in the plan are silently ignored (the user may have deleted the item while
-// the dialog was open). Postponed items are added to the backlog for next
-// week; items leaving the postponed state are removed. extraDone lines are
-// appended to the Done section. The weekly summary is regenerated afterwards.
+// decisions keep their current state and stay in the plan; decisions whose
+// text no longer exists in the plan are silently ignored (the user may have
+// deleted the item while the dialog was open). Actions take effect as follows:
+// Done/Todo set the item's state in place; NextWeek marks it postponed ('>')
+// and queues it in next week's backlog; NextDay removes it from today's plan
+// and appends it to tomorrow's; Backlog removes it from today's plan and adds
+// it to this week's backlog. extraDone lines are appended to the Done section.
+// The weekly summary is regenerated afterwards.
 func (s *Store) ApplyEvening(today time.Time, decisions []EveningDecision, extraDone []string) error {
 	d, err := s.loadOrNewDaily(today)
 	if err != nil {
 		return err
 	}
-	var postponed, unpostponed []string
-	for i, item := range d.Plan {
-		newState := item.State // default: keep current state unchanged
-		if st, ok := findDecisionState(decisions, item.Text); ok {
-			newState = st
-		}
-		if d.Plan[i].State != newState && newState == StatePostponed {
-			postponed = append(postponed, item.Text)
-		}
-		if d.Plan[i].State == StatePostponed && newState != StatePostponed {
-			unpostponed = append(unpostponed, item.Text)
-		}
-		d.Plan[i].State = newState
-	}
-	for _, text := range extraDone {
-		if text == "" {
+
+	// Decide each item's fate. kept holds items that remain in today's plan;
+	// toNextDay/toBacklog are removed from today and re-homed after saving;
+	// addNextWeek/dropNextWeek drive the next-week backlog sync.
+	var kept []Item
+	var toNextDay, toBacklog, addNextWeek, dropNextWeek []string
+	for _, item := range d.Plan {
+		action, ok := findDecisionAction(decisions, item.Text)
+		if !ok {
+			kept = append(kept, item) // untouched: keep current state
 			continue
 		}
-		norm := normalizeText(text)
-		dup := false
-		for _, s := range d.Done {
-			if normalizeText(s) == norm {
-				dup = true
-				break
-			}
+		out := eveningOutcomeFor(item, action)
+		if out.keep {
+			kept = append(kept, out.item)
 		}
-		if !dup {
-			d.Done = append(d.Done, text)
+		if out.toNextDay {
+			toNextDay = append(toNextDay, item.Text)
+		}
+		if out.toBacklog {
+			toBacklog = append(toBacklog, item.Text)
+		}
+		if out.addNextWeek {
+			addNextWeek = append(addNextWeek, item.Text)
+		}
+		if out.dropNextWeek {
+			dropNextWeek = append(dropNextWeek, item.Text)
 		}
 	}
+	d.Plan = kept
+
+	d.appendUniqueDone(extraDone)
 	d.EveningDone = true
 	if err := s.SaveDaily(d); err != nil {
 		return err
 	}
 
-	if err := s.syncPostponed(postponed, unpostponed); err != nil {
+	tomorrow := today.AddDate(0, 0, 1)
+	for _, text := range toNextDay {
+		if err := s.AddPlanItem(tomorrow, text); err != nil {
+			return err
+		}
+	}
+	if err := s.syncBacklog(toBacklog, addNextWeek, dropNextWeek); err != nil {
 		return err
 	}
 	return s.RegenerateWeekly(WeekOf(today))
 }
 
-// syncPostponed queues newly postponed items in the backlog for next week
-// and removes entries for items that left the postponed state.
-func (s *Store) syncPostponed(postponed, unpostponed []string) error {
-	if len(postponed) == 0 && len(unpostponed) == 0 {
+// syncBacklog applies backlog changes in a single read-modify-write: it first
+// drops stale next-week entries, then adds new next-week and current entries.
+// A no-op when all three slices are empty.
+func (s *Store) syncBacklog(toCurrent, toNextWeek, dropNextWeek []string) error {
+	if len(toCurrent) == 0 && len(toNextWeek) == 0 && len(dropNextWeek) == 0 {
 		return nil
 	}
 	backlog, err := s.LoadBacklog()
 	if err != nil {
 		return err
 	}
-	for _, text := range postponed {
+	for _, text := range dropNextWeek {
+		backlog.removeNextWeek(text)
+	}
+	for _, text := range toNextWeek {
 		backlog.addNextWeek(text)
 	}
-	for _, text := range unpostponed {
-		backlog.removeNextWeek(text)
+	for _, text := range toCurrent {
+		backlog.addCurrent(text)
 	}
 	return s.SaveBacklog(backlog)
 }
@@ -373,6 +459,32 @@ func (s *Store) PostponePlanItem(date time.Time, index int) error {
 	}
 	backlog.addNextWeek(d.Plan[index].Text)
 	return s.SaveBacklog(backlog)
+}
+
+// PostponeToNextDay moves a plan item into tomorrow's plan: it is removed from
+// date's plan and appended as a fresh todo to the next day's file. Unlike
+// PostponePlanItem (next week) it leaves no postponed marker; the item simply
+// reappears in the next day's plan. If the item was postponed, its stale
+// next-week backlog entry is dropped since it is now being carried to tomorrow.
+func (s *Store) PostponeToNextDay(date time.Time, index int) error {
+	d, err := s.loadOrNewDaily(date)
+	if err != nil {
+		return err
+	}
+	if index < 0 || index >= len(d.Plan) {
+		return fmt.Errorf("plan item index %d out of range (%d items)", index, len(d.Plan))
+	}
+	item := d.Plan[index]
+	d.Plan = slices.Delete(d.Plan, index, index+1)
+	if err := s.SaveDaily(d); err != nil {
+		return err
+	}
+	if item.State == StatePostponed {
+		if err := s.syncBacklog(nil, nil, []string{item.Text}); err != nil {
+			return err
+		}
+	}
+	return s.AddPlanItem(date.AddDate(0, 0, 1), item.Text)
 }
 
 // AdoptFromBacklog adds text to today's plan and removes it from both backlog
