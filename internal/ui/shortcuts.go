@@ -94,6 +94,7 @@ func (a *App) shortcutHandlers() map[string]func() {
 		config.ShortcutViewBacklog:    a.openBacklogDialog,
 		config.ShortcutViewSummary:    a.runWeeklySummaryManually,
 		config.ShortcutReviewWeek:     a.runWeekReviewManually,
+		config.ShortcutViewWeeklyPlan: a.runWeeklyPlanManually,
 		config.ShortcutWindowToggle:   a.toggleWindow,
 		config.ShortcutWindowAddTask:  a.focusAddTask,
 	}

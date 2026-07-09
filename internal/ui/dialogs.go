@@ -97,6 +97,113 @@ func (a *App) runWeekReviewDialog(week store.WeekID, rollover bool) (dialogResul
 	return spec.run()
 }
 
+// runWeeklyPlanDialog shows the weekly-plan dialog for week.
+func (a *App) runWeeklyPlanDialog(week store.WeekID, manual bool) (dialogResult, error) {
+	spec, err := a.buildWeeklyPlanDialog(week, manual)
+	if err != nil {
+		return dialogCanceled, err
+	}
+	return spec.run()
+}
+
+// buildWeeklyPlanDialog captures the week's "big things". Existing goals are
+// shown with a Done / Not-done selector, so re-opening the dialog is how goals
+// get ticked through the week; a text field adds more. manual is forwarded to
+// attachButtons.
+func (a *App) buildWeeklyPlanDialog(week store.WeekID, manual bool) (*dialogSpec, error) {
+	goals, _, err := a.store.WeeklyPlan(week)
+	if err != nil {
+		return nil, err
+	}
+
+	dialog := qt.NewQDialog(a.window.win.QWidget)
+	dialog.SetWindowTitle(fmt.Sprintf("Weekly Plan: %s", week))
+	dialog.SetMinimumWidth(460)
+	layout := qt.NewQVBoxLayout(dialog.QWidget)
+
+	layout.AddWidget(qt.NewQLabel3("<b>What are the big things you want to get done this week?</b>").QWidget)
+
+	selectors := make([]*stateSelector, len(goals))
+	if len(goals) > 0 {
+		layout.AddWidget(qt.NewQLabel3("This week's goals (tick off what's done):").QWidget)
+		area, rows := newRowsArea()
+		for i, g := range goals {
+			row := qt.NewQHBoxLayout2()
+			label := qt.NewQLabel3(g.Text)
+			label.SetTextFormat(qt.PlainText)
+			label.SetWordWrap(true)
+			sel := newStateSelector(g.State)
+			selectors[i] = sel
+			row.AddWidget2(label.QWidget, 1)
+			row.AddWidget(sel.widget)
+			rows.AddLayout(row.QLayout)
+		}
+		layout.AddWidget(area.QWidget)
+	}
+
+	editor := qt.NewQPlainTextEdit2()
+	editor.SetPlaceholderText("Add more big things, one per line…")
+	editor.SetFocus()
+	layout.AddWidget(editor.QWidget)
+	attachButtons(dialog, layout, manual)
+
+	apply := func() error {
+		next := make([]store.Item, 0, len(goals))
+		for i, g := range goals {
+			state := g.State
+			if selectors[i] != nil {
+				state = store.ItemState(selectors[i].group.CheckedId())
+			}
+			next = append(next, store.Item{Text: g.Text, State: state})
+		}
+		for _, text := range splitLines(editor.ToPlainText()) {
+			next = append(next, store.Item{Text: text, State: store.StateTodo})
+		}
+		return a.store.SetWeeklyPlan(week, next)
+	}
+	return &dialogSpec{dialog: dialog, apply: apply}, nil
+}
+
+// weeklyGoalsLabel renders a read-only rich-text label of the week's goals,
+// done ones struck through with a check. Shared by the morning check-in and the
+// weekly summary.
+func weeklyGoalsLabel(title string, goals []store.Item) *qt.QLabel {
+	var b strings.Builder
+	fmt.Fprintf(&b, "<b>%s</b>", html.EscapeString(title))
+	for _, g := range goals {
+		if g.State == store.StateDone {
+			fmt.Fprintf(&b, `<div style="color:#888888">&#10003; <s>%s</s></div>`, html.EscapeString(g.Text))
+		} else {
+			fmt.Fprintf(&b, "<div>&bull; %s</div>", html.EscapeString(g.Text))
+		}
+	}
+	label := qt.NewQLabel3(b.String())
+	label.SetTextFormat(qt.RichText)
+	label.SetWordWrap(true)
+	return label
+}
+
+// plannedTodayLabel returns a read-only summary of today's already-recorded plan
+// (with the items in a tooltip), or nil when there is nothing planned yet.
+func plannedTodayLabel(daily *store.Daily, exists bool) *qt.QLabel {
+	if !exists || daily == nil || len(daily.Plan) == 0 {
+		return nil
+	}
+	n := len(daily.Plan)
+	word := "items"
+	if n == 1 {
+		word = "item"
+	}
+	summary := qt.NewQLabel3(fmt.Sprintf("Already planned today: %d %s.", n, word))
+	summary.SetTextFormat(qt.PlainText)
+	var tipLines []string
+	for _, it := range daily.Plan {
+		tipLines = append(tipLines, "• "+it.Text)
+	}
+	summary.SetToolTip(strings.Join(tipLines, "\n"))
+	return summary
+}
+
 // buildMorningDialog asks what the user plans to work on today, offering
 // carry-over candidates from earlier in the week and the backlog.
 // manual mirrors runPrompt's manual flag and is forwarded to attachButtons.
@@ -120,22 +227,18 @@ func (a *App) buildMorningDialog(today time.Time, manual bool) (*dialogSpec, err
 
 	layout.AddWidget(qt.NewQLabel3("<b>What are you planning to work on today?</b>").QWidget)
 
+	// Show this week's big things (the weekly plan) read-only for reference, so
+	// daily planning stays aligned with the week's intentions.
+	if goals, planned, err := a.store.WeeklyPlan(store.WeekOf(today)); err != nil {
+		return nil, err
+	} else if planned && len(goals) > 0 {
+		layout.AddWidget(weeklyGoalsLabel("This week's big things:", goals).QWidget)
+	}
+
 	// When today's plan already exists, show a read-only summary so the user
 	// knows their earlier tasks are still there (they are not visible in the
 	// editor because ApplyMorning deduplicates on accept).
-	if dailyExists && daily != nil && len(daily.Plan) > 0 {
-		n := len(daily.Plan)
-		word := "items"
-		if n == 1 {
-			word = "item"
-		}
-		summary := qt.NewQLabel3(fmt.Sprintf("Already planned today: %d %s.", n, word))
-		summary.SetTextFormat(qt.PlainText)
-		var tipLines []string
-		for _, it := range daily.Plan {
-			tipLines = append(tipLines, "• "+it.Text)
-		}
-		summary.SetToolTip(strings.Join(tipLines, "\n"))
+	if summary := plannedTodayLabel(daily, dailyExists); summary != nil {
 		layout.AddWidget(summary.QWidget)
 	}
 
@@ -325,6 +428,13 @@ func (a *App) buildWeeklySummaryDialog(week store.WeekID, markOnAccept bool) (*d
 	dialog.SetWindowTitle(fmt.Sprintf("Week Summary: %s", week))
 	dialog.SetMinimumWidth(500)
 	layout := qt.NewQVBoxLayout(dialog.QWidget)
+
+	// Show the week's big things (the weekly plan) with their done/not state.
+	if goals, planned, err := a.store.WeeklyPlan(week); err != nil {
+		return nil, err
+	} else if planned && len(goals) > 0 {
+		layout.AddWidget(weeklyGoalsLabel("Big things this week:", goals).QWidget)
+	}
 
 	// Build the HTML content for the browser.
 	var sb strings.Builder

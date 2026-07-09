@@ -8,6 +8,12 @@ markdown files you can grep, sync, or feed to an LLM at review time.
 
 ## How it works
 
+- **Weekly plan** (Monday morning): asks *"What are the big things you want to
+  get done this week?"* and captures them as trackable goals. If you don't open
+  the app Monday it catches up on the first open any later weekday. Each goal is
+  done / not-done: re-open *Weekly Plan…* (File menu, tray menu, or ⌘6) any time
+  to tick goals off or add more, and the Friday summary shows which were
+  achieved. This week's goals also appear read-only atop the morning check-in.
 - **Morning check-in** (default 09:30): asks *"What are you planning to work
   on today?"* — one task per line — and offers to carry over still-open items
   from earlier in the week and from the backlog. Saves the plan as a checkbox
@@ -52,17 +58,19 @@ Everything lives under `~/DailyProgress` (configurable):
 
 ```
 daily/2026/07/2026-07-07.md   one file per day: ## Plan checklist + ## Done
-weekly/2026/2026-W28.md       derived weekly summary of everything done
+weekly/2026/2026-W28.md       weekly plan (## Week plan) + derived summary
 backlog.md                    cross-week todo list (Current + Next week)
 ```
 
 Plan items use checkbox markers: `- [ ]` open, `- [x]` done, `- [>]`
-postponed. The files are yours to edit — the app re-reads them before every
-operation and refuses to overwrite anything it cannot parse.
+postponed. Weekly goals use `- [ ]` / `- [x]` in the `## Week plan` section.
+The files are yours to edit — the app re-reads them before every operation and
+refuses to overwrite anything it cannot parse.
 
-Weekly summaries are regenerated from the daily files, so never hand-edit
-those sections; the `reviewed` flag and `## Dropped at review` list are
-preserved across regenerations.
+Weekly summary sections are regenerated from the daily files, so never
+hand-edit those; the `reviewed` / `summarized` / `planned` flags, the
+`## Week plan` goals and the `## Dropped at review` list are preserved across
+regenerations.
 
 ## Configuration
 

@@ -98,6 +98,7 @@ func (w *mainWindow) setUpMenu() {
 	menuBar := qt.NewQMenuBar2()
 	fileMenu := menuBar.AddMenuWithTitle("File")
 	addMenuAction(fileMenu, "Open Data Folder", w.openDataFolder)
+	addMenuAction(fileMenu, "Weekly Plan…", w.app.runWeeklyPlanManually)
 	addMenuAction(fileMenu, "Backlog…", func() { w.app.openBacklogDialog() })
 	addMenuAction(fileMenu, "This Week's Summary…", w.app.runWeeklySummaryManually)
 	addMenuAction(fileMenu, "Review Last Week…", w.app.runWeekReviewManually)

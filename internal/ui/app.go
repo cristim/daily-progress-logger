@@ -218,6 +218,7 @@ func (a *App) setUpTray() {
 	menu := qt.NewQMenu2()
 	addMenuAction(menu, "Show Window", func() { a.Show() })
 	menu.AddSeparator()
+	addMenuAction(menu, "Weekly Plan…", a.runWeeklyPlanManually)
 	addMenuAction(menu, "Morning Check-in…", func() { a.runPrompt(schedule.PromptMorning, true) })
 	addMenuAction(menu, "Evening Check-in…", func() { a.runPrompt(schedule.PromptEvening, true) })
 	addMenuAction(menu, "This Week's Summary…", a.runWeeklySummaryManually)
@@ -330,6 +331,11 @@ func (a *App) scheduleState(now time.Time) (schedule.State, error) {
 		return st, err
 	}
 	st.WeekReviewPending = pending
+	_, planPending, err := a.store.WeeklyPlanPending(now)
+	if err != nil {
+		return st, err
+	}
+	st.WeeklyPlanPending = planPending
 	pendingWeek, summaryPending, err := a.store.WeekSummaryPending(now)
 	if err != nil {
 		return st, err
@@ -369,18 +375,7 @@ func (a *App) runPrompt(prompt schedule.Prompt, manual bool) {
 		manual = true
 	}
 
-	result := dialogAccepted
-	var err error
-	switch prompt {
-	case schedule.PromptMorning:
-		result, err = a.runMorningDialog(manual)
-	case schedule.PromptEvening:
-		result, err = a.runEveningDialog(manual)
-	case schedule.PromptWeekReview:
-		result, err = a.runWeekReviewLoop()
-	case schedule.PromptWeeklySummary:
-		result, err = a.runWeeklySummaryForNow()
-	}
+	result, err := a.dispatchPrompt(prompt, manual)
 	if err != nil {
 		a.reportError(err)
 		return
@@ -415,6 +410,23 @@ func (a *App) runPrompt(prompt schedule.Prompt, manual bool) {
 		delete(a.skippedOn, prompt)
 		delete(a.forced, prompt)
 	}
+}
+
+// dispatchPrompt opens the dialog(s) for prompt and returns the user's result.
+func (a *App) dispatchPrompt(prompt schedule.Prompt, manual bool) (dialogResult, error) {
+	switch prompt {
+	case schedule.PromptMorning:
+		return a.runMorningDialog(manual)
+	case schedule.PromptEvening:
+		return a.runEveningDialog(manual)
+	case schedule.PromptWeekReview:
+		return a.runWeekReviewLoop()
+	case schedule.PromptWeeklyPlan:
+		return a.runWeeklyPlanDialog(store.WeekOf(time.Now()), manual)
+	case schedule.PromptWeeklySummary:
+		return a.runWeeklySummaryForNow()
+	}
+	return dialogAccepted, nil
 }
 
 // runWeekReviewLoop iterates oldest-first through all unreviewed past weeks,
@@ -555,9 +567,29 @@ func (a *App) runWeeklySummaryManually() {
 	a.applyManualResult(schedule.PromptWeeklySummary, result)
 }
 
+// runWeeklyPlanManually opens the weekly-plan dialog for the current week on
+// demand, so the user can set or tick off the week's big things any time.
+func (a *App) runWeeklyPlanManually() {
+	if a.dialogOpen {
+		return
+	}
+	a.dialogOpen = true
+	defer func() {
+		a.dialogOpen = false
+		a.window.refresh()
+		a.maybeQuitOneshot()
+	}()
+	result, err := a.runWeeklyPlanDialog(store.WeekOf(time.Now()), true)
+	if err != nil {
+		a.reportError(err)
+		return
+	}
+	a.applyManualResult(schedule.PromptWeeklyPlan, result)
+}
+
 // ForcePrompt runs the named check-in immediately, regardless of schedule:
-// "morning", "evening" or "review". A forced prompt stays pending (so a
-// snooze re-shows it in an hour) until answered or canceled.
+// "morning", "evening", "review", "summary" or "plan". A forced prompt stays
+// pending (so a snooze re-shows it in an hour) until answered or canceled.
 func (a *App) ForcePrompt(name string) error {
 	var prompt schedule.Prompt
 	switch name {
@@ -571,8 +603,11 @@ func (a *App) ForcePrompt(name string) error {
 	case "summary":
 		a.runWeeklySummaryManually()
 		return nil
+	case "plan":
+		a.runWeeklyPlanManually()
+		return nil
 	default:
-		return fmt.Errorf("unknown check-in %q, want morning, evening, review or summary", name)
+		return fmt.Errorf("unknown check-in %q, want morning, evening, review, summary or plan", name)
 	}
 	delete(a.snoozeUntil, prompt)
 	delete(a.skippedOn, prompt)
@@ -607,6 +642,10 @@ func (a *App) GrabScreenshots(dir string) error {
 	if err != nil {
 		return err
 	}
+	weeklyPlan, err := a.buildWeeklyPlanDialog(store.WeekOf(now), false)
+	if err != nil {
+		return err
+	}
 	backlogDlg, err := a.buildBacklogDialog()
 	if err != nil {
 		return err
@@ -618,6 +657,7 @@ func (a *App) GrabScreenshots(dir string) error {
 		"evening":        evening.dialog.QWidget,
 		"week-review":    review.dialog.QWidget,
 		"weekly-summary": weeklySummary.dialog.QWidget,
+		"weekly-plan":    weeklyPlan.dialog.QWidget,
 		"backlog":        backlogDlg.dialog.QWidget,
 		"preferences":    a.buildPreferencesDialog().QWidget,
 	} {
