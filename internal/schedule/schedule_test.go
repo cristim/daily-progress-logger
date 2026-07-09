@@ -129,6 +129,40 @@ func TestDue(t *testing.T) {
 			state: State{SummaryPending: true},
 			want:  []Prompt{PromptEvening, PromptWeeklySummary},
 		},
+		{
+			name:  "weekly plan due Monday morning, ahead of the daily plan",
+			now:   atDay(time.Monday, 9, 0),
+			state: State{WeeklyPlanPending: true},
+			want:  []Prompt{PromptWeeklyPlan, PromptMorning},
+		},
+		{
+			name:  "weekly plan catches up on a later weekday",
+			now:   atDay(time.Wednesday, 10, 0),
+			state: State{WeeklyPlanPending: true},
+			want:  []Prompt{PromptWeeklyPlan, PromptMorning},
+		},
+		{
+			name:  "weekly plan not due on the weekend",
+			now:   atDay(time.Sunday, 10, 0),
+			state: State{WeeklyPlanPending: true, MorningDone: true},
+		},
+		{
+			name:  "weekly plan not due before morning time",
+			now:   atDay(time.Monday, 8, 59),
+			state: State{WeeklyPlanPending: true},
+		},
+		{
+			name:  "weekly plan not due once planned",
+			now:   atDay(time.Monday, 9, 0),
+			state: State{WeeklyPlanPending: false},
+			want:  []Prompt{PromptMorning},
+		},
+		{
+			name:  "full monday stack: review then weekly plan then morning",
+			now:   atDay(time.Monday, 9, 0),
+			state: State{WeekReviewPending: true, WeeklyPlanPending: true},
+			want:  []Prompt{PromptWeekReview, PromptWeeklyPlan, PromptMorning},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -198,6 +232,7 @@ func TestFilter(t *testing.T) {
 func TestPromptString(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, "week review", PromptWeekReview.String())
+	assert.Equal(t, "weekly plan", PromptWeeklyPlan.String())
 	assert.Equal(t, "morning check-in", PromptMorning.String())
 	assert.Equal(t, "evening check-in", PromptEvening.String())
 	assert.Equal(t, "weekly summary", PromptWeeklySummary.String())

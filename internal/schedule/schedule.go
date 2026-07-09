@@ -10,6 +10,8 @@ type Prompt int
 const (
 	// PromptWeekReview triages the previous week's leftover items.
 	PromptWeekReview Prompt = iota
+	// PromptWeeklyPlan captures the week's "big things" on Monday morning.
+	PromptWeeklyPlan
 	// PromptMorning asks what the user plans to work on today.
 	PromptMorning
 	// PromptEvening asks what the user accomplished today.
@@ -24,6 +26,8 @@ func (p Prompt) String() string {
 	switch p {
 	case PromptWeekReview:
 		return "week review"
+	case PromptWeeklyPlan:
+		return "weekly plan"
 	case PromptMorning:
 		return "morning check-in"
 	case PromptEvening:
@@ -45,6 +49,12 @@ func (t TimeOfDay) reached(now time.Time) bool {
 	return now.Hour()*60+now.Minute() >= t.Hour*60+t.Minute
 }
 
+// isWeekday reports whether now falls Monday through Friday.
+func isWeekday(now time.Time) bool {
+	wd := now.Weekday()
+	return wd != time.Saturday && wd != time.Sunday
+}
+
 // State is the persisted facts Due needs to decide what to prompt for.
 type State struct {
 	// MorningDone: today's morning check-in already happened.
@@ -53,6 +63,8 @@ type State struct {
 	EveningDone bool
 	// WeekReviewPending: an earlier week has data but was never reviewed.
 	WeekReviewPending bool
+	// WeeklyPlanPending: the current week has no weekly plan ("big things") yet.
+	WeeklyPlanPending bool
 	// SummaryPending: the current week has data but has not yet been summarized.
 	SummaryPending bool
 	// SummaryPendingPastWeek is true when the pending summary is for a past
@@ -78,6 +90,12 @@ func Due(now time.Time, morning, evening TimeOfDay, st State,
 	var due []Prompt
 	if st.WeekReviewPending {
 		due = append(due, PromptWeekReview)
+	}
+	// The weekly plan is set Monday morning; if the app wasn't opened Monday it
+	// catches up on the first open any later weekday, until the plan is set.
+	// It gates the day ahead of the daily morning plan, so it comes first.
+	if st.WeeklyPlanPending && isWeekday(now) && morning.reached(now) {
+		due = append(due, PromptWeeklyPlan)
 	}
 	morningDue := !st.MorningDone && morning.reached(now)
 	eveningDue := !st.EveningDone && evening.reached(now)
