@@ -52,19 +52,19 @@ func (a *App) applyShortcuts(cfg *config.Config) {
 // the currently selected plan row and are no-ops when a modal dialog is open or
 // no row is selected.
 func (a *App) shortcutHandlers() map[string]func() {
-	// item wraps a store operation so it runs against the selected plan row,
-	// resolving the row's text (stable across list rebuilds) to an index.
-	item := func(action func(now time.Time, idx int, text string) error) func() {
+	// item wraps a store operation so it runs against the selected tree task,
+	// resolving it (by its day + text) to a plan index on that day.
+	item := func(action func(date time.Time, idx int, text string) error) func() {
 		return func() {
 			if a.dialogOpen {
 				return
 			}
-			text, ok := a.window.currentItemText()
+			date, text, ok := a.window.currentTask()
 			if !ok {
 				return
 			}
-			a.window.runItemAction(text, func(now time.Time, idx int) error {
-				return action(now, idx, text)
+			a.window.runTaskAction(date, text, func(d time.Time, idx int) error {
+				return action(d, idx, text)
 			})
 		}
 	}

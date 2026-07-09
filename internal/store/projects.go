@@ -411,6 +411,32 @@ func (s *Store) AssignTaskStory(date time.Time, index int, storyID string) error
 	return s.retagTask(date, index, allIDs(projects), "@"+storyID)
 }
 
+// AddTaggedTask appends a new todo to date's plan already tagged with storyID
+// (used when adding a task directly under a story in the tree).
+func (s *Store) AddTaggedTask(date time.Time, text, storyID string) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	projects, err := s.LoadProjects()
+	if err != nil {
+		return err
+	}
+	if pi, _ := findStory(projects, storyID); pi < 0 {
+		return fmt.Errorf("story %q not found", storyID)
+	}
+	d, err := s.loadOrNewDaily(date)
+	if err != nil {
+		return err
+	}
+	tagged := text + " @" + storyID
+	if d.hasPlanItem(tagged) {
+		return nil
+	}
+	d.Plan = append(d.Plan, Item{Text: tagged, State: StateTodo})
+	return s.SaveDaily(d)
+}
+
 // UnassignTaskStory removes any story tag from the plan item at index.
 func (s *Store) UnassignTaskStory(date time.Time, index int) error {
 	projects, err := s.LoadProjects()
@@ -434,6 +460,33 @@ func (s *Store) retagTask(date time.Time, index int, known map[string]bool, tag 
 	}
 	d.Plan[index].Text = clean
 	return s.SaveDaily(d)
+}
+
+// FindTaskIndex returns the index of the plan item on date whose text, with any
+// story tag stripped, matches displayText (normalized), or -1 when not found.
+// The tree resolves a task to its daily item this way so actions hit the right
+// row even after edits.
+func (s *Store) FindTaskIndex(date time.Time, displayText string) (int, error) {
+	projects, err := s.LoadProjects()
+	if err != nil {
+		return -1, err
+	}
+	known := allIDs(projects)
+	d, exists, err := s.LoadDaily(date)
+	if err != nil {
+		return -1, err
+	}
+	if !exists {
+		return -1, nil
+	}
+	norm := normalizeText(displayText)
+	for i, it := range d.Plan {
+		clean, _ := splitStoryTag(it.Text, known)
+		if normalizeText(clean) == norm {
+			return i, nil
+		}
+	}
+	return -1, nil
 }
 
 // isOpenState reports whether a task still counts as open (not done).
