@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // ItemStatus is the lifecycle state of a Project or Story.
@@ -349,4 +350,188 @@ func (s *Store) SetStoryStatus(storyID string, status ItemStatus) error {
 	}
 	projects[pi].Stories[si].Status = status
 	return s.SaveProjects(projects)
+}
+
+// splitStoryTag separates a trailing "@<slug>" story tag from a task's text.
+// The tag is recognised only when <slug> is a known project/story ID, so an
+// ordinary trailing "@mention" in the text is left untouched.
+func splitStoryTag(text string, known map[string]bool) (clean, slug string) {
+	trimmed := strings.TrimRight(text, " \t")
+	space := strings.LastIndexByte(trimmed, ' ')
+	last := trimmed[space+1:] // whole string when there is no space
+	if !strings.HasPrefix(last, "@") {
+		return text, ""
+	}
+	candidate := last[1:]
+	if !known[candidate] {
+		return text, ""
+	}
+	if space < 0 {
+		return "", candidate
+	}
+	return strings.TrimRight(trimmed[:space], " \t"), candidate
+}
+
+// AssignTaskStory tags the plan item at index (on date) with storyID, replacing
+// any existing story tag. UnassignTaskStory clears it.
+func (s *Store) AssignTaskStory(date time.Time, index int, storyID string) error {
+	projects, err := s.LoadProjects()
+	if err != nil {
+		return err
+	}
+	if pi, _ := findStory(projects, storyID); pi < 0 {
+		return fmt.Errorf("story %q not found", storyID)
+	}
+	return s.retagTask(date, index, allIDs(projects), "@"+storyID)
+}
+
+// UnassignTaskStory removes any story tag from the plan item at index.
+func (s *Store) UnassignTaskStory(date time.Time, index int) error {
+	projects, err := s.LoadProjects()
+	if err != nil {
+		return err
+	}
+	return s.retagTask(date, index, allIDs(projects), "")
+}
+
+func (s *Store) retagTask(date time.Time, index int, known map[string]bool, tag string) error {
+	d, err := s.loadOrNewDaily(date)
+	if err != nil {
+		return err
+	}
+	if index < 0 || index >= len(d.Plan) {
+		return fmt.Errorf("plan item index %d out of range (%d items)", index, len(d.Plan))
+	}
+	clean, _ := splitStoryTag(d.Plan[index].Text, known)
+	if tag != "" {
+		clean = strings.TrimSpace(clean + " " + tag)
+	}
+	d.Plan[index].Text = clean
+	return s.SaveDaily(d)
+}
+
+// isOpenState reports whether a task still counts as open (not done).
+func isOpenState(state ItemState) bool {
+	return state == StateTodo || state == StatePostponed
+}
+
+// TreeTask is one daily task shown under a story (or Unfiled) in the tree; Text
+// has the story tag stripped and Date identifies the daily file that holds it.
+type TreeTask struct {
+	Text  string
+	State ItemState
+	Date  time.Time
+}
+
+// TreeStory is a story with its open tasks and derived done state (has had
+// tasks, none currently open).
+type TreeStory struct {
+	ID    string
+	Name  string
+	Done  bool
+	Tasks []TreeTask
+}
+
+// TreeProject is an open project with its open stories.
+type TreeProject struct {
+	ID      string
+	Name    string
+	Done    bool
+	Stories []TreeStory
+}
+
+// ProjectTree is the aggregated display model for the main window: open
+// projects/stories with their open tasks, plus untagged open tasks (Unfiled).
+type ProjectTree struct {
+	Projects []TreeProject
+	Unfiled  []TreeTask
+}
+
+// taggedTasks is the per-story aggregation scanned from the daily files: the
+// open tasks under each story ID, the set of story IDs that have any task at
+// all (open or done, for derived done state), and the untagged open tasks.
+type taggedTasks struct {
+	openByStory map[string][]TreeTask
+	seenByStory map[string]bool
+	unfiled     []TreeTask
+}
+
+// BuildProjectTree aggregates open tasks from every daily file under their
+// tagged story, computes derived done state, and drops closed projects/stories.
+// Untagged open tasks collect under Unfiled.
+func (s *Store) BuildProjectTree() (*ProjectTree, error) {
+	projects, err := s.LoadProjects()
+	if err != nil {
+		return nil, err
+	}
+	agg, err := s.scanTaggedTasks(allIDs(projects))
+	if err != nil {
+		return nil, err
+	}
+	return &ProjectTree{Projects: openProjectTree(projects, agg), Unfiled: agg.unfiled}, nil
+}
+
+// scanTaggedTasks walks every daily file and buckets its plan items by story tag.
+func (s *Store) scanTaggedTasks(known map[string]bool) (taggedTasks, error) {
+	agg := taggedTasks{openByStory: map[string][]TreeTask{}, seenByStory: map[string]bool{}}
+	paths, err := filepath.Glob(filepath.Join(s.DataDir, "daily", "*", "*", "*.md"))
+	if err != nil {
+		return agg, fmt.Errorf("listing daily files: %w", err)
+	}
+	for _, path := range paths {
+		date, perr := time.ParseInLocation(dateLayout, strings.TrimSuffix(filepath.Base(path), ".md"), time.Local)
+		if perr != nil {
+			continue // not one of our daily files
+		}
+		d, exists, lerr := s.LoadDaily(date)
+		if lerr != nil {
+			return agg, lerr
+		}
+		if !exists {
+			continue
+		}
+		for _, item := range d.Plan {
+			clean, slug := splitStoryTag(item.Text, known)
+			task := TreeTask{Text: clean, State: item.State, Date: date}
+			if slug == "" {
+				if isOpenState(item.State) {
+					agg.unfiled = append(agg.unfiled, task)
+				}
+				continue
+			}
+			agg.seenByStory[slug] = true
+			if isOpenState(item.State) {
+				agg.openByStory[slug] = append(agg.openByStory[slug], task)
+			}
+		}
+	}
+	return agg, nil
+}
+
+// openProjectTree assembles the open projects/stories with their open tasks and
+// derived done state from the scanned aggregation.
+func openProjectTree(projects []Project, agg taggedTasks) []TreeProject {
+	var out []TreeProject
+	for _, p := range projects {
+		if p.Status == StatusClosed {
+			continue
+		}
+		tp := TreeProject{ID: p.ID, Name: p.Name}
+		projectSeen, projectOpen := false, false
+		for _, st := range p.Stories {
+			if st.Status == StatusClosed {
+				continue
+			}
+			open := agg.openByStory[st.ID]
+			tp.Stories = append(tp.Stories, TreeStory{
+				ID: st.ID, Name: st.Name, Tasks: open,
+				Done: agg.seenByStory[st.ID] && len(open) == 0,
+			})
+			projectSeen = projectSeen || agg.seenByStory[st.ID]
+			projectOpen = projectOpen || len(open) > 0
+		}
+		tp.Done = projectSeen && !projectOpen
+		out = append(out, tp)
+	}
+	return out
 }

@@ -128,6 +128,123 @@ func TestStore_ProjectsHandEditedMissingIDs(t *testing.T) {
 	assert.Equal(t, StatusOpen, projects[0].Stories[0].Status)
 }
 
+func TestSplitStoryTag(t *testing.T) {
+	t.Parallel()
+	known := map[string]bool{"payments": true}
+	cases := []struct {
+		text, clean, slug string
+	}{
+		{"Fix payment bug @payments", "Fix payment bug", "payments"},
+		{"ping @alice about it", "ping @alice about it", ""}, // not trailing
+		{"ping @alice", "ping @alice", ""},                   // unknown slug
+		{"no tag here", "no tag here", ""},
+		{"@payments", "", "payments"},
+		{"Fix bug @payments  ", "Fix bug", "payments"}, // trailing space tolerated
+	}
+	for _, c := range cases {
+		clean, slug := splitStoryTag(c.text, known)
+		assert.Equal(t, c.clean, clean, "clean of %q", c.text)
+		assert.Equal(t, c.slug, slug, "slug of %q", c.text)
+	}
+}
+
+func TestStore_AssignAndUnassignTaskStory(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	pid, err := s.AddProject("Ship v2")
+	require.NoError(t, err)
+	sid, err := s.AddStory(pid, "Payments")
+	require.NoError(t, err)
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"task a"}, nil))
+
+	require.NoError(t, s.AssignTaskStory(tuesday, 0, sid))
+	d, _, err := s.LoadDaily(tuesday)
+	require.NoError(t, err)
+	assert.Equal(t, "task a @payments", d.Plan[0].Text)
+
+	// Reassigning replaces the tag rather than stacking a second one.
+	require.NoError(t, s.AssignTaskStory(tuesday, 0, sid))
+	d, _, err = s.LoadDaily(tuesday)
+	require.NoError(t, err)
+	assert.Equal(t, "task a @payments", d.Plan[0].Text)
+
+	require.NoError(t, s.UnassignTaskStory(tuesday, 0))
+	d, _, err = s.LoadDaily(tuesday)
+	require.NoError(t, err)
+	assert.Equal(t, "task a", d.Plan[0].Text)
+
+	require.ErrorContains(t, s.AssignTaskStory(tuesday, 0, "nope"), "not found")
+	require.ErrorContains(t, s.AssignTaskStory(tuesday, 9, sid), "out of range")
+}
+
+func TestStore_BuildProjectTree(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	pid, err := s.AddProject("Ship v2")
+	require.NoError(t, err)
+	sid, err := s.AddStory(pid, "Payments")
+	require.NoError(t, err)
+
+	// Two tagged tasks under the story plus one untagged task.
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"wire refunds", "add receipts", "standalone chore"}, nil))
+	require.NoError(t, s.AssignTaskStory(tuesday, 0, sid))
+	require.NoError(t, s.AssignTaskStory(tuesday, 1, sid))
+
+	tree, err := s.BuildProjectTree()
+	require.NoError(t, err)
+	require.Len(t, tree.Projects, 1)
+	require.Len(t, tree.Projects[0].Stories, 1)
+	story := tree.Projects[0].Stories[0]
+	assert.Equal(t, []string{"wire refunds", "add receipts"},
+		[]string{story.Tasks[0].Text, story.Tasks[1].Text}, "tags stripped for display")
+	assert.False(t, story.Done, "open tasks remain")
+	assert.False(t, tree.Projects[0].Done)
+	require.Len(t, tree.Unfiled, 1)
+	assert.Equal(t, "standalone chore", tree.Unfiled[0].Text)
+
+	// Complete both tagged tasks -> the story (and project) read as done.
+	require.NoError(t, s.SetPlanItemState(tuesday, 0, StateDone))
+	require.NoError(t, s.SetPlanItemState(tuesday, 1, StateDone))
+	tree, err = s.BuildProjectTree()
+	require.NoError(t, err)
+	story = tree.Projects[0].Stories[0]
+	assert.True(t, story.Done, "all tasks done")
+	assert.Empty(t, story.Tasks, "done tasks are not listed as open")
+	assert.True(t, tree.Projects[0].Done)
+
+	// Adding a fresh open task to the done story auto-reopens it.
+	require.NoError(t, s.AddPlanItem(monday, "hotfix refund rounding"))
+	require.NoError(t, s.AssignTaskStory(monday, 0, sid))
+	tree, err = s.BuildProjectTree()
+	require.NoError(t, err)
+	story = tree.Projects[0].Stories[0]
+	assert.False(t, story.Done, "new open task reopens the story")
+	require.Len(t, story.Tasks, 1)
+	assert.Equal(t, "hotfix refund rounding", story.Tasks[0].Text)
+}
+
+func TestStore_BuildProjectTreeExcludesClosed(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	pid, err := s.AddProject("Ship v2")
+	require.NoError(t, err)
+	sid, err := s.AddStory(pid, "Payments")
+	require.NoError(t, err)
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"task"}, nil))
+	require.NoError(t, s.AssignTaskStory(tuesday, 0, sid))
+
+	require.NoError(t, s.SetStoryStatus(sid, StatusClosed))
+	tree, err := s.BuildProjectTree()
+	require.NoError(t, err)
+	require.Len(t, tree.Projects, 1)
+	assert.Empty(t, tree.Projects[0].Stories, "closed story hidden")
+
+	require.NoError(t, s.SetProjectStatus(pid, StatusClosed))
+	tree, err = s.BuildProjectTree()
+	require.NoError(t, err)
+	assert.Empty(t, tree.Projects, "closed project hidden")
+}
+
 func TestSlugify(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
