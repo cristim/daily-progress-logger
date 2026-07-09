@@ -56,6 +56,7 @@ const (
 	ShortcutItemBacklog    = "item.backlog"
 	ShortcutCheckinMorning = "checkin.morning"
 	ShortcutCheckinEvening = "checkin.evening"
+	ShortcutViewWeeklyPlan = "view.weekly_plan"
 	ShortcutViewBacklog    = "view.backlog"
 	ShortcutViewSummary    = "view.summary"
 	ShortcutReviewWeek     = "review.week"
@@ -93,6 +94,7 @@ var ShortcutActions = []ShortcutAction{
 	{ShortcutItemBacklog, ShortcutCategoryItem, "Add to backlog", "Ctrl+Shift+B"},
 	{ShortcutCheckinMorning, ShortcutCategoryCheckin, "Morning check-in", "Ctrl+1"},
 	{ShortcutCheckinEvening, ShortcutCategoryCheckin, "Evening check-in", "Ctrl+2"},
+	{ShortcutViewWeeklyPlan, ShortcutCategoryCheckin, "Weekly plan", "Ctrl+6"},
 	{ShortcutViewBacklog, ShortcutCategoryCheckin, "Backlog", "Ctrl+3"},
 	{ShortcutViewSummary, ShortcutCategoryCheckin, "This week's summary", "Ctrl+4"},
 	{ShortcutReviewWeek, ShortcutCategoryCheckin, "Review last week", "Ctrl+5"},
