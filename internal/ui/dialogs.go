@@ -38,11 +38,15 @@ type dialogSpec struct {
 // run shows the dialog modally and applies the answers if accepted. The
 // dialog is raised to the front: the app usually sits in the background, so
 // without this a timer-triggered check-in can open unnoticed behind the
-// active application.
+// active application. It is also pinned above every other window and onto the
+// user's current Space/monitor (see pinDialogOnTop / pinAcrossSpaces) so it
+// cannot be buried or missed while it waits for an answer.
 func (s *dialogSpec) run() (dialogResult, error) {
+	pinDialogOnTop(s.dialog) // before Show: window-flag change can need a re-show
 	s.dialog.Show()
 	s.dialog.Raise()
 	s.dialog.ActivateWindow()
+	pinAcrossSpaces(s.dialog) // after Show: needs the native window to exist
 	switch s.dialog.Exec() {
 	case int(qt.QDialog__Accepted):
 		return dialogAccepted, s.apply()
