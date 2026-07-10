@@ -260,8 +260,8 @@ func (w *mainWindow) addStory(projectID string) {
 }
 
 func (w *mainWindow) addTask(storyID string) {
-	if name, ok := w.promptText("New Task", "Task (added to today's plan):", ""); ok {
-		if err := w.app.store.AddTaggedTask(time.Now(), name, storyID); err != nil {
+	if name, ok := w.promptText("New Task", "Task (added to the viewed day's plan):", ""); ok {
+		if err := w.app.store.AddTaggedTask(w.viewedDate, name, storyID); err != nil {
 			w.app.reportError(err)
 		}
 		w.refresh()

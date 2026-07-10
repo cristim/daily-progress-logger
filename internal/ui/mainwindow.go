@@ -16,14 +16,18 @@ type mainWindow struct {
 	app          *App
 	win          *qt.QMainWindow
 	heading      *qt.QLabel
+	dateEdit     *qt.QDateEdit
 	tree         *qt.QTreeWidget
 	newItem      *qt.QLineEdit
 	refreshTimer *qt.QTimer
 	// quitAction is the File-menu Quit action; its shortcut is set from config
 	// in App.applyShortcuts.
 	quitAction *qt.QAction
-	// renderedDate records the date (time.DateOnly) of the last refresh so the
-	// midnight watchdog in CheckPrompts can detect a day rollover and refresh.
+	// viewedDate is the day whose tasks the tree currently shows (default today);
+	// the date arrows / calendar change it.
+	viewedDate time.Time
+	// renderedDate records today's date (time.DateOnly) at the last refresh so
+	// the midnight watchdog in CheckPrompts can detect a day rollover.
 	renderedDate string
 	// expanded remembers each node's expand state by node key across rebuilds;
 	// a key absent from the map defaults to expanded.
@@ -31,7 +35,7 @@ type mainWindow struct {
 }
 
 func newMainWindow(app *App) *mainWindow {
-	w := &mainWindow{app: app, expanded: map[string]bool{}}
+	w := &mainWindow{app: app, expanded: map[string]bool{}, viewedDate: midnight(time.Now())}
 	w.win = qt.NewQMainWindow2()
 	w.win.SetWindowTitle("Daily Progress Logger")
 	w.win.Resize(620, 620)
@@ -39,8 +43,29 @@ func newMainWindow(app *App) *mainWindow {
 	central := qt.NewQWidget2()
 	layout := qt.NewQVBoxLayout(central)
 
+	// Date navigation: prev/next day, a calendar picker, a Today reset, and the
+	// ISO-week label.
+	dateRow := qt.NewQHBoxLayout2()
+	prevDay := qt.NewQPushButton3("◀")
+	prevDay.SetToolTip("Previous day")
+	prevDay.OnClicked(func() { w.shiftDay(-1) })
+	w.dateEdit = qt.NewQDateEdit2()
+	w.dateEdit.SetCalendarPopup(true)
+	w.dateEdit.SetDisplayFormat("ddd d MMM yyyy")
+	w.dateEdit.SetDate(*timeToQDate(w.viewedDate))
+	w.dateEdit.OnDateChanged(func(date qt.QDate) { w.setViewedDate(dateToTime(&date)) })
+	nextDay := qt.NewQPushButton3("▶")
+	nextDay.SetToolTip("Next day")
+	nextDay.OnClicked(func() { w.shiftDay(1) })
+	todayBtn := qt.NewQPushButton3("Today")
+	todayBtn.OnClicked(w.goToday)
 	w.heading = qt.NewQLabel2()
-	layout.AddWidget(w.heading.QWidget)
+	dateRow.AddWidget(prevDay.QWidget)
+	dateRow.AddWidget(w.dateEdit.QWidget)
+	dateRow.AddWidget(nextDay.QWidget)
+	dateRow.AddWidget(todayBtn.QWidget)
+	dateRow.AddWidget2(w.heading.QWidget, 1)
+	layout.AddLayout(dateRow.QLayout)
 
 	addRow := qt.NewQHBoxLayout2()
 	w.newItem = qt.NewQLineEdit2()
@@ -124,19 +149,63 @@ func (w *mainWindow) openDataFolder() {
 	qt.QDesktopServices_OpenUrl(url)
 }
 
-// refresh reloads the Projects/Stories/tasks tree.
+// refresh reloads the tree for the viewed day.
 func (w *mainWindow) refresh() {
-	today := time.Now()
-	w.renderedDate = today.Format(time.DateOnly)
-	w.heading.SetText(fmt.Sprintf("<b>%s, %d %s %d</b> &nbsp; (week %s)",
-		today.Weekday(), today.Day(), today.Month(), today.Year(), store.WeekOf(today)))
+	now := time.Now()
+	w.renderedDate = now.Format(time.DateOnly)
+	w.heading.SetText(fmt.Sprintf("(week %s)", store.WeekOf(w.viewedDate)))
+	if sameDay(w.viewedDate, now) {
+		w.newItem.SetPlaceholderText("Add a task for today…")
+	} else {
+		w.newItem.SetPlaceholderText(fmt.Sprintf("Add a task for %s…", w.viewedDate.Format("Mon 2 Jan")))
+	}
 
-	tree, err := w.app.store.BuildProjectTree()
+	tree, err := w.app.store.BuildProjectTree(w.viewedDate)
 	if err != nil {
 		w.app.reportError(err)
 		return
 	}
 	w.buildTree(tree)
+}
+
+// setViewedDate switches the tree to date (deferred rebuild). No-op when already
+// viewing that day.
+func (w *mainWindow) setViewedDate(date time.Time) {
+	date = midnight(date)
+	if sameDay(date, w.viewedDate) {
+		return
+	}
+	w.viewedDate = date
+	w.scheduleRefresh()
+}
+
+// shiftDay moves the viewed day by delta days (via the date editor, whose
+// dateChanged signal drives the refresh).
+func (w *mainWindow) shiftDay(delta int) {
+	w.dateEdit.SetDate(*timeToQDate(w.viewedDate.AddDate(0, 0, delta)))
+}
+
+// goToday jumps back to the current day.
+func (w *mainWindow) goToday() {
+	w.dateEdit.SetDate(*timeToQDate(time.Now()))
+}
+
+// midnight returns t at 00:00 local time.
+func midnight(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.Local)
+}
+
+// sameDay reports whether a and b fall on the same calendar day.
+func sameDay(a, b time.Time) bool {
+	return a.Year() == b.Year() && a.YearDay() == b.YearDay()
+}
+
+func timeToQDate(t time.Time) *qt.QDate {
+	return qt.NewQDate2(t.Year(), int(t.Month()), t.Day())
+}
+
+func dateToTime(d *qt.QDate) time.Time {
+	return time.Date(d.Year(), time.Month(d.Month()), d.Day(), 0, 0, 0, 0, time.Local)
 }
 
 // scheduleRefresh rebuilds the tree on the next event-loop pass; safe to call
@@ -172,7 +241,7 @@ func (w *mainWindow) addItem() {
 	if text == "" {
 		return
 	}
-	if err := w.app.store.AddPlanItem(time.Now(), text); err != nil {
+	if err := w.app.store.AddPlanItem(w.viewedDate, text); err != nil {
 		w.app.reportError(err)
 		return
 	}

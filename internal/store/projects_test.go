@@ -185,12 +185,12 @@ func TestStore_BuildProjectTree(t *testing.T) {
 	sid, err := s.AddStory(pid, "Payments")
 	require.NoError(t, err)
 
-	// Two tagged tasks under the story plus one untagged task.
+	// Two tagged tasks under the story plus one untagged task, on Tuesday.
 	require.NoError(t, s.ApplyMorning(tuesday, []string{"wire refunds", "add receipts", "standalone chore"}, nil))
 	require.NoError(t, s.AssignTaskStory(tuesday, 0, sid))
 	require.NoError(t, s.AssignTaskStory(tuesday, 1, sid))
 
-	tree, err := s.BuildProjectTree()
+	tree, err := s.BuildProjectTree(tuesday)
 	require.NoError(t, err)
 	require.Len(t, tree.Projects, 1)
 	require.Len(t, tree.Projects[0].Stories, 1)
@@ -198,34 +198,36 @@ func TestStore_BuildProjectTree(t *testing.T) {
 	assert.Equal(t, []string{"wire refunds", "add receipts"},
 		[]string{story.Tasks[0].Text, story.Tasks[1].Text}, "tags stripped for display")
 	assert.False(t, story.Done, "open tasks remain")
-	assert.False(t, tree.Projects[0].Done)
 	require.Len(t, tree.Unfiled, 1)
 	assert.Equal(t, "standalone chore", tree.Unfiled[0].Text)
 
-	// Complete both tagged tasks -> the story (and project) read as done, and
-	// the done tasks stay listed (now struck through) at the bottom.
+	// A different day does not show Tuesday's tasks.
+	tree, err = s.BuildProjectTree(monday)
+	require.NoError(t, err)
+	assert.Empty(t, tree.Projects[0].Stories[0].Tasks, "other days do not show this day's tasks")
+
+	// Complete both tagged tasks -> globally done; Tuesday still lists them
+	// (struck through), and the project reads as done too.
 	require.NoError(t, s.SetPlanItemState(tuesday, 0, StateDone))
 	require.NoError(t, s.SetPlanItemState(tuesday, 1, StateDone))
-	tree, err = s.BuildProjectTree()
+	tree, err = s.BuildProjectTree(tuesday)
 	require.NoError(t, err)
 	story = tree.Projects[0].Stories[0]
-	assert.True(t, story.Done, "all tasks done")
+	assert.True(t, story.Done, "no open tasks on any day")
 	require.Len(t, story.Tasks, 2, "done tasks stay visible")
 	assert.Equal(t, StateDone, story.Tasks[0].State)
 	assert.True(t, tree.Projects[0].Done)
 
-	// Adding a fresh open task to the done story auto-reopens it; the open task
-	// sorts above the done ones.
+	// An open task on Monday reopens the story globally (seen when viewing Monday).
 	require.NoError(t, s.AddPlanItem(monday, "hotfix refund rounding"))
 	require.NoError(t, s.AssignTaskStory(monday, 0, sid))
-	tree, err = s.BuildProjectTree()
+	tree, err = s.BuildProjectTree(tuesday)
 	require.NoError(t, err)
-	story = tree.Projects[0].Stories[0]
-	assert.False(t, story.Done, "new open task reopens the story")
-	require.Len(t, story.Tasks, 3, "one open + two done")
-	assert.Equal(t, "hotfix refund rounding", story.Tasks[0].Text, "open task first")
-	assert.Equal(t, StateTodo, story.Tasks[0].State)
-	assert.Equal(t, StateDone, story.Tasks[2].State, "done tasks at the bottom")
+	assert.False(t, tree.Projects[0].Stories[0].Done, "an open task on another day reopens the story")
+	tree, err = s.BuildProjectTree(monday)
+	require.NoError(t, err)
+	require.Len(t, tree.Projects[0].Stories[0].Tasks, 1)
+	assert.Equal(t, "hotfix refund rounding", tree.Projects[0].Stories[0].Tasks[0].Text)
 }
 
 func TestStore_BuildProjectTreeDedupsCarryover(t *testing.T) {
@@ -242,17 +244,16 @@ func TestStore_BuildProjectTreeDedupsCarryover(t *testing.T) {
 	require.NoError(t, s.AddPlanItem(tuesday, "wire refunds"))
 	require.NoError(t, s.AssignTaskStory(tuesday, 0, sid))
 
-	tree, err := s.BuildProjectTree()
+	tree, err := s.BuildProjectTree(tuesday)
 	require.NoError(t, err)
 	story := tree.Projects[0].Stories[0]
-	require.Len(t, story.Tasks, 1, "carried-over task listed once")
-	assert.Equal(t, tuesday.Format(dateLayout), story.Tasks[0].Date.Format(dateLayout),
-		"latest occurrence wins")
+	require.Len(t, story.Tasks, 1, "Tuesday's copy shown")
+	assert.False(t, story.Done)
 
-	// Marking the latest (Tuesday) done makes the story done even though the
-	// Monday copy is still todo in its own file.
+	// Marking the latest (Tuesday) done makes the story globally done even though
+	// the Monday copy is still todo in its own file (dedup keeps the latest).
 	require.NoError(t, s.SetPlanItemState(tuesday, 0, StateDone))
-	tree, err = s.BuildProjectTree()
+	tree, err = s.BuildProjectTree(tuesday)
 	require.NoError(t, err)
 	story = tree.Projects[0].Stories[0]
 	assert.True(t, story.Done)
@@ -282,7 +283,7 @@ func TestStore_MoveStory(t *testing.T) {
 	assert.Equal(t, sid, projects[1].Stories[0].ID)
 
 	// The tagged task now aggregates under the new project.
-	tree, err := s.BuildProjectTree()
+	tree, err := s.BuildProjectTree(tuesday)
 	require.NoError(t, err)
 	require.Len(t, tree.Projects, 2)
 	assert.Empty(t, tree.Projects[0].Stories)
@@ -305,13 +306,13 @@ func TestStore_BuildProjectTreeExcludesClosed(t *testing.T) {
 	require.NoError(t, s.AssignTaskStory(tuesday, 0, sid))
 
 	require.NoError(t, s.SetStoryStatus(sid, StatusClosed))
-	tree, err := s.BuildProjectTree()
+	tree, err := s.BuildProjectTree(tuesday)
 	require.NoError(t, err)
 	require.Len(t, tree.Projects, 1)
 	assert.Empty(t, tree.Projects[0].Stories, "closed story hidden")
 
 	require.NoError(t, s.SetProjectStatus(pid, StatusClosed))
-	tree, err = s.BuildProjectTree()
+	tree, err = s.BuildProjectTree(tuesday)
 	require.NoError(t, err)
 	assert.Empty(t, tree.Projects, "closed project hidden")
 }

@@ -545,19 +545,53 @@ type taggedTasks struct {
 	unfiled      []TreeTask
 }
 
-// BuildProjectTree aggregates open tasks from every daily file under their
-// tagged story, computes derived done state, and drops closed projects/stories.
-// Untagged open tasks collect under Unfiled.
-func (s *Store) BuildProjectTree() (*ProjectTree, error) {
+// BuildProjectTree builds the tree for the given day: each open project/story
+// shows that day's tasks (open first, done struck at the bottom), while the
+// derived done state (strikethrough) is global — a story/project is done when it
+// has tasks and none remain open on any day. Untagged tasks of the day collect
+// under Unfiled; closed projects/stories are dropped.
+func (s *Store) BuildProjectTree(date time.Time) (*ProjectTree, error) {
 	projects, err := s.LoadProjects()
 	if err != nil {
 		return nil, err
 	}
-	agg, err := s.scanTaggedTasks(allIDs(projects))
+	known := allIDs(projects)
+	agg, err := s.scanTaggedTasks(known) // all days, for the global done state
 	if err != nil {
 		return nil, err
 	}
-	return &ProjectTree{Projects: openProjectTree(projects, agg), Unfiled: agg.unfiled}, nil
+	dayByStory, dayUnfiled, err := s.dayTasks(date, known) // the selected day, for display
+	if err != nil {
+		return nil, err
+	}
+	return &ProjectTree{Projects: openProjectTree(projects, agg, dayByStory), Unfiled: dayUnfiled}, nil
+}
+
+// dayTasks groups a single day's plan items by their story tag (open first, done
+// at the bottom), returning the per-story lists and the untagged tasks.
+func (s *Store) dayTasks(date time.Time, known map[string]bool) (map[string][]TreeTask, []TreeTask, error) {
+	d, exists, err := s.LoadDaily(date)
+	if err != nil {
+		return nil, nil, err
+	}
+	byStory := map[string][]scannedTask{}
+	var unfiled []scannedTask
+	if exists {
+		for i, item := range d.Plan {
+			clean, slug := splitStoryTag(item.Text, known)
+			st := scannedTask{TreeTask: TreeTask{Text: clean, State: item.State, Date: date}, order: i}
+			if slug == "" {
+				unfiled = append(unfiled, st)
+				continue
+			}
+			byStory[slug] = append(byStory[slug], st)
+		}
+	}
+	out := make(map[string][]TreeTask, len(byStory))
+	for slug, list := range byStory {
+		out[slug] = sortAndStrip(list)
+	}
+	return out, sortAndStrip(unfiled), nil
 }
 
 // taskKey identifies a logical task by story tag and normalized text, so the
@@ -646,9 +680,10 @@ func sortAndStrip(list []scannedTask) []TreeTask {
 	return out
 }
 
-// openProjectTree assembles the open projects/stories with their open tasks and
-// derived done state from the scanned aggregation.
-func openProjectTree(projects []Project, agg taggedTasks) []TreeProject {
+// openProjectTree assembles the open projects/stories, showing dayByStory tasks
+// (the selected day) under each story while deriving done state globally from
+// agg (all days).
+func openProjectTree(projects []Project, agg taggedTasks, dayByStory map[string][]TreeTask) []TreeProject {
 	var out []TreeProject
 	for _, p := range projects {
 		if p.Status == StatusClosed {
@@ -660,14 +695,13 @@ func openProjectTree(projects []Project, agg taggedTasks) []TreeProject {
 			if st.Status == StatusClosed {
 				continue
 			}
-			tasks := agg.tasksByStory[st.ID]
-			hasOpen := anyOpen(tasks)
+			globalOpen := anyOpen(agg.tasksByStory[st.ID])
 			tp.Stories = append(tp.Stories, TreeStory{
-				ID: st.ID, Name: st.Name, Tasks: tasks,
-				Done: agg.seenByStory[st.ID] && !hasOpen,
+				ID: st.ID, Name: st.Name, Tasks: dayByStory[st.ID],
+				Done: agg.seenByStory[st.ID] && !globalOpen,
 			})
 			projectSeen = projectSeen || agg.seenByStory[st.ID]
-			projectOpen = projectOpen || hasOpen
+			projectOpen = projectOpen || globalOpen
 		}
 		tp.Done = projectSeen && !projectOpen
 		out = append(out, tp)
