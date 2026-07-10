@@ -202,25 +202,30 @@ func TestStore_BuildProjectTree(t *testing.T) {
 	require.Len(t, tree.Unfiled, 1)
 	assert.Equal(t, "standalone chore", tree.Unfiled[0].Text)
 
-	// Complete both tagged tasks -> the story (and project) read as done.
+	// Complete both tagged tasks -> the story (and project) read as done, and
+	// the done tasks stay listed (now struck through) at the bottom.
 	require.NoError(t, s.SetPlanItemState(tuesday, 0, StateDone))
 	require.NoError(t, s.SetPlanItemState(tuesday, 1, StateDone))
 	tree, err = s.BuildProjectTree()
 	require.NoError(t, err)
 	story = tree.Projects[0].Stories[0]
 	assert.True(t, story.Done, "all tasks done")
-	assert.Empty(t, story.Tasks, "done tasks are not listed as open")
+	require.Len(t, story.Tasks, 2, "done tasks stay visible")
+	assert.Equal(t, StateDone, story.Tasks[0].State)
 	assert.True(t, tree.Projects[0].Done)
 
-	// Adding a fresh open task to the done story auto-reopens it.
+	// Adding a fresh open task to the done story auto-reopens it; the open task
+	// sorts above the done ones.
 	require.NoError(t, s.AddPlanItem(monday, "hotfix refund rounding"))
 	require.NoError(t, s.AssignTaskStory(monday, 0, sid))
 	tree, err = s.BuildProjectTree()
 	require.NoError(t, err)
 	story = tree.Projects[0].Stories[0]
 	assert.False(t, story.Done, "new open task reopens the story")
-	require.Len(t, story.Tasks, 1)
-	assert.Equal(t, "hotfix refund rounding", story.Tasks[0].Text)
+	require.Len(t, story.Tasks, 3, "one open + two done")
+	assert.Equal(t, "hotfix refund rounding", story.Tasks[0].Text, "open task first")
+	assert.Equal(t, StateTodo, story.Tasks[0].State)
+	assert.Equal(t, StateDone, story.Tasks[2].State, "done tasks at the bottom")
 }
 
 func TestStore_BuildProjectTreeDedupsCarryover(t *testing.T) {
@@ -251,7 +256,8 @@ func TestStore_BuildProjectTreeDedupsCarryover(t *testing.T) {
 	require.NoError(t, err)
 	story = tree.Projects[0].Stories[0]
 	assert.True(t, story.Done)
-	assert.Empty(t, story.Tasks)
+	require.Len(t, story.Tasks, 1, "the done task stays visible")
+	assert.Equal(t, StateDone, story.Tasks[0].State)
 }
 
 func TestStore_MoveStory(t *testing.T) {

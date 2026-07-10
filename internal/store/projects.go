@@ -494,6 +494,16 @@ func isOpenState(state ItemState) bool {
 	return state == StateTodo || state == StatePostponed
 }
 
+// anyOpen reports whether tasks contains an open (not-done) task.
+func anyOpen(tasks []TreeTask) bool {
+	for _, t := range tasks {
+		if isOpenState(t.State) {
+			return true
+		}
+	}
+	return false
+}
+
 // TreeTask is one daily task shown under a story (or Unfiled) in the tree; Text
 // has the story tag stripped and Date identifies the daily file that holds it.
 type TreeTask struct {
@@ -526,13 +536,13 @@ type ProjectTree struct {
 	Unfiled  []TreeTask
 }
 
-// taggedTasks is the per-story aggregation scanned from the daily files: the
-// open tasks under each story ID, the set of story IDs that have any task at
-// all (open or done, for derived done state), and the untagged open tasks.
+// taggedTasks is the per-story aggregation scanned from the daily files: every
+// task under each story ID (open first, then done), the set of story IDs that
+// have any task at all (for derived done state), and the untagged tasks.
 type taggedTasks struct {
-	openByStory map[string][]TreeTask
-	seenByStory map[string]bool
-	unfiled     []TreeTask
+	tasksByStory map[string][]TreeTask
+	seenByStory  map[string]bool
+	unfiled      []TreeTask
 }
 
 // BuildProjectTree aggregates open tasks from every daily file under their
@@ -566,7 +576,7 @@ type scannedTask struct {
 // tag. A task carried across days (still open in each day's file) is deduped to
 // its most recent occurrence, so its latest state wins and it is listed once.
 func (s *Store) scanTaggedTasks(known map[string]bool) (taggedTasks, error) {
-	agg := taggedTasks{openByStory: map[string][]TreeTask{}, seenByStory: map[string]bool{}}
+	agg := taggedTasks{tasksByStory: map[string][]TreeTask{}, seenByStory: map[string]bool{}}
 	paths, err := filepath.Glob(filepath.Join(s.DataDir, "daily", "*", "*", "*.md"))
 	if err != nil {
 		return agg, fmt.Errorf("listing daily files: %w", err)
@@ -595,32 +605,32 @@ func (s *Store) scanTaggedTasks(known map[string]bool) (taggedTasks, error) {
 		}
 	}
 
-	openScanned := map[string][]scannedTask{}
+	byStory := map[string][]scannedTask{}
 	var unfiledScanned []scannedTask
 	for key, st := range latest {
 		if key.slug == "" {
-			if isOpenState(st.State) {
-				unfiledScanned = append(unfiledScanned, st)
-			}
+			unfiledScanned = append(unfiledScanned, st)
 			continue
 		}
 		agg.seenByStory[key.slug] = true
-		if isOpenState(st.State) {
-			openScanned[key.slug] = append(openScanned[key.slug], st)
-		}
+		byStory[key.slug] = append(byStory[key.slug], st)
 	}
 	agg.unfiled = sortAndStrip(unfiledScanned)
-	for slug, list := range openScanned {
-		agg.openByStory[slug] = sortAndStrip(list)
+	for slug, list := range byStory {
+		agg.tasksByStory[slug] = sortAndStrip(list)
 	}
 	return agg, nil
 }
 
-// sortAndStrip orders tasks by date, then original plan index, then text (a
-// stable tree layout, chronological across days and plan-ordered within a day)
-// and returns the bare TreeTasks.
+// sortAndStrip orders tasks open-first then done (so completed items sink to the
+// bottom), each group by date, then original plan index, then text, and returns
+// the bare TreeTasks.
 func sortAndStrip(list []scannedTask) []TreeTask {
 	sort.Slice(list, func(i, j int) bool {
+		di, dj := list[i].State == StateDone, list[j].State == StateDone
+		if di != dj {
+			return !di // open (not done) before done
+		}
 		if !list[i].Date.Equal(list[j].Date) {
 			return list[i].Date.Before(list[j].Date)
 		}
@@ -650,13 +660,14 @@ func openProjectTree(projects []Project, agg taggedTasks) []TreeProject {
 			if st.Status == StatusClosed {
 				continue
 			}
-			open := agg.openByStory[st.ID]
+			tasks := agg.tasksByStory[st.ID]
+			hasOpen := anyOpen(tasks)
 			tp.Stories = append(tp.Stories, TreeStory{
-				ID: st.ID, Name: st.Name, Tasks: open,
-				Done: agg.seenByStory[st.ID] && len(open) == 0,
+				ID: st.ID, Name: st.Name, Tasks: tasks,
+				Done: agg.seenByStory[st.ID] && !hasOpen,
 			})
 			projectSeen = projectSeen || agg.seenByStory[st.ID]
-			projectOpen = projectOpen || len(open) > 0
+			projectOpen = projectOpen || hasOpen
 		}
 		tp.Done = projectSeen && !projectOpen
 		out = append(out, tp)
