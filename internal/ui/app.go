@@ -132,6 +132,8 @@ func (a *App) applyConfig(cfg *config.Config) error {
 	a.evening = schedule.TimeOfDay{Hour: eveningHour, Minute: eveningMinute}
 	a.summary = schedule.TimeOfDay{Hour: summaryHour, Minute: summaryMinute}
 	a.summaryDay = summaryDay
+	// Recurring tasks without an explicit @HH:MM default to the morning check-in.
+	a.store.SetDefaultReminderTime(morningHour, morningMinute)
 	a.applyShortcuts(cfg)
 	return nil
 }
@@ -266,6 +268,8 @@ func (a *App) CheckPrompts() {
 	if today := now.Format(time.DateOnly); a.window.renderedDate != "" && a.window.renderedDate != today {
 		a.window.scheduleRefresh()
 	}
+
+	a.fireRecurring(now)
 
 	due, err := a.duePrompts(now)
 	if err != nil {
@@ -698,6 +702,41 @@ func (a *App) notifyBacklogMove(itemText string) {
 		return
 	}
 	a.tray.ShowMessage2("Moved to backlog", itemText)
+}
+
+// fireRecurring shows a tray reminder for each recurring task whose occurrence
+// has come due and adds it to today's plan (preserving any story tag), so the
+// reminder is also actionable in the tree.
+func (a *App) fireRecurring(now time.Time) {
+	due, err := a.store.RecurringDue(now)
+	if err != nil {
+		slog.Warn("checking recurring tasks", "error", err)
+		return
+	}
+	if len(due) == 0 {
+		return
+	}
+	for _, t := range due {
+		if a.tray != nil {
+			a.tray.ShowMessage2("Reminder", t.Text)
+		}
+		if err := a.addRecurringToPlan(now, t); err != nil {
+			slog.Warn("adding recurring task to plan", "task", t.Text, "error", err)
+		}
+	}
+	a.window.scheduleRefresh()
+}
+
+// addRecurringToPlan adds a fired recurring task to day's plan, keeping its story
+// tag when the story still exists and otherwise falling back to an untagged item.
+func (a *App) addRecurringToPlan(day time.Time, t store.RecurringTask) error {
+	if t.Story != "" {
+		if err := a.store.AddTaggedTask(day, t.Text, t.Story); err == nil {
+			return nil
+		}
+		// Story closed or removed since the template was created; fall back.
+	}
+	return a.store.AddPlanItem(day, t.Text)
 }
 
 // notifyAdopt shows a tray balloon confirming that a backlog item was added

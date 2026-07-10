@@ -28,9 +28,55 @@ func (w *mainWindow) buildTree(model *store.ProjectTree) {
 	if len(model.Unfiled) > 0 {
 		w.addUnfiledNode(model.Unfiled)
 	}
+	if len(model.Recurring) > 0 {
+		w.addRecurringNode(model.Recurring)
+	}
 	if len(model.Recycled) > 0 {
 		w.addRecycleNode(model.Recycled)
 	}
+}
+
+// addRecurringNode builds the collapsible Recurring section listing each
+// recurring template with its human-readable schedule and a Delete action.
+func (w *mainWindow) addRecurringNode(tasks []store.RecurringTask) {
+	item := qt.NewQTreeWidgetItem()
+	item.SetData(0, nodeKeyRole, qt.NewQVariant11("rec:"))
+	w.tree.AddTopLevelItem(item)
+	label := qt.NewQLabel3("<b>Recurring</b>")
+	label.SetTextFormat(qt.RichText)
+	w.tree.SetItemWidget(item, 0, label.QWidget)
+	for _, t := range tasks {
+		child := qt.NewQTreeWidgetItem6(item)
+		w.tree.SetItemWidget(child, 0, w.recurringRow(t))
+	}
+	item.SetExpanded(w.expandedOr("rec:", false)) // collapsed by default
+}
+
+// recurringRow shows a recurring template's text and schedule ("weekly Mon
+// 09:30") plus a Delete action that removes the template.
+func (w *mainWindow) recurringRow(t store.RecurringTask) *qt.QWidget {
+	row, layout := newRowWidget()
+	display, truncated := elideText(t.Text, 80)
+	label := qt.NewQLabel3(html.EscapeString(display))
+	label.SetTextFormat(qt.RichText)
+	if truncated {
+		label.SetToolTip(t.Text)
+	}
+	layout.AddWidget2(label.QWidget, 1)
+
+	sched := qt.NewQLabel3(fmt.Sprintf(`<span style="color:#888888">%s</span>`,
+		html.EscapeString(t.Rec.Describe())))
+	sched.SetTextFormat(qt.RichText)
+	layout.AddWidget(sched.QWidget)
+
+	raw := t.Raw
+	layout.AddWidget(w.textButton("Delete", "Delete this recurring task", func() {
+		if err := w.app.store.RemoveRecurring(raw); err != nil {
+			w.app.reportError(err)
+		}
+		w.refresh()
+	}))
+	return row
 }
 
 func (w *mainWindow) addProjectNode(p store.TreeProject) {

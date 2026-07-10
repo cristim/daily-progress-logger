@@ -44,6 +44,18 @@ markdown files you can grep, sync, or feed to an LLM at review time.
   Postponing to the next day removes the item from today and re-adds it to
   tomorrow's plan; postponing to next week leaves it as `- [>]` and queues it in
   the backlog's *Next week* section.
+- **Recurring tasks & reminders**: type a task with a recurrence tag in the
+  add-task field to make it repeat, e.g. `Team standup @weekday @9:30`,
+  `Review metrics @weekly @mon @16:00`, `Rent @monthly @1 @9:00`, or
+  `Vitamins @daily`. The keyword (`@daily`, `@weekday`, `@weekly`, `@monthly`)
+  can be followed by an optional day (`@mon`..`@sun` for weekly, `@1`..`@31` for
+  monthly) and time (`@HH:MM`, defaulting to the morning check-in time); a story
+  tag placed *before* the recurrence keywords (`Reconcile @payments @weekly`) is
+  preserved. Recurring templates live in a collapsible **Recurring** section of
+  the tree (each with its schedule and a *Delete* button). When an occurrence
+  comes due the app shows a notification and adds the task to that day's plan so
+  you can check it off; each occurrence fires once, and a reminder missed while
+  the app was closed fires as a catch-up on the next launch.
 - **Keyboard shortcuts & Preferences**: every action has a configurable keyboard
   shortcut — the per-item *Done / Not done / next day / next week / backlog* on
   the selected plan row, each check-in, and window show/hide, focus-add-task and
@@ -60,7 +72,13 @@ Everything lives under `~/DailyProgress` (configurable):
 daily/2026/07/2026-07-07.md   one file per day: ## Plan checklist + ## Done
 weekly/2026/2026-W28.md       weekly plan (## Week plan) + derived summary
 backlog.md                    cross-week todo list (Current + Next week)
+recurring.md                  recurring task templates (one checkbox per line)
 ```
+
+Recurring templates are stored verbatim in `recurring.md`, e.g.
+`- [ ] Team standup @weekday @9:30`; you can add or edit them by hand. Which
+occurrences have already fired is tracked in `.recurring-fired.json` (per
+device, not synced), so editing `recurring.md` never re-triggers past reminders.
 
 Plan items use checkbox markers: `- [ ]` open, `- [x]` done, `- [>]`
 postponed. Weekly goals use `- [ ]` / `- [x]` in the `## Week plan` section.

@@ -7,6 +7,7 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
+	"github.com/cristim/daily-progress-logger/internal/recur"
 	"github.com/cristim/daily-progress-logger/internal/schedule"
 	"github.com/cristim/daily-progress-logger/internal/store"
 )
@@ -69,7 +70,7 @@ func newMainWindow(app *App) *mainWindow {
 
 	addRow := qt.NewQHBoxLayout2()
 	w.newItem = qt.NewQLineEdit2()
-	w.newItem.SetPlaceholderText("Add a task for today…")
+	w.newItem.SetPlaceholderText(`Add a task for today…  (or "Standup @weekly @mon @9:00" to repeat)`)
 	w.newItem.OnReturnPressed(w.addItem)
 	addButton := qt.NewQPushButton3("Add")
 	addButton.OnClicked(w.addItem)
@@ -155,7 +156,7 @@ func (w *mainWindow) refresh() {
 	w.renderedDate = now.Format(time.DateOnly)
 	w.heading.SetText(fmt.Sprintf("(week %s)", store.WeekOf(w.viewedDate)))
 	if sameDay(w.viewedDate, now) {
-		w.newItem.SetPlaceholderText("Add a task for today…")
+		w.newItem.SetPlaceholderText(`Add a task for today…  (or "Standup @weekly @mon @9:00" to repeat)`)
 	} else {
 		w.newItem.SetPlaceholderText(fmt.Sprintf("Add a task for %s…", w.viewedDate.Format("Mon 2 Jan")))
 	}
@@ -234,14 +235,21 @@ func (w *mainWindow) runTaskAction(date time.Time, text string, action taskFunc)
 	w.scheduleRefresh()
 }
 
-// addItem adds a new untagged task to today's plan (it lands under Unfiled until
-// assigned to a story).
+// addItem adds a new task. Text carrying a recurrence tag (@daily/@weekly/…)
+// becomes a recurring template; otherwise it is a one-off untagged task on the
+// viewed day's plan (landing under Unfiled until assigned to a story).
 func (w *mainWindow) addItem() {
 	text := trimmed(w.newItem.Text())
 	if text == "" {
 		return
 	}
-	if err := w.app.store.AddPlanItem(w.viewedDate, text); err != nil {
+	add := func() error { return w.app.store.AddPlanItem(w.viewedDate, text) }
+	// Detection only needs the recurrence keyword; AddRecurring resolves story
+	// tags with the real known-ID predicate.
+	if _, _, ok := recur.Parse(text, w.app.morning.Hour, w.app.morning.Minute, nil); ok {
+		add = func() error { return w.app.store.AddRecurring(text) }
+	}
+	if err := add(); err != nil {
 		w.app.reportError(err)
 		return
 	}
