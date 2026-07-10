@@ -113,5 +113,11 @@ uninstall-checkin-agent:
 	rm -f $(CHECKIN_PLIST)
 	@echo "Check-in LaunchAgent removed"
 
+# Build the shared Go core (store + sync) into an iOS xcframework for the app.
+# Requires the gomobile toolchain: go install golang.org/x/mobile/cmd/gomobile@latest
+ios-core:
+	gomobile bind -target=ios -o ios/Frameworks/Core.xcframework ./mobilecore
+	@echo "Built ios/Frameworks/Core.xcframework"
+
 clean:
 	rm -rf $(BUILD_DIR)

@@ -3,6 +3,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,6 +42,15 @@ type Config struct {
 	// LoginItemOffered records that the user was already asked about installing
 	// the login item, so the prompt is shown at most once.
 	LoginItemOffered bool `json:"login_item_offered"`
+	// GoogleClientID is the OAuth client ID enabling Google Drive sync; empty
+	// disables sync.
+	GoogleClientID string `json:"google_client_id"`
+	// SyncEnabled turns on automatic background Drive sync.
+	SyncEnabled bool `json:"sync_enabled"`
+	// GoogleAccount is the signed-in account email, shown in Preferences.
+	GoogleAccount string `json:"google_account"`
+	// DeviceID names this install in sync conflict copies; generated on first run.
+	DeviceID string `json:"device_id"`
 	// Shortcuts maps an action ID (see ShortcutActions) to a Qt key-sequence
 	// string such as "Ctrl+Shift+D". Missing or empty entries are filled from
 	// the defaults on Load; unknown IDs are dropped.
@@ -160,11 +171,28 @@ func Load() (*Config, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("invalid config %s: %w", path, err)
 	}
+	// Assign a stable device ID on first sight and persist it, so sync conflict
+	// copies from this install are consistently named.
+	if cfg.DeviceID == "" {
+		cfg.DeviceID = newDeviceID()
+		if err := write(path, cfg); err != nil {
+			return nil, err
+		}
+	}
 	cfg.DataDir, err = expandHome(cfg.DataDir)
 	if err != nil {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+// newDeviceID returns a short random hex identifier for this install.
+func newDeviceID() string {
+	var b [6]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "device"
+	}
+	return hex.EncodeToString(b[:])
 }
 
 func defaults() (*Config, error) {

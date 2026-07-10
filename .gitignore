@@ -2,6 +2,9 @@
 /build/
 /daily-progress-logger
 
+# gomobile-generated iOS framework (built via `make ios-core`)
+/ios/Frameworks/
+
 # Session tooling (Claude Code scratch scripts)
 .claude/
 
