@@ -533,9 +533,10 @@ type TreeProject struct {
 // with the viewed day's tasks, that day's untagged tasks (Unfiled), and all
 // deleted tasks (Recycled).
 type ProjectTree struct {
-	Projects []TreeProject
-	Unfiled  []TreeTask
-	Recycled []TreeTask
+	Projects  []TreeProject
+	Unfiled   []TreeTask
+	Recycled  []TreeTask
+	Recurring []RecurringTask
 }
 
 // taggedTasks is the per-story aggregation scanned from the daily files: every
@@ -570,10 +571,15 @@ func (s *Store) BuildProjectTree(date time.Time) (*ProjectTree, error) {
 	if err != nil {
 		return nil, err
 	}
+	recurring, err := s.RecurringTasks()
+	if err != nil {
+		return nil, err
+	}
 	return &ProjectTree{
-		Projects: openProjectTree(projects, agg, dayByStory),
-		Unfiled:  dayUnfiled,
-		Recycled: recycled,
+		Projects:  openProjectTree(projects, agg, dayByStory),
+		Unfiled:   dayUnfiled,
+		Recycled:  recycled,
+		Recurring: recurring,
 	}, nil
 }
 

@@ -22,11 +22,22 @@ import (
 // Store reads and writes the markdown data files.
 type Store struct {
 	DataDir string
+	// defReminderHour/Minute is the fallback time for recurring tasks whose tag
+	// omits an explicit @HH:MM (the morning check-in time). Set via
+	// SetDefaultReminderTime; defaults to 09:00.
+	defReminderHour   int
+	defReminderMinute int
 }
 
 // New returns a store rooted at dataDir.
 func New(dataDir string) *Store {
-	return &Store{DataDir: dataDir}
+	return &Store{DataDir: dataDir, defReminderHour: 9}
+}
+
+// SetDefaultReminderTime sets the fallback time of day used for recurring tasks
+// tagged without an explicit @HH:MM (typically the morning check-in time).
+func (s *Store) SetDefaultReminderTime(hour, minute int) {
+	s.defReminderHour, s.defReminderMinute = hour, minute
 }
 
 // DailyPath returns the path of the daily file for date.
