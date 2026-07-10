@@ -51,6 +51,13 @@ linters:
         # G304 (file inclusion via variable): reading/writing files under
         # the user-configured data dir is this app's whole purpose.
         - G304
+        # G401/G501 (md5): used only to match Google Drive's md5Checksum for
+        # sync change-detection, never for security.
+        - G401
+        - G501
+        # G122 (WalkDir path TOCTOU): the sync walk is over the user's own local
+        # data dir; symlink-race traversal is not a threat here.
+        - G122
   exclusions:
     rules:
       # Repeated literal strings in tests are readable fixtures; hoisting
