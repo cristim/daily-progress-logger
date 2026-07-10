@@ -10,6 +10,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -42,6 +43,13 @@ type Engine struct {
 // New returns an engine syncing dir with dc, tagging conflict copies with device.
 func New(dir string, dc DriveClient, device string) *Engine {
 	return &Engine{dir: dir, drive: dc, device: device}
+}
+
+// NewLocal returns an engine with no Drive client, for reading and resolving
+// conflicts offline (Conflicts/Resolve touch only local files). Run errors until
+// a Drive client is set.
+func NewLocal(dir, device string) *Engine {
+	return &Engine{dir: dir, device: device}
 }
 
 // Conflict records a file that changed on both sides; both versions are kept
@@ -96,6 +104,9 @@ func (e *Engine) Run(ctx context.Context) (Result, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	if e.drive == nil {
+		return Result{}, errors.New("sync engine has no Drive client (not signed in)")
+	}
 	state, err := e.loadState()
 	if err != nil {
 		return Result{}, err

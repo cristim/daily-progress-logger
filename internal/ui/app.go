@@ -41,6 +41,8 @@ type App struct {
 	tray        *qt.QSystemTrayIcon
 	timer       *qt.QTimer
 	updateTimer *qt.QTimer
+	syncTimer   *qt.QTimer
+	syncing     bool
 	dialogOpen  bool
 
 	// shortcuts holds the app-wide QShortcut per action ID (config.Shortcut*),
@@ -85,6 +87,9 @@ func New(st *store.Store, cfg *config.Config, appVersion string) (*App, error) {
 
 	// Closing the window keeps the app resident in the menu bar.
 	qt.QGuiApplication_SetQuitOnLastWindowClosed(false)
+
+	// Begin background Drive sync when enabled and signed in.
+	app.startSyncTimer()
 
 	app.timer = qt.NewQTimer2(app.window.win.QObject)
 	app.timer.OnTimeout(app.CheckPrompts)
@@ -660,6 +665,7 @@ func (a *App) GrabScreenshots(dir string) error {
 		"weekly-plan":    weeklyPlan.dialog.QWidget,
 		"backlog":        backlogDlg.dialog.QWidget,
 		"preferences":    a.buildPreferencesDialog().QWidget,
+		"conflicts":      a.buildConflictsDialog().QWidget,
 	} {
 		path := dir + "/" + name + ".png"
 		if !widget.Grab().Save(path) {

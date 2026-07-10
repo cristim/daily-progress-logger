@@ -93,6 +93,9 @@ func (a *App) buildPreferencesDialog() *qt.QDialog {
 	}
 	layout.AddWidget(area.QWidget)
 
+	// Google Drive sync (self-persisting account actions).
+	layout.AddWidget(a.driveSection())
+
 	buttons := qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel)
 	buttons.Button(qt.QDialogButtonBox__Ok).SetDefault(true)
 	buttons.OnRejected(dialog.Reject)

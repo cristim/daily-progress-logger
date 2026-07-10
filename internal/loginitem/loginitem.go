@@ -79,7 +79,6 @@ func Install(plistPath, plistContent string) error {
 	if err := os.WriteFile(plistPath, []byte(plistContent), 0o600); err != nil {
 		return fmt.Errorf("writing plist %s: %w", plistPath, err)
 	}
-	//nolint:gosec // plistPath is constructed from the user's home dir, not user input.
 	out, err := exec.CommandContext(context.Background(), "launchctl", "load", plistPath).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("launchctl load: %w\n%s", err, strings.TrimSpace(string(out)))
