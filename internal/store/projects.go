@@ -529,11 +529,13 @@ type TreeProject struct {
 	Stories []TreeStory
 }
 
-// ProjectTree is the aggregated display model for the main window: open
-// projects/stories with their open tasks, plus untagged open tasks (Unfiled).
+// ProjectTree is the display model for the main window: open projects/stories
+// with the viewed day's tasks, that day's untagged tasks (Unfiled), and all
+// deleted tasks (Recycled).
 type ProjectTree struct {
 	Projects []TreeProject
 	Unfiled  []TreeTask
+	Recycled []TreeTask
 }
 
 // taggedTasks is the per-story aggregation scanned from the daily files: every
@@ -564,7 +566,30 @@ func (s *Store) BuildProjectTree(date time.Time) (*ProjectTree, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ProjectTree{Projects: openProjectTree(projects, agg, dayByStory), Unfiled: dayUnfiled}, nil
+	recycled, err := s.recycledTasks(known)
+	if err != nil {
+		return nil, err
+	}
+	return &ProjectTree{
+		Projects: openProjectTree(projects, agg, dayByStory),
+		Unfiled:  dayUnfiled,
+		Recycled: recycled,
+	}, nil
+}
+
+// recycledTasks maps every recycle-bin entry to a TreeTask (story tag stripped
+// for display, original day and state kept).
+func (s *Store) recycledTasks(known map[string]bool) ([]TreeTask, error) {
+	bin, err := s.LoadRecycleBin()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TreeTask, 0, len(bin))
+	for _, e := range bin {
+		clean, _ := splitStoryTag(e.Item.Text, known)
+		out = append(out, TreeTask{Text: clean, State: e.Item.State, Date: e.Date})
+	}
+	return out, nil
 }
 
 // dayTasks groups a single day's plan items by their story tag (open first, done

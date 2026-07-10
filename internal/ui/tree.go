@@ -28,6 +28,9 @@ func (w *mainWindow) buildTree(model *store.ProjectTree) {
 	if len(model.Unfiled) > 0 {
 		w.addUnfiledNode(model.Unfiled)
 	}
+	if len(model.Recycled) > 0 {
+		w.addRecycleNode(model.Recycled)
+	}
 }
 
 func (w *mainWindow) addProjectNode(p store.TreeProject) {
@@ -70,6 +73,54 @@ func (w *mainWindow) addUnfiledNode(tasks []store.TreeTask) {
 		w.addTaskNode(item, task)
 	}
 	item.SetExpanded(w.expandedOr("u:", true))
+}
+
+// addRecycleNode builds the collapsible Recycle Bin holding deleted tasks, each
+// restorable to its day or purgeable.
+func (w *mainWindow) addRecycleNode(tasks []store.TreeTask) {
+	item := qt.NewQTreeWidgetItem()
+	item.SetData(0, nodeKeyRole, qt.NewQVariant11("r:"))
+	w.tree.AddTopLevelItem(item)
+	label := qt.NewQLabel3("<b>Recycle Bin</b>")
+	label.SetTextFormat(qt.RichText)
+	w.tree.SetItemWidget(item, 0, label.QWidget)
+	for _, task := range tasks {
+		child := qt.NewQTreeWidgetItem6(item)
+		w.tree.SetItemWidget(child, 0, w.recycleRow(task))
+	}
+	item.SetExpanded(w.expandedOr("r:", false)) // collapsed by default
+}
+
+// recycleRow shows a deleted task with its original day plus Restore / Delete
+// (permanent) actions.
+func (w *mainWindow) recycleRow(task store.TreeTask) *qt.QWidget {
+	row, layout := newRowWidget()
+	display, truncated := elideText(task.Text, 90)
+	label := taskLabel(display, task.State)
+	if truncated {
+		label.SetToolTip(task.Text)
+	}
+	layout.AddWidget2(label.QWidget, 1)
+
+	dateLabel := qt.NewQLabel3(fmt.Sprintf(`<span style="color:#888888">%s</span>`,
+		html.EscapeString(task.Date.Format("2 Jan"))))
+	dateLabel.SetTextFormat(qt.RichText)
+	layout.AddWidget(dateLabel.QWidget)
+
+	date, text := task.Date, task.Text
+	layout.AddWidget(w.textButton("Restore", "Restore to its day", func() {
+		if err := w.app.store.RestoreTask(date, text); err != nil {
+			w.app.reportError(err)
+		}
+		w.refresh()
+	}))
+	layout.AddWidget(w.textButton("Delete", "Delete permanently", func() {
+		if err := w.app.store.PurgeRecycled(date, text); err != nil {
+			w.app.reportError(err)
+		}
+		w.refresh()
+	}))
+	return row
 }
 
 // projectRow builds a project's row: its name (bold, struck through when done)
@@ -126,6 +177,8 @@ func (w *mainWindow) taskRow(task store.TreeTask) *qt.QWidget {
 			w.app.notifyBacklogMove(text)
 			return nil
 		}))
+	layout.AddWidget(w.taskActionButton(standardIcon(qt.QStyle__SP_TrashIcon),
+		"Delete (moves to the recycle bin)", date, text, w.app.store.DeleteTask))
 	return row
 }
 
