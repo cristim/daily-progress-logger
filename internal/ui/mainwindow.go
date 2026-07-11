@@ -85,11 +85,21 @@ func newMainWindow(app *App) *mainWindow {
 	w.tree.SetHeaderHidden(true)
 	w.tree.SetColumnCount(1)
 	w.tree.SetSelectionMode(qt.QAbstractItemView__SingleSelection)
-	// Enable drag-drop so tasks can move between stories and stories between
-	// projects; the drop is applied to the store in onDrop (see tree.go).
+	// Enable drag-drop so tasks can nest under other tasks (subtasks) or move
+	// between projects; the drop is applied to the store in onDrop (see tree.go).
+	// DragDrop mode (not InternalMove) plus explicit accept in drag-enter/move
+	// lets a drop land *onto* a row (a project/task), which InternalMove's
+	// "between items" bias would reject — so the drop event actually fires.
 	w.tree.SetDragEnabled(true)
 	w.tree.SetAcceptDrops(true)
-	w.tree.SetDragDropMode(qt.QAbstractItemView__InternalMove)
+	w.tree.SetDragDropMode(qt.QAbstractItemView__DragDrop)
+	w.tree.SetDropIndicatorShown(true)
+	w.tree.OnDragEnterEvent(func(_ func(event *qt.QDragEnterEvent), event *qt.QDragEnterEvent) {
+		event.AcceptProposedAction()
+	})
+	w.tree.OnDragMoveEvent(func(_ func(event *qt.QDragMoveEvent), event *qt.QDragMoveEvent) {
+		event.AcceptProposedAction()
+	})
 	w.tree.OnDropEvent(func(_ func(event *qt.QDropEvent), event *qt.QDropEvent) {
 		w.onDrop(event)
 	})
@@ -215,37 +225,29 @@ func (w *mainWindow) scheduleRefresh() {
 	w.refreshTimer.Start(0)
 }
 
-// runTaskAction resolves a tree task (identified by its day and display text) to
-// its plan index on that day and applies action, then refreshes. A task removed
-// while the window was open just triggers a refresh.
-func (w *mainWindow) runTaskAction(date time.Time, text string, action taskFunc) {
-	idx, err := w.app.store.FindTaskIndex(date, text)
-	if err != nil {
-		w.app.reportError(err)
-		w.scheduleRefresh()
-		return
-	}
-	if idx < 0 {
-		w.scheduleRefresh()
-		return
-	}
-	if err := action(date, idx); err != nil {
+// runTaskAction applies action to the plan item at index on date, then
+// refreshes. The tree is rebuilt from scratch on every refresh, so index
+// (captured from the tree row at build time) is always current relative to
+// that day's plan.
+func (w *mainWindow) runTaskAction(date time.Time, index int, action taskFunc) {
+	if err := action(date, index); err != nil {
 		w.app.reportError(err)
 	}
 	w.scheduleRefresh()
 }
 
 // addItem adds a new task. Text carrying a recurrence tag (@daily/@weekly/…)
-// becomes a recurring template; otherwise it is a one-off untagged task on the
-// viewed day's plan (landing under Unfiled until assigned to a story).
+// becomes a recurring template; otherwise it is a one-off untagged top-level
+// task on the viewed day's plan (landing under Unfiled until assigned to a
+// project).
 func (w *mainWindow) addItem() {
 	text := trimmed(w.newItem.Text())
 	if text == "" {
 		return
 	}
 	add := func() error { return w.app.store.AddPlanItem(w.viewedDate, text) }
-	// Detection only needs the recurrence keyword; AddRecurring resolves story
-	// tags with the real known-ID predicate.
+	// Detection only needs the recurrence keyword; AddRecurring resolves
+	// project tags with the real known-ID predicate.
 	if _, _, ok := recur.Parse(text, w.app.morning.Hour, w.app.morning.Minute, nil); ok {
 		add = func() error { return w.app.store.AddRecurring(text) }
 	}

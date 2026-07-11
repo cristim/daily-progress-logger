@@ -729,14 +729,15 @@ func (a *App) fireRecurring(now time.Time) {
 	a.window.scheduleRefresh()
 }
 
-// addRecurringToPlan adds a fired recurring task to day's plan, keeping its story
-// tag when the story still exists and otherwise falling back to an untagged item.
+// addRecurringToPlan adds a fired recurring task to day's plan, keeping its
+// project tag when the project still exists and otherwise falling back to an
+// untagged item.
 func (a *App) addRecurringToPlan(day time.Time, t store.RecurringTask) error {
-	if t.Story != "" {
-		if err := a.store.AddTaggedTask(day, t.Text, t.Story); err == nil {
+	if t.Project != "" {
+		if err := a.store.AddTaggedTask(day, t.Text, t.Project); err == nil {
 			return nil
 		}
-		// Story closed or removed since the template was created; fall back.
+		// Project closed or removed since the template was created; fall back.
 	}
 	return a.store.AddPlanItem(day, t.Text)
 }

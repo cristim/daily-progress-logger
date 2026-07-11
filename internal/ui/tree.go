@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"html"
+	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,8 +14,14 @@ import (
 )
 
 // nodeKeyRole is the item-data role holding each tree node's identity string:
-// "p:<projectID>", "s:<storyID>", "t:<date>:<text>", or "u:" for Unfiled.
-const nodeKeyRole = int(qt.UserRole)
+// "p:<projectID>", "t:<date>:<index>" (index into that day's plan), or "u:"
+// for Unfiled. taskTextRole additionally caches a task node's display text
+// (cosmetic uses only, e.g. a notification message; never used to resolve a
+// store action, which always goes through the index in nodeKeyRole).
+const (
+	nodeKeyRole  = int(qt.UserRole)
+	taskTextRole = int(qt.UserRole) + 1
+)
 
 // taskFunc applies a store operation to the plan item at idx on a given day.
 type taskFunc func(date time.Time, idx int) error
@@ -85,27 +93,23 @@ func (w *mainWindow) addProjectNode(p store.TreeProject) {
 	item.SetData(0, nodeKeyRole, qt.NewQVariant11(key))
 	w.tree.AddTopLevelItem(item)
 	w.tree.SetItemWidget(item, 0, w.projectRow(p))
-	for _, st := range p.Stories {
-		w.addStoryNode(item, st)
-	}
-	item.SetExpanded(w.expandedOr(key, true))
-}
-
-func (w *mainWindow) addStoryNode(parent *qt.QTreeWidgetItem, st store.TreeStory) {
-	key := "s:" + st.ID
-	item := qt.NewQTreeWidgetItem6(parent)
-	item.SetData(0, nodeKeyRole, qt.NewQVariant11(key))
-	w.tree.SetItemWidget(item, 0, w.storyRow(st))
-	for _, task := range st.Tasks {
+	for _, task := range p.Tasks {
 		w.addTaskNode(item, task)
 	}
 	item.SetExpanded(w.expandedOr(key, true))
 }
 
+// addTaskNode adds task's row under parent and recurses over its children, so
+// the tree shows the full Project -> Task -> Subtask -> ... nesting.
 func (w *mainWindow) addTaskNode(parent *qt.QTreeWidgetItem, task store.TreeTask) {
 	item := qt.NewQTreeWidgetItem6(parent)
 	item.SetData(0, nodeKeyRole, qt.NewQVariant11(taskKeyOf(task)))
+	item.SetData(0, taskTextRole, qt.NewQVariant11(task.Text))
 	w.tree.SetItemWidget(item, 0, w.taskRow(task))
+	for _, child := range task.Children {
+		w.addTaskNode(item, child)
+	}
+	item.SetExpanded(w.expandedOr(taskKeyOf(task), true))
 }
 
 func (w *mainWindow) addUnfiledNode(tasks []store.TreeTask) {
@@ -142,7 +146,7 @@ func (w *mainWindow) addRecycleNode(tasks []store.TreeTask) {
 func (w *mainWindow) recycleRow(task store.TreeTask) *qt.QWidget {
 	row, layout := newRowWidget()
 	display, truncated := elideText(task.Text, 90)
-	label := taskLabel(display, task.State)
+	label := taskLabel(display, task.State, task.State == store.StateDone)
 	if truncated {
 		label.SetToolTip(task.Text)
 	}
@@ -170,61 +174,52 @@ func (w *mainWindow) recycleRow(task store.TreeTask) *qt.QWidget {
 }
 
 // projectRow builds a project's row: its name (bold, struck through when done)
-// plus Add-story / Rename / Close actions.
+// plus Add-task / Rename / Close actions.
 func (w *mainWindow) projectRow(p store.TreeProject) *qt.QWidget {
 	row, layout := newRowWidget()
 	layout.AddWidget2(nodeLabel(p.Name, p.Done, true).QWidget, 1)
-	layout.AddWidget(w.textButton("+ Story", "Add a story to this project", func() { w.addStory(p.ID) }))
+	layout.AddWidget(w.textButton("+ Task", "Add a task to this project (today's plan)", func() { w.addProjectTask(p.ID) }))
 	layout.AddWidget(w.textButton("Rename", "Rename this project", func() { w.renameProject(p.ID, p.Name) }))
 	layout.AddWidget(w.textButton("Close", "Close (archive) this project", func() { w.closeProject(p.ID) }))
 	return row
 }
 
-// storyRow builds a story's row: its name (struck through when done) plus
-// Add-task / Rename / Close actions.
-func (w *mainWindow) storyRow(st store.TreeStory) *qt.QWidget {
-	row, layout := newRowWidget()
-	layout.AddWidget2(nodeLabel(st.Name, st.Done, false).QWidget, 1)
-	layout.AddWidget(w.textButton("+ Task", "Add a task to this story (today's plan)", func() { w.addTask(st.ID) }))
-	layout.AddWidget(w.textButton("Rename", "Rename this story", func() { w.renameStory(st.ID, st.Name) }))
-	layout.AddWidget(w.textButton("Close", "Close (archive) this story", func() { w.closeStory(st.ID) }))
-	return row
-}
-
-// taskRow builds a task's row: its text plus the Done/Not-done selector and the
-// next-day / next-week / backlog defer buttons, all acting on the task's own day.
+// taskRow builds a task's row: its text plus the Done/Not-done selector, the
+// next-day / next-week / backlog defer buttons (all acting on the task's own
+// day), a "+ Sub" button to add a nested subtask, and Delete.
 func (w *mainWindow) taskRow(task store.TreeTask) *qt.QWidget {
 	row, layout := newRowWidget()
 
 	display, truncated := elideText(task.Text, 100)
-	label := taskLabel(display, task.State)
+	label := taskLabel(display, task.State, task.Done)
 	if truncated {
 		label.SetToolTip(task.Text)
 	}
 	layout.AddWidget2(label.QWidget, 1)
 
-	date, text := task.Date, task.Text
+	date, index := task.Date, task.Index
 	selector := newStateSelector(task.State)
 	selector.onChanged(func(state store.ItemState) {
-		w.runTaskAction(date, text, func(d time.Time, idx int) error {
+		w.runTaskAction(date, index, func(d time.Time, idx int) error {
 			return w.app.store.SetPlanItemState(d, idx, state)
 		})
 	})
 	layout.AddWidget(selector.widget)
-	layout.AddWidget(w.taskActionButton(postponeIcon(), "Postpone to the next day", date, text,
+	layout.AddWidget(w.taskActionButton(postponeIcon(), "Postpone to the next day", date, index,
 		w.app.store.PostponeToNextDay))
-	layout.AddWidget(w.taskActionButton(standardIcon(qt.QStyle__SP_ArrowUp), "Postpone to next week", date, text,
+	layout.AddWidget(w.taskActionButton(standardIcon(qt.QStyle__SP_ArrowUp), "Postpone to next week", date, index,
 		w.app.store.PostponePlanItem))
-	layout.AddWidget(w.taskActionButton(backlogIcon(), "Move to the cross-week backlog", date, text,
+	layout.AddWidget(w.taskActionButton(backlogIcon(), "Move to the cross-week backlog", date, index,
 		func(d time.Time, idx int) error {
 			if err := w.app.store.MoveToBacklog(d, idx); err != nil {
 				return err
 			}
-			w.app.notifyBacklogMove(text)
+			w.app.notifyBacklogMove(task.Text)
 			return nil
 		}))
+	layout.AddWidget(w.textButton("+ Sub", "Add a subtask", func() { w.addSubtask(date, index) }))
 	layout.AddWidget(w.taskActionButton(standardIcon(qt.QStyle__SP_TrashIcon),
-		"Delete (moves to the recycle bin)", date, text, w.app.store.DeleteTask))
+		"Delete (moves to the recycle bin)", date, index, w.app.store.DeleteTask))
 	return row
 }
 
@@ -237,8 +232,8 @@ func newRowWidget() (*qt.QWidget, *qt.QHBoxLayout) {
 	return row, layout
 }
 
-// nodeLabel builds a rich-text label for a project/story name, bolded when bold
-// and struck through + dimmed when done.
+// nodeLabel builds a rich-text label for a project name, bolded when bold and
+// struck through + dimmed when done.
 func nodeLabel(name string, done, bold bool) *qt.QLabel {
 	text := html.EscapeString(name)
 	if bold {
@@ -252,16 +247,16 @@ func nodeLabel(name string, done, bold bool) *qt.QLabel {
 	return label
 }
 
-// taskLabel styles a task's text by state: done struck through and dimmed,
-// postponed dimmed, todo plain.
-func taskLabel(display string, state store.ItemState) *qt.QLabel {
+// taskLabel styles a task's text: struck through + dimmed when done (a leaf's
+// own checkbox state, or a parent's rolled-up children), postponed dimmed,
+// and plain otherwise.
+func taskLabel(display string, state store.ItemState, done bool) *qt.QLabel {
 	text := html.EscapeString(display)
-	switch state {
-	case store.StateDone:
+	switch {
+	case done:
 		text = fmt.Sprintf(`<s style="color:#888888">%s</s>`, text)
-	case store.StatePostponed:
+	case state == store.StatePostponed:
 		text = fmt.Sprintf(`<span style="color:#888888">%s</span>`, text)
-	case store.StateTodo:
 	}
 	label := qt.NewQLabel3(text)
 	label.SetTextFormat(qt.RichText)
@@ -279,16 +274,16 @@ func (w *mainWindow) textButton(text, tip string, handler func()) *qt.QWidget {
 	return btn.QWidget
 }
 
-// taskActionButton makes an icon button that resolves the task freshly (by day +
-// text) and applies action.
-func (w *mainWindow) taskActionButton(icon *qt.QIcon, tip string, date time.Time, text string, action taskFunc) *qt.QWidget {
+// taskActionButton makes an icon button that applies action to the plan item
+// at index on date.
+func (w *mainWindow) taskActionButton(icon *qt.QIcon, tip string, date time.Time, index int, action taskFunc) *qt.QWidget {
 	btn := qt.NewQToolButton2()
 	btn.SetIcon(icon)
 	btn.SetToolButtonStyle(qt.ToolButtonIconOnly)
 	btn.SetToolTip(tip)
 	btn.SetAccessibleName(tip)
 	btn.SetAutoRaise(true)
-	btn.OnClicked(func() { w.runTaskAction(date, text, action) })
+	btn.OnClicked(func() { w.runTaskAction(date, index, action) })
 	return btn.QWidget
 }
 
@@ -304,19 +299,23 @@ func elideText(s string, maxRunes int) (string, bool) {
 // --- node-key helpers ---
 
 func taskKeyOf(task store.TreeTask) string {
-	return "t:" + task.Date.Format(time.DateOnly) + ":" + task.Text
+	return "t:" + task.Date.Format(time.DateOnly) + ":" + strconv.Itoa(task.Index)
 }
 
-func decodeTaskKey(key string) (date time.Time, text string, ok bool) {
+func decodeTaskKey(key string) (date time.Time, index int, ok bool) {
 	parts := strings.SplitN(key, ":", 3)
 	if len(parts) != 3 || parts[0] != "t" {
-		return time.Time{}, "", false
+		return time.Time{}, 0, false
 	}
 	d, err := time.ParseInLocation(time.DateOnly, parts[1], time.Local)
 	if err != nil {
-		return time.Time{}, "", false
+		return time.Time{}, 0, false
 	}
-	return d, parts[2], true
+	idx, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return time.Time{}, 0, false
+	}
+	return d, idx, true
 }
 
 func keyOf(item *qt.QTreeWidgetItem) string {
@@ -326,10 +325,21 @@ func keyOf(item *qt.QTreeWidgetItem) string {
 	return item.Data(0, nodeKeyRole).ToString()
 }
 
-// currentTask returns the selected tree row when it is a task, for the item
-// keyboard shortcuts.
-func (w *mainWindow) currentTask() (time.Time, string, bool) {
+// currentTask returns the selected tree row's day and plan index when it is a
+// task, for the item keyboard shortcuts.
+func (w *mainWindow) currentTask() (date time.Time, index int, ok bool) {
 	return decodeTaskKey(keyOf(w.tree.CurrentItem()))
+}
+
+// currentTaskText returns the currently selected task row's cached display
+// text (cosmetic uses only, e.g. a notification message), or "" when the
+// selection is not a task.
+func (w *mainWindow) currentTaskText() string {
+	item := w.tree.CurrentItem()
+	if item == nil {
+		return ""
+	}
+	return item.Data(0, taskTextRole).ToString()
 }
 
 // --- expand-state tracking ---
@@ -349,18 +359,22 @@ func (w *mainWindow) setExpanded(item *qt.QTreeWidgetItem, expanded bool) {
 
 // --- CRUD row actions ---
 
-func (w *mainWindow) addStory(projectID string) {
-	if name, ok := w.promptText("New Story", "Story name:", ""); ok {
-		if _, err := w.app.store.AddStory(projectID, name); err != nil {
+// addProjectTask prompts for a name and adds it as a new top-level task on
+// the viewed day's plan, tagged to projectID.
+func (w *mainWindow) addProjectTask(projectID string) {
+	if name, ok := w.promptText("New Task", "Task (added to the viewed day's plan):", ""); ok {
+		if err := w.app.store.AddTaggedTask(w.viewedDate, name, projectID); err != nil {
 			w.app.reportError(err)
 		}
 		w.scheduleRefresh()
 	}
 }
 
-func (w *mainWindow) addTask(storyID string) {
-	if name, ok := w.promptText("New Task", "Task (added to the viewed day's plan):", ""); ok {
-		if err := w.app.store.AddTaggedTask(w.viewedDate, name, storyID); err != nil {
+// addSubtask prompts for a name and adds it as a new subtask nested under the
+// plan item at index on date.
+func (w *mainWindow) addSubtask(date time.Time, index int) {
+	if name, ok := w.promptText("New Subtask", "Subtask:", ""); ok {
+		if err := w.app.store.AddSubtask(date, index, name); err != nil {
 			w.app.reportError(err)
 		}
 		w.scheduleRefresh()
@@ -376,15 +390,6 @@ func (w *mainWindow) renameProject(id, current string) {
 	}
 }
 
-func (w *mainWindow) renameStory(id, current string) {
-	if name, ok := w.promptText("Rename Story", "Story name:", current); ok {
-		if err := w.app.store.RenameStory(id, name); err != nil {
-			w.app.reportError(err)
-		}
-		w.scheduleRefresh()
-	}
-}
-
 func (w *mainWindow) closeProject(id string) {
 	if err := w.app.store.SetProjectStatus(id, store.StatusClosed); err != nil {
 		w.app.reportError(err)
@@ -392,84 +397,68 @@ func (w *mainWindow) closeProject(id string) {
 	w.scheduleRefresh()
 }
 
-func (w *mainWindow) closeStory(id string) {
-	if err := w.app.store.SetStoryStatus(id, store.StatusClosed); err != nil {
-		w.app.reportError(err)
-	}
-	w.scheduleRefresh()
-}
-
 // --- drag & drop ---
 
-// onDrop applies a drag: a task dropped on a story is re-tagged (on Unfiled it is
-// untagged); a story dropped on a project is reparented. We rebuild the tree
-// ourselves and never call the base handler, so Qt does not also move the items.
+// onDrop applies a drag: a task dropped on another task nests it as that
+// task's subtask; dropped on a project (or Unfiled) it is re-homed to the top
+// level and (re)tagged. We rebuild the tree ourselves and never call the base
+// handler, so Qt does not also move the items.
 func (w *mainWindow) onDrop(event *qt.QDropEvent) {
-	w.applyDrop(w.tree.CurrentItem(), w.tree.ItemAt(event.Pos()))
+	// The custom per-row widgets make the drop event's own position unreliable
+	// (it arrives in the row widget's local coordinates, so ItemAt always maps
+	// it to the top row). Resolve the target from the real cursor position
+	// mapped into the tree's viewport instead.
+	_ = event
+	global := qt.NewQPointF2(qt.QCursor_Pos())
+	local := w.tree.Viewport().MapFromGlobal(global).ToPoint()
+	src := w.dragSource()
+	target := w.tree.ItemAt(local)
+	slog.Debug("tree drop", "src", keyOf(src), "x", local.X(), "y", local.Y(), "target", keyOf(target))
+	w.applyDrop(src, target)
 }
 
+// dragSource returns the item being dragged: the current item, or the first
+// selected item as a fallback when the current pointer is stale.
+func (w *mainWindow) dragSource() *qt.QTreeWidgetItem {
+	if it := w.tree.CurrentItem(); keyOf(it) != "" {
+		return it
+	}
+	if sel := w.tree.SelectedItems(); len(sel) > 0 {
+		return sel[0]
+	}
+	return nil
+}
+
+// applyDrop dispatches a task drop: onto another task it nests as a subtask;
+// onto a project or Unfiled it re-homes to the top level. Projects are not
+// draggable (no reparenting), so any other source key is ignored.
 func (w *mainWindow) applyDrop(src, target *qt.QTreeWidgetItem) {
 	srcKey := keyOf(src)
+	if !strings.HasPrefix(srcKey, "t:") {
+		return
+	}
+	date, index, ok := decodeTaskKey(srcKey)
+	if !ok {
+		return
+	}
+	targetKey := keyOf(target)
 	switch {
-	case strings.HasPrefix(srcKey, "t:"):
-		w.dropTask(srcKey, target)
-	case strings.HasPrefix(srcKey, "s:"):
-		w.dropStory(strings.TrimPrefix(srcKey, "s:"), target)
-	}
-}
-
-func (w *mainWindow) dropTask(srcKey string, target *qt.QTreeWidgetItem) {
-	date, text, ok := decodeTaskKey(srcKey)
-	if !ok {
-		return
-	}
-	storyID, unfiled, ok := storyTarget(target)
-	if !ok {
-		return
-	}
-	w.runTaskAction(date, text, func(d time.Time, idx int) error {
-		if unfiled {
-			return w.app.store.UnassignTaskStory(d, idx)
+	case strings.HasPrefix(targetKey, "t:"):
+		targetDate, targetIndex, ok := decodeTaskKey(targetKey)
+		if !ok || !sameDay(date, targetDate) {
+			return // MakeSubtask is same-day only
 		}
-		return w.app.store.AssignTaskStory(d, idx, storyID)
-	})
-}
-
-func (w *mainWindow) dropStory(storyID string, target *qt.QTreeWidgetItem) {
-	projectID, ok := projectTarget(target)
-	if !ok {
-		return
+		w.runTaskAction(date, index, func(d time.Time, idx int) error {
+			return w.app.store.MakeSubtask(d, idx, targetIndex)
+		})
+	case strings.HasPrefix(targetKey, "p:"):
+		projectID := strings.TrimPrefix(targetKey, "p:")
+		w.runTaskAction(date, index, func(d time.Time, idx int) error {
+			return w.app.store.MoveTaskToProject(d, idx, projectID)
+		})
+	case targetKey == "u:":
+		w.runTaskAction(date, index, func(d time.Time, idx int) error {
+			return w.app.store.MoveTaskToProject(d, idx, "")
+		})
 	}
-	if err := w.app.store.MoveStory(storyID, projectID); err != nil {
-		w.app.reportError(err)
-	}
-	w.scheduleRefresh()
-}
-
-// storyTarget resolves the story a task was dropped onto: a story node directly,
-// a task's parent story, or the Unfiled node (unfiled=true).
-func storyTarget(target *qt.QTreeWidgetItem) (storyID string, unfiled, ok bool) {
-	key := keyOf(target)
-	switch {
-	case strings.HasPrefix(key, "s:"):
-		return strings.TrimPrefix(key, "s:"), false, true
-	case key == "u:":
-		return "", true, true
-	case strings.HasPrefix(key, "t:"):
-		return storyTarget(target.Parent())
-	}
-	return "", false, false
-}
-
-// projectTarget resolves the project a story was dropped onto: a project node
-// directly, or the parent project of a story/task node.
-func projectTarget(target *qt.QTreeWidgetItem) (string, bool) {
-	key := keyOf(target)
-	switch {
-	case strings.HasPrefix(key, "p:"):
-		return strings.TrimPrefix(key, "p:"), true
-	case strings.HasPrefix(key, "s:"), strings.HasPrefix(key, "t:"):
-		return projectTarget(target.Parent())
-	}
-	return "", false
 }

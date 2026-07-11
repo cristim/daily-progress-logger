@@ -52,37 +52,36 @@ func (a *App) applyShortcuts(cfg *config.Config) {
 // the currently selected plan row and are no-ops when a modal dialog is open or
 // no row is selected.
 func (a *App) shortcutHandlers() map[string]func() {
-	// item wraps a store operation so it runs against the selected tree task,
-	// resolving it (by its day + text) to a plan index on that day.
-	item := func(action func(date time.Time, idx int, text string) error) func() {
+	// item wraps a store operation so it runs against the selected tree task's
+	// day and plan index.
+	item := func(action func(date time.Time, idx int) error) func() {
 		return func() {
 			if a.dialogOpen {
 				return
 			}
-			date, text, ok := a.window.currentTask()
+			date, idx, ok := a.window.currentTask()
 			if !ok {
 				return
 			}
-			a.window.runTaskAction(date, text, func(d time.Time, idx int) error {
-				return action(d, idx, text)
-			})
+			a.window.runTaskAction(date, idx, action)
 		}
 	}
 
 	return map[string]func(){
-		config.ShortcutItemDone: item(func(now time.Time, idx int, _ string) error {
+		config.ShortcutItemDone: item(func(now time.Time, idx int) error {
 			return a.store.SetPlanItemState(now, idx, store.StateDone)
 		}),
-		config.ShortcutItemTodo: item(func(now time.Time, idx int, _ string) error {
+		config.ShortcutItemTodo: item(func(now time.Time, idx int) error {
 			return a.store.SetPlanItemState(now, idx, store.StateTodo)
 		}),
-		config.ShortcutItemNextDay: item(func(now time.Time, idx int, _ string) error {
+		config.ShortcutItemNextDay: item(func(now time.Time, idx int) error {
 			return a.store.PostponeToNextDay(now, idx)
 		}),
-		config.ShortcutItemNextWeek: item(func(now time.Time, idx int, _ string) error {
+		config.ShortcutItemNextWeek: item(func(now time.Time, idx int) error {
 			return a.store.PostponePlanItem(now, idx)
 		}),
-		config.ShortcutItemBacklog: item(func(now time.Time, idx int, text string) error {
+		config.ShortcutItemBacklog: item(func(now time.Time, idx int) error {
+			text := a.window.currentTaskText()
 			if err := a.store.MoveToBacklog(now, idx); err != nil {
 				return err
 			}
