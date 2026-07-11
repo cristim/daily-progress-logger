@@ -152,7 +152,9 @@ func (a *App) buildWeeklyPlanDialog(week store.WeekID, manual bool) (*dialogSpec
 		for i, g := range goals {
 			state := g.State
 			if selectors[i] != nil {
-				state = store.ItemState(selectors[i].group.CheckedId())
+				if id := selectors[i].group.CheckedId(); id >= 0 {
+					state = store.ItemState(id)
+				}
 			}
 			next = append(next, store.Item{Text: g.Text, State: state})
 		}

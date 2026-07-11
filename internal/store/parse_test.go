@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -50,6 +51,22 @@ func TestParseItemLine(t *testing.T) {
 				wantRender = tt.line
 			}
 			assert.Equal(t, wantRender, got.render(), "render should round-trip")
+		})
+	}
+}
+
+// TestItemRenderUnknownStateNeverEmitsNUL verifies that render() falls back
+// to the todo marker for any state outside the known set (e.g. -1, which
+// CheckedId() returns when a UI selector has nothing checked), instead of
+// formatting the zero byte as a "%c" verb and writing a NUL into the file.
+func TestItemRenderUnknownStateNeverEmitsNUL(t *testing.T) {
+	t.Parallel()
+	for _, state := range []ItemState{-1, ItemState(99)} {
+		t.Run(fmt.Sprintf("state_%d", state), func(t *testing.T) {
+			t.Parallel()
+			got := Item{Text: "some goal", State: state}.render()
+			assert.NotContains(t, got, "\x00", "render must never emit a NUL byte")
+			assert.Equal(t, "- [ ] some goal", got, "unknown state should fall back to the todo marker")
 		})
 	}
 }
@@ -205,6 +222,45 @@ func TestWeeklyRenderAndMeta(t *testing.T) {
 	parsed, err := parseWeeklyMeta(content)
 	require.NoError(t, err)
 	assert.Equal(t, meta, parsed)
+}
+
+// TestWeeklyMetaNormalizesPostponedPlanGoal verifies that a week-plan goal
+// hand-edited to carry the postponed marker ("- [>]") is normalized to
+// StateTodo on parse, since the weekly-plan dialog's goal selector only
+// offers two states (planned / done): leaving the state as postponed would
+// round-trip into a selector with no checked button (CheckedId() == -1),
+// which previously wrote a NUL byte via Item.render() and corrupted the
+// weekly file into a permanent parse-error loop.
+func TestWeeklyMetaNormalizesPostponedPlanGoal(t *testing.T) {
+	t.Parallel()
+	content := "---\n" +
+		"week: 2026-W28\n" +
+		"start: 2026-07-06\n" +
+		"end: 2026-07-12\n" +
+		"reviewed: false\n" +
+		"summarized: false\n" +
+		"planned: true\n" +
+		"---\n\n" +
+		"## Week plan\n\n" +
+		"- [>] hand-edited postponed goal\n" +
+		"- [ ] ordinary goal\n"
+
+	meta, err := parseWeeklyMeta(content)
+	require.NoError(t, err)
+	require.Len(t, meta.Plan, 2)
+	assert.Equal(t, Item{Text: "hand-edited postponed goal", State: StateTodo}, meta.Plan[0],
+		"a stray postponed marker on a week-plan goal must normalize to todo")
+	assert.Equal(t, Item{Text: "ordinary goal", State: StateTodo}, meta.Plan[1])
+
+	// Re-rendering must produce clean, parseable markdown with no NUL bytes.
+	week := WeekID{Year: 2026, Week: 28}
+	rendered := renderWeekly(week, nil, meta)
+	assert.NotContains(t, rendered, "\x00")
+	assert.Contains(t, rendered, "- [ ] hand-edited postponed goal")
+
+	reparsed, err := parseWeeklyMeta(rendered)
+	require.NoError(t, err)
+	assert.Equal(t, meta, reparsed, "re-parsing the re-rendered content must be stable")
 }
 
 // TestWeeklyRenderDedupDoneAndPlan verifies that when a checked plan item and

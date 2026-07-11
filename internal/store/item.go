@@ -56,5 +56,14 @@ func parseItemLine(line string) (Item, error) {
 }
 
 func (i Item) render() string {
-	return fmt.Sprintf("- [%c] %s", stateMarkers[i.State], i.Text)
+	marker, ok := stateMarkers[i.State]
+	if !ok {
+		// An unknown state (e.g. -1 from a UI selector with nothing checked)
+		// must never fall through to the zero byte stateMarkers[i.State]
+		// would otherwise yield: a NUL byte written into a markdown file
+		// corrupts it and sends parsing into a permanent error loop. Fall
+		// back to the todo marker instead.
+		marker = ' '
+	}
+	return fmt.Sprintf("- [%c] %s", marker, i.Text)
 }

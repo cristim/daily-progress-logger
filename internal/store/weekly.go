@@ -100,6 +100,15 @@ func parseWeeklyMeta(content string) (weeklyMeta, error) {
 			if err != nil {
 				return meta, fmt.Errorf("week plan: %w", err)
 			}
+			// Week-plan goals only ever carry StateTodo/StateDone (the goal
+			// dialog offers no other choice); normalize any other marker
+			// (e.g. a hand-edited "- [>]" postponed bullet) back to todo so
+			// it can never reach the goal dialog's two-state selector with a
+			// state it has no button for, which would otherwise leave
+			// nothing checked (CheckedId() == -1) on save.
+			if item.State != StateTodo && item.State != StateDone {
+				item.State = StateTodo
+			}
 			meta.Plan = append(meta.Plan, item)
 		}
 	}
