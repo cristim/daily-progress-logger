@@ -115,6 +115,41 @@ func (s *Store) MoveTaskToProject(date time.Time, index int, projectID string) e
 	return s.SaveDaily(d)
 }
 
+// extractSubtree removes the whole subtree rooted at index from plan, returning
+// the removed items re-rooted so the top item is at depth 0 (relative child
+// depths preserved) and the plan with that span deleted. Delete / postpone /
+// move-to-backlog use this so a task's descendants travel with it instead of
+// being left behind and silently reparented under a neighbouring task.
+func extractSubtree(plan []Item, index int) (removed, rest []Item) {
+	start, end := subtreeSpan(plan, index)
+	base := plan[start].Depth
+	removed = make([]Item, end-start)
+	for i, it := range plan[start:end] {
+		it.Depth -= base
+		removed[i] = it
+	}
+	rest = slices.Delete(append([]Item(nil), plan...), start, end)
+	return removed, rest
+}
+
+// appendSubtree appends a re-rooted subtree (top item at depth 0) to date's
+// plan, preserving its nesting. It is a no-op when the top item's text is
+// already present, so a repeated postpone does not duplicate the task.
+func (s *Store) appendSubtree(date time.Time, items []Item) error {
+	if len(items) == 0 {
+		return nil
+	}
+	d, err := s.loadOrNewDaily(date)
+	if err != nil {
+		return err
+	}
+	if d.hasPlanItem(items[0].Text) {
+		return nil
+	}
+	d.Plan = append(d.Plan, items...)
+	return s.SaveDaily(d)
+}
+
 // knownProjectIDs loads the current project ID set.
 func (s *Store) knownProjectIDs() (map[string]bool, error) {
 	projects, err := s.LoadProjects()

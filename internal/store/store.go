@@ -492,17 +492,22 @@ func (s *Store) PostponeToNextDay(date time.Time, index int) error {
 	if index < 0 || index >= len(d.Plan) {
 		return fmt.Errorf("plan item index %d out of range (%d items)", index, len(d.Plan))
 	}
-	item := d.Plan[index]
-	d.Plan = slices.Delete(d.Plan, index, index+1)
+	wasPostponed := d.Plan[index].State == StatePostponed
+	topText := d.Plan[index].Text
+	removed, rest := extractSubtree(d.Plan, index)
+	d.Plan = rest
 	if err := s.SaveDaily(d); err != nil {
 		return err
 	}
-	if item.State == StatePostponed {
-		if err := s.syncBacklog(nil, nil, []string{item.Text}); err != nil {
+	if wasPostponed {
+		if err := s.syncBacklog(nil, nil, []string{topText}); err != nil {
 			return err
 		}
 	}
-	return s.AddPlanItem(date.AddDate(0, 0, 1), item.Text)
+	// Carry the whole subtree to tomorrow with its nesting intact; the parent is
+	// re-planned as a fresh todo (child states are preserved).
+	removed[0].State = StateTodo
+	return s.appendSubtree(date.AddDate(0, 0, 1), removed)
 }
 
 // AdoptFromBacklog adds text to today's plan and removes it from both backlog
@@ -597,8 +602,8 @@ func (s *Store) MoveToBacklog(date time.Time, index int) error {
 	if index < 0 || index >= len(d.Plan) {
 		return fmt.Errorf("plan item index %d out of range (%d items)", index, len(d.Plan))
 	}
-	text := d.Plan[index].Text
-	d.Plan = slices.Delete(d.Plan, index, index+1)
+	removed, rest := extractSubtree(d.Plan, index)
+	d.Plan = rest
 	if err := s.SaveDaily(d); err != nil {
 		return err
 	}
@@ -606,7 +611,12 @@ func (s *Store) MoveToBacklog(date time.Time, index int) error {
 	if err != nil {
 		return err
 	}
-	backlog.addCurrent(text)
+	// Move the whole subtree; the flat backlog cannot nest, so each task (parent
+	// and descendants) is enqueued as its own Current item rather than orphaning
+	// the children on the day's plan.
+	for _, it := range removed {
+		backlog.addCurrent(it.Text)
+	}
 	return s.SaveBacklog(backlog)
 }
 

@@ -99,8 +99,8 @@ func (s *Store) DeleteTask(date time.Time, index int) error {
 	if index < 0 || index >= len(d.Plan) {
 		return fmt.Errorf("plan item index %d out of range (%d items)", index, len(d.Plan))
 	}
-	item := d.Plan[index]
-	d.Plan = slices.Delete(d.Plan, index, index+1)
+	removed, rest := extractSubtree(d.Plan, index)
+	d.Plan = rest
 	if err := s.SaveDaily(d); err != nil {
 		return err
 	}
@@ -108,7 +108,13 @@ func (s *Store) DeleteTask(date time.Time, index int) error {
 	if err != nil {
 		return err
 	}
-	bin = append(bin, RecycleEntry{Date: midnight(date), Item: item})
+	// Recycle the whole subtree so descendants are not orphaned. Each entry is
+	// flattened to a top-level task so restoring it is unambiguous (a deleted
+	// subtree's nesting is not rebuilt on restore).
+	for _, it := range removed {
+		it.Depth = 0
+		bin = append(bin, RecycleEntry{Date: midnight(date), Item: it})
+	}
 	return s.SaveRecycleBin(bin)
 }
 
