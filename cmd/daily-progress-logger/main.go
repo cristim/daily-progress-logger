@@ -7,6 +7,8 @@ import (
 	"flag"
 	"log/slog"
 	"os"
+	"strings"
+	"syscall"
 
 	qt "github.com/mappu/miqt/qt6"
 
@@ -19,6 +21,8 @@ import (
 var version = "dev"
 
 func main() {
+	reexecWithAsyncPreemptOff()
+
 	checkin := flag.String("checkin", "",
 		"show the named check-in (morning, evening or review), then exit")
 	promptDue := flag.Bool("prompt-due", false,
@@ -79,6 +83,56 @@ func main() {
 	startup.Start(200)
 
 	os.Exit(qt.QApplication_Exec())
+}
+
+// reexecWithAsyncPreemptOff re-execs the current process with
+// GODEBUG=asyncpreemptoff=1 set, unless it is already set.
+//
+// Go 1.26's async preemption signals goroutines with SIGURG to interrupt
+// long-running loops. Qt installs its own Unix signal handling without the
+// SA_ONSTACK flag, so when SIGURG arrives while Qt's C++ code is running the
+// Go runtime detects the foreign handler and fatal-errors with "non-Go code
+// set up signal handler without SA_ONSTACK flag", crashing the app. There is
+// no supported way to disable async preemption via `//go:debug` (it is a
+// runtime-internal dbgvar, not a registered godebug), so the only fix is to
+// set it via the GODEBUG environment variable before the runtime starts,
+// which requires re-executing the process. Do NOT remove this: without it
+// the app crashes unpredictably whenever Qt is running a tight C++ loop
+// (e.g. window show/paint) when a preemption signal lands.
+//
+// This must run before anything else in main() — before any goroutine
+// starts or Qt is touched — since async preemption is armed by the runtime
+// at process start.
+func reexecWithAsyncPreemptOff() {
+	godebug := os.Getenv("GODEBUG")
+	if strings.Contains(godebug, "asyncpreemptoff=") {
+		return
+	}
+
+	env := make([]string, 0, len(os.Environ())+1)
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "GODEBUG=") {
+			env = append(env, kv)
+		}
+	}
+	next := "asyncpreemptoff=1"
+	if godebug != "" {
+		next = godebug + "," + next
+	}
+	env = append(env, "GODEBUG="+next)
+
+	exe, err := os.Executable()
+	if err != nil {
+		slog.Warn("reexec: could not resolve executable path, continuing without asyncpreemptoff", "error", err)
+		return
+	}
+	// exe is this process's own resolved binary path (not attacker-controlled
+	// input), and args/env are this process's own argv/environment plus the
+	// single GODEBUG override above, so this is a self-re-exec, not an
+	// injectable subprocess launch.
+	if err := syscall.Exec(exe, os.Args, env); err != nil { //nolint:gosec // self re-exec, see comment above
+		slog.Warn("reexec: exec failed, continuing without asyncpreemptoff", "error", err)
+	}
 }
 
 // fatal reports a startup error both on stderr and as a dialog (the app may
