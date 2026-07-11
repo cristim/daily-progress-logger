@@ -682,15 +682,17 @@ func (a *App) withModalGuard(f func()) {
 	if a.dialogOpen {
 		return
 	}
+	prev := a.dialogOpen
 	a.dialogOpen = true
-	defer func() { a.dialogOpen = false }()
+	defer func() { a.dialogOpen = prev }()
 	f()
 }
 
 func (a *App) reportError(err error) {
 	slog.Error("ui error", "error", err)
+	prev := a.dialogOpen
 	a.dialogOpen = true
-	defer func() { a.dialogOpen = false }()
+	defer func() { a.dialogOpen = prev }()
 	qt.QMessageBox_Critical2(a.window.win.QWidget, "Daily Progress Logger", err.Error(),
 		qt.QMessageBox__Ok, qt.QMessageBox__NoButton)
 }
