@@ -12,10 +12,10 @@ func TestEffectiveProjects(t *testing.T) {
 	known := map[string]bool{"ship-v2": true, "internal": true}
 	plan := []Item{
 		{Text: "Launch @ship-v2", Depth: 0},
-		{Text: "Write docs", Depth: 1},   // inherits ship-v2
-		{Text: "Proofread", Depth: 2},    // inherits ship-v2 (grandparent)
-		{Text: "Chore", Depth: 0},        // Unfiled (no tag)
-		{Text: "Sub chore", Depth: 1},    // inherits Unfiled ("")
+		{Text: "Write docs", Depth: 1}, // inherits ship-v2
+		{Text: "Proofread", Depth: 2},  // inherits ship-v2 (grandparent)
+		{Text: "Chore", Depth: 0},      // Unfiled (no tag)
+		{Text: "Sub chore", Depth: 1},  // inherits Unfiled ("")
 		{Text: "Ops @internal", Depth: 0},
 	}
 	got := effectiveProjects(plan, known)

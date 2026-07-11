@@ -48,9 +48,11 @@ linters:
       max-complexity: 15
     gosec:
       excludes:
-        # G304 (file inclusion via variable): reading/writing files under
-        # the user-configured data dir is this app's whole purpose.
+        # G304 (file inclusion via variable) and G703 (path traversal via
+        # taint analysis): reading/writing files under the user-configured
+        # data dir is this app's whole purpose.
         - G304
+        - G703
   exclusions:
     rules:
       # Repeated literal strings in tests are readable fixtures; hoisting

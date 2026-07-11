@@ -56,39 +56,57 @@ func parseLegacyProjects(content string) ([]legacyProject, error) {
 				return nil, fmt.Errorf("line %d: field before any project: %q", lineNo+1, line)
 			}
 			key, value, _ := strings.Cut(line, ":")
-			key, value = strings.TrimSpace(key), strings.TrimSpace(value)
-			if si >= 0 {
-				if key == "id" {
-					projects[pi].Stories[si].ID = value
-				}
-				continue
-			}
-			switch key {
-			case "id":
-				projects[pi].ID = value
-			case "status":
-				st, err := parseStatus(value)
-				if err != nil {
-					return nil, fmt.Errorf("line %d: %w", lineNo+1, err)
-				}
-				projects[pi].Status = st
+			if err := applyLegacyField(projects, pi, si, strings.TrimSpace(key), strings.TrimSpace(value)); err != nil {
+				return nil, fmt.Errorf("line %d: %w", lineNo+1, err)
 			}
 		default:
 			return nil, fmt.Errorf("line %d: unexpected content outside a heading: %q", lineNo+1, line)
 		}
 	}
+	if err := assignLegacyIDs(projects); err != nil {
+		return nil, err
+	}
+	return projects, nil
+}
+
+// applyLegacyField sets an id field on the current project (si < 0) or story
+// (si >= 0). A story's status is ignored: stories are dropped entirely by the
+// migration, so only a project's status needs to survive the parse.
+func applyLegacyField(projects []legacyProject, pi, si int, key, value string) error {
+	if si >= 0 {
+		if key == "id" {
+			projects[pi].Stories[si].ID = value
+		}
+		return nil
+	}
+	switch key {
+	case "id":
+		projects[pi].ID = value
+	case "status":
+		st, err := parseStatus(value)
+		if err != nil {
+			return err
+		}
+		projects[pi].Status = st
+	}
+	return nil
+}
+
+// assignLegacyIDs fills any empty project/story ID with the same
+// deterministic slug the pre-refactor code would have assigned.
+func assignLegacyIDs(projects []legacyProject) error {
 	seen := map[string]bool{}
 	for pi := range projects {
 		if err := ensureID(&projects[pi].ID, projects[pi].Name, seen); err != nil {
-			return nil, err
+			return err
 		}
 		for si := range projects[pi].Stories {
 			if err := ensureID(&projects[pi].Stories[si].ID, projects[pi].Stories[si].Name, seen); err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
-	return projects, nil
+	return nil
 }
 
 // legacyToProjects drops every story, returning the plain project list (ID,
