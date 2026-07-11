@@ -74,7 +74,7 @@ func (w *mainWindow) recurringRow(t store.RecurringTask) *qt.QWidget {
 		if err := w.app.store.RemoveRecurring(raw); err != nil {
 			w.app.reportError(err)
 		}
-		w.refresh()
+		w.scheduleRefresh()
 	}))
 	return row
 }
@@ -158,13 +158,13 @@ func (w *mainWindow) recycleRow(task store.TreeTask) *qt.QWidget {
 		if err := w.app.store.RestoreTask(date, text); err != nil {
 			w.app.reportError(err)
 		}
-		w.refresh()
+		w.scheduleRefresh()
 	}))
 	layout.AddWidget(w.textButton("Delete", "Delete permanently", func() {
 		if err := w.app.store.PurgeRecycled(date, text); err != nil {
 			w.app.reportError(err)
 		}
-		w.refresh()
+		w.scheduleRefresh()
 	}))
 	return row
 }
@@ -354,7 +354,7 @@ func (w *mainWindow) addStory(projectID string) {
 		if _, err := w.app.store.AddStory(projectID, name); err != nil {
 			w.app.reportError(err)
 		}
-		w.refresh()
+		w.scheduleRefresh()
 	}
 }
 
@@ -363,7 +363,7 @@ func (w *mainWindow) addTask(storyID string) {
 		if err := w.app.store.AddTaggedTask(w.viewedDate, name, storyID); err != nil {
 			w.app.reportError(err)
 		}
-		w.refresh()
+		w.scheduleRefresh()
 	}
 }
 
@@ -372,7 +372,7 @@ func (w *mainWindow) renameProject(id, current string) {
 		if err := w.app.store.RenameProject(id, name); err != nil {
 			w.app.reportError(err)
 		}
-		w.refresh()
+		w.scheduleRefresh()
 	}
 }
 
@@ -381,7 +381,7 @@ func (w *mainWindow) renameStory(id, current string) {
 		if err := w.app.store.RenameStory(id, name); err != nil {
 			w.app.reportError(err)
 		}
-		w.refresh()
+		w.scheduleRefresh()
 	}
 }
 
@@ -389,14 +389,14 @@ func (w *mainWindow) closeProject(id string) {
 	if err := w.app.store.SetProjectStatus(id, store.StatusClosed); err != nil {
 		w.app.reportError(err)
 	}
-	w.refresh()
+	w.scheduleRefresh()
 }
 
 func (w *mainWindow) closeStory(id string) {
 	if err := w.app.store.SetStoryStatus(id, store.StatusClosed); err != nil {
 		w.app.reportError(err)
 	}
-	w.refresh()
+	w.scheduleRefresh()
 }
 
 // --- drag & drop ---
