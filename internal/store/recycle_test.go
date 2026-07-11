@@ -12,10 +12,8 @@ func TestStore_DeleteRestoreAndPurge(t *testing.T) {
 	s := newTestStore(t)
 	pid, err := s.AddProject("Ship v2")
 	require.NoError(t, err)
-	sid, err := s.AddStory(pid, "Payments")
-	require.NoError(t, err)
 	require.NoError(t, s.ApplyMorning(tuesday, []string{"wire refunds", "add receipts"}, nil))
-	require.NoError(t, s.AssignTaskStory(tuesday, 0, sid))
+	require.NoError(t, s.AssignTaskProject(tuesday, 0, pid))
 	require.NoError(t, s.SetPlanItemState(tuesday, 0, StateDone))
 
 	// Delete the (done, tagged) task -> it leaves the day and enters the bin.
@@ -27,7 +25,7 @@ func TestStore_DeleteRestoreAndPurge(t *testing.T) {
 	bin, err := s.LoadRecycleBin()
 	require.NoError(t, err)
 	require.Len(t, bin, 1)
-	assert.Equal(t, "wire refunds @payments", bin[0].Item.Text, "tag and state preserved")
+	assert.Equal(t, "wire refunds @ship-v2", bin[0].Item.Text, "tag and state preserved")
 	assert.Equal(t, StateDone, bin[0].Item.State)
 
 	// It appears in the tree's Recycled list (tag stripped for display).
@@ -41,7 +39,7 @@ func TestStore_DeleteRestoreAndPurge(t *testing.T) {
 	d, _, err = s.LoadDaily(tuesday)
 	require.NoError(t, err)
 	require.Len(t, d.Plan, 2)
-	assert.Equal(t, "wire refunds @payments", d.Plan[1].Text)
+	assert.Equal(t, "wire refunds @ship-v2", d.Plan[1].Text)
 	assert.Equal(t, StateDone, d.Plan[1].State)
 	bin, err = s.LoadRecycleBin()
 	require.NoError(t, err)

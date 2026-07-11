@@ -52,11 +52,12 @@ var weekdayNames = map[string]time.Weekday{
 // defHour:defMinute; a weekly with no weekday defaults to Monday; a monthly with
 // no day defaults to the 1st.
 //
-// isStory (may be nil) reports whether a token body is a known story ID; such a
-// token stops the trailing scan instead of being consumed as a day/weekday, so a
-// story slug shaped like a recurrence token (a bare "15", or "mon") stays in the
-// clean text rather than being mistaken for a month-day / weekday.
-func Parse(text string, defHour, defMinute int, isStory func(string) bool) (clean string, rec Recurrence, ok bool) {
+// isID (may be nil) reports whether a token body is a known ID (e.g. a
+// project); such a token stops the trailing scan instead of being consumed as
+// a day/weekday, so an ID slug shaped like a recurrence token (a bare "15", or
+// "mon") stays in the clean text rather than being mistaken for a month-day /
+// weekday.
+func Parse(text string, defHour, defMinute int, isID func(string) bool) (clean string, rec Recurrence, ok bool) {
 	fields := strings.Fields(text)
 	rec = Recurrence{Hour: defHour, Minute: defMinute, Weekday: time.Monday, MonthDay: 1}
 	hasKind := false
@@ -64,7 +65,7 @@ func Parse(text string, defHour, defMinute int, isStory func(string) bool) (clea
 	end := len(fields)
 	for end > 0 {
 		tok := fields[end-1]
-		if !strings.HasPrefix(tok, "@") || !consume(strings.ToLower(tok[1:]), &rec, &hasKind, isStory) {
+		if !strings.HasPrefix(tok, "@") || !consume(strings.ToLower(tok[1:]), &rec, &hasKind, isID) {
 			break
 		}
 		end--
@@ -77,9 +78,9 @@ func Parse(text string, defHour, defMinute int, isStory func(string) bool) (clea
 
 // consume applies one @token body to rec, returning false when it is not a
 // recognized recurrence token (which stops the trailing scan). A body that
-// isStory recognizes is never consumed, so story tags survive the scan.
-func consume(body string, rec *Recurrence, hasKind *bool, isStory func(string) bool) bool {
-	if isStory != nil && isStory(body) {
+// isID recognizes is never consumed, so ID tags survive the scan.
+func consume(body string, rec *Recurrence, hasKind *bool, isID func(string) bool) bool {
+	if isID != nil && isID(body) {
 		return false
 	}
 	switch body {

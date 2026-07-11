@@ -21,14 +21,14 @@ const (
 	firedStateFile = ".recurring-fired.json"
 )
 
-// RecurringTask is a parsed recurring template: its clean display text (story
-// and recurrence tags stripped), its story ID (or ""), the parsed schedule, and
-// the raw stored line for round-tripping and firing state.
+// RecurringTask is a parsed recurring template: its clean display text
+// (project and recurrence tags stripped), its project ID (or ""), the parsed
+// schedule, and the raw stored line for round-tripping and firing state.
 type RecurringTask struct {
-	Text  string
-	Story string
-	Rec   recur.Recurrence
-	Raw   string
+	Text    string
+	Project string
+	Rec     recur.Recurrence
+	Raw     string
 }
 
 func (s *Store) recurringPath() string  { return filepath.Join(s.DataDir, recurringFileName) }
@@ -85,15 +85,15 @@ func (s *Store) RecurringTasks() ([]RecurringTask, error) {
 		return nil, err
 	}
 	known := allIDs(projects)
-	isStory := func(id string) bool { return known[id] }
+	isKnownID := func(id string) bool { return known[id] }
 	out := make([]RecurringTask, 0, len(raws))
 	for _, raw := range raws {
-		clean, rec, ok := recur.Parse(raw, s.defReminderHour, s.defReminderMinute, isStory)
+		clean, rec, ok := recur.Parse(raw, s.defReminderHour, s.defReminderMinute, isKnownID)
 		if !ok {
 			continue
 		}
-		text, story := splitStoryTag(clean, known)
-		out = append(out, RecurringTask{Text: text, Story: story, Rec: rec, Raw: raw})
+		text, project := splitProjectTag(clean, known)
+		out = append(out, RecurringTask{Text: text, Project: project, Rec: rec, Raw: raw})
 	}
 	return out, nil
 }

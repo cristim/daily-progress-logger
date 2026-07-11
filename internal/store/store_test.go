@@ -18,7 +18,9 @@ var (
 
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
-	return New(t.TempDir())
+	s, err := New(t.TempDir())
+	require.NoError(t, err)
+	return s
 }
 
 func TestStore_LoadDailyMissing(t *testing.T) {

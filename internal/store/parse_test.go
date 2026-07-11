@@ -71,6 +71,75 @@ func TestItemRenderUnknownStateNeverEmitsNUL(t *testing.T) {
 	}
 }
 
+// TestParseItemLineDepth verifies that leading 2-space indentation is parsed
+// into Item.Depth, and that render() reproduces the same indentation.
+func TestParseItemLineDepth(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		line string
+		want Item
+	}{
+		{name: "depth0", line: "- [ ] top", want: Item{Text: "top", State: StateTodo, Depth: 0}},
+		{name: "depth1", line: "  - [ ] child", want: Item{Text: "child", State: StateTodo, Depth: 1}},
+		{name: "depth2", line: "    - [x] grandchild", want: Item{Text: "grandchild", State: StateDone, Depth: 2}},
+		{name: "odd_spaces_round_down", line: "   - [ ] weird", want: Item{Text: "weird", State: StateTodo, Depth: 1}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseItemLine(tt.line)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+	// render() reproduces the exact indentation for depth 0/1/2.
+	assert.Equal(t, "- [ ] top", Item{Text: "top", State: StateTodo, Depth: 0}.render())
+	assert.Equal(t, "  - [ ] child", Item{Text: "child", State: StateTodo, Depth: 1}.render())
+	assert.Equal(t, "    - [x] grandchild", Item{Text: "grandchild", State: StateDone, Depth: 2}.render())
+}
+
+// TestDailyRoundTripNestedPlan verifies a Plan with nested subtasks survives
+// a render -> parse round trip with depths intact.
+func TestDailyRoundTripNestedPlan(t *testing.T) {
+	t.Parallel()
+	d := &Daily{
+		Date: date("2026-07-07"),
+		Plan: []Item{
+			{Text: "Launch", State: StateTodo, Depth: 0},
+			{Text: "Write docs", State: StateDone, Depth: 1},
+			{Text: "Proofread", State: StateTodo, Depth: 2},
+			{Text: "Ship code", State: StateTodo, Depth: 1},
+			{Text: "Second top-level", State: StateTodo, Depth: 0},
+		},
+	}
+	rendered := d.render()
+	assert.Contains(t, rendered, "- [ ] Launch\n  - [x] Write docs\n    - [ ] Proofread\n  - [ ] Ship code\n- [ ] Second top-level")
+	parsed, err := parseDaily(rendered)
+	require.NoError(t, err)
+	assert.Equal(t, d, parsed)
+}
+
+// TestDailyParseBodyNormalizesDepth verifies that parseBody clamps a depth
+// jump of more than one level (a hand-edited or corrupted indent) rather than
+// producing a disconnected subtree, and forces the very first Plan item to
+// depth 0 regardless of its leading indentation.
+func TestDailyParseBodyNormalizesDepth(t *testing.T) {
+	t.Parallel()
+	content := "---\ndate: 2026-07-07\n---\n\n## Plan\n\n" +
+		"    - [ ] first item indented in the file\n" + // forced to depth 0
+		"          - [ ] jumps 4 levels deeper\n" + // clamped to depth 1
+		"  - [ ] back to depth 1\n" +
+		"- [ ] back to depth 0\n"
+	d, err := parseDaily(content)
+	require.NoError(t, err)
+	require.Len(t, d.Plan, 4)
+	assert.Equal(t, 0, d.Plan[0].Depth, "first item is always depth 0")
+	assert.Equal(t, 1, d.Plan[1].Depth, "depth jump clamped to prevDepth+1")
+	assert.Equal(t, 1, d.Plan[2].Depth)
+	assert.Equal(t, 0, d.Plan[3].Depth)
+}
+
 func TestWeekID(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

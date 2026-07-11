@@ -113,8 +113,8 @@ func (s *Store) DeleteTask(date time.Time, index int) error {
 }
 
 // RestoreTask returns the recycled task matching displayText on date back to
-// that day's plan (with its original state and story tag) and drops it from the
-// bin. A missing entry is a no-op.
+// that day's plan (with its original state and project tag) and drops it from
+// the bin. A missing entry is a no-op.
 func (s *Store) RestoreTask(date time.Time, displayText string) error {
 	entry, bin, ok, err := s.takeRecycled(date, displayText)
 	if err != nil || !ok {
@@ -142,9 +142,9 @@ func (s *Store) PurgeRecycled(date time.Time, displayText string) error {
 	return s.SaveRecycleBin(bin)
 }
 
-// takeRecycled finds the first recycle entry on date whose display text (story
-// tag stripped) matches displayText and returns it along with the bin minus
-// that entry.
+// takeRecycled finds the first recycle entry on date whose display text
+// (project tag stripped) matches displayText and returns it along with the
+// bin minus that entry.
 func (s *Store) takeRecycled(date time.Time, displayText string) (RecycleEntry, []RecycleEntry, bool, error) {
 	projects, err := s.LoadProjects()
 	if err != nil {
@@ -157,7 +157,7 @@ func (s *Store) takeRecycled(date time.Time, displayText string) (RecycleEntry, 
 	}
 	norm := normalizeText(displayText)
 	for i, e := range bin {
-		clean, _ := splitStoryTag(e.Item.Text, known)
+		clean := itemDisplayText(e.Item, known)
 		if sameDay(e.Date, date) && normalizeText(clean) == norm {
 			return e, slices.Delete(bin, i, i+1), true, nil
 		}

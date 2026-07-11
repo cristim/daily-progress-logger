@@ -29,9 +29,16 @@ type Store struct {
 	defReminderMinute int
 }
 
-// New returns a store rooted at dataDir.
-func New(dataDir string) *Store {
-	return &Store{DataDir: dataDir, defReminderHour: 9}
+// New returns a store rooted at dataDir, running the one-time story->project
+// migration (see migrate.go) first. A migration failure is returned rather
+// than silently leaving the data set half-converted, since every subsequent
+// read/write assumes the new story-free format.
+func New(dataDir string) (*Store, error) {
+	s := &Store{DataDir: dataDir, defReminderHour: 9}
+	if err := s.migrateStoriesToProjects(); err != nil {
+		return nil, fmt.Errorf("migrating legacy project data: %w", err)
+	}
+	return s, nil
 }
 
 // SetDefaultReminderTime sets the fallback time of day used for recurring tasks

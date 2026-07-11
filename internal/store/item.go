@@ -17,10 +17,13 @@ const (
 	StatePostponed
 )
 
-// Item is a single entry in a day's plan checklist.
+// Item is a single entry in a day's plan checklist. Depth is its nesting
+// level (0 = top-level task, 1 = subtask of the preceding depth-0 task, etc.),
+// derived from 2-space indentation on the stored markdown bullet.
 type Item struct {
 	Text  string
 	State ItemState
+	Depth int
 }
 
 // markers maps checkbox markers to states; the reverse of stateMarkers.
@@ -38,21 +41,27 @@ var stateMarkers = map[ItemState]byte{
 }
 
 // parseItemLine parses a checkbox bullet like "- [ ] text", "- [x] text" or
-// "- [>] text" (postponed).
+// "- [>] text" (postponed), optionally preceded by leading spaces indicating
+// its nesting Depth (2 spaces per level).
 func parseItemLine(line string) (Item, error) {
+	spaces := 0
+	for spaces < len(line) && line[spaces] == ' ' {
+		spaces++
+	}
+	rest := line[spaces:]
 	const prefixLen = len("- [?] ")
-	if len(line) < prefixLen || !strings.HasPrefix(line, "- [") || line[4] != ']' || line[5] != ' ' {
+	if len(rest) < prefixLen || !strings.HasPrefix(rest, "- [") || rest[4] != ']' || rest[5] != ' ' {
 		return Item{}, fmt.Errorf("not a checkbox bullet: %q", line)
 	}
-	state, ok := markers[line[3]]
+	state, ok := markers[rest[3]]
 	if !ok {
-		return Item{}, fmt.Errorf("unknown checkbox marker %q in %q", line[3], line)
+		return Item{}, fmt.Errorf("unknown checkbox marker %q in %q", rest[3], line)
 	}
-	text := strings.TrimSpace(line[prefixLen:])
+	text := strings.TrimSpace(rest[prefixLen:])
 	if text == "" {
 		return Item{}, fmt.Errorf("empty item text in %q", line)
 	}
-	return Item{Text: text, State: state}, nil
+	return Item{Text: text, State: state, Depth: spaces / 2}, nil
 }
 
 func (i Item) render() string {
@@ -65,5 +74,5 @@ func (i Item) render() string {
 		// back to the todo marker instead.
 		marker = ' '
 	}
-	return fmt.Sprintf("- [%c] %s", marker, i.Text)
+	return fmt.Sprintf("%s- [%c] %s", strings.Repeat("  ", i.Depth), marker, i.Text)
 }

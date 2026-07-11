@@ -58,20 +58,20 @@ func TestParse(t *testing.T) {
 	}
 }
 
-func TestParseStoryTagNotConsumed(t *testing.T) {
+func TestParseIDTagNotConsumed(t *testing.T) {
 	t.Parallel()
-	// A story slug shaped like a month-day ("15") or a weekday ("mon") must not
-	// be consumed as a recurrence token: it stays in the clean text and does not
-	// alter the schedule.
-	isStory := func(s string) bool { return s == "15" || s == "mon" }
+	// A known-ID slug shaped like a month-day ("15") or a weekday ("mon") must
+	// not be consumed as a recurrence token: it stays in the clean text and does
+	// not alter the schedule.
+	isID := func(s string) bool { return s == "15" || s == "mon" }
 
-	clean, rec, ok := Parse("Reconcile @15 @weekly @fri @17:00", 9, 0, isStory)
+	clean, rec, ok := Parse("Reconcile @15 @weekly @fri @17:00", 9, 0, isID)
 	assert.True(t, ok)
 	assert.Equal(t, "Reconcile @15", clean)
 	assert.Equal(t, Weekly, rec.Kind)
 	assert.Equal(t, time.Friday, rec.Weekday) // not rewritten by the "15" token
 
-	clean, rec, ok = Parse("Standup @mon @daily @9:00", 9, 0, isStory)
+	clean, rec, ok = Parse("Standup @mon @daily @9:00", 9, 0, isID)
 	assert.True(t, ok)
 	assert.Equal(t, "Standup @mon", clean)
 	assert.Equal(t, Daily, rec.Kind)

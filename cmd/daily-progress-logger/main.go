@@ -39,7 +39,10 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	st := store.New(cfg.DataDir)
+	st, err := store.New(cfg.DataDir)
+	if err != nil {
+		fatal(err)
+	}
 	app, err := ui.New(st, cfg, version)
 	if err != nil {
 		fatal(err)

@@ -84,6 +84,7 @@ func (d *Daily) applyFrontmatter(front map[string]string) error {
 
 func (d *Daily) parseBody(body string) error {
 	section := sectionNone
+	prevDepth := -1 // depth of the previous Plan item; -1 = none seen yet
 	for lineNo, line := range strings.Split(body, "\n") {
 		trimmed := strings.TrimRight(line, " \t")
 		switch {
@@ -94,11 +95,23 @@ func (d *Daily) parseBody(body string) error {
 			if section != sectionPlan && section != sectionDone {
 				return fmt.Errorf("line %d: unknown section %q", lineNo+1, section)
 			}
+			prevDepth = -1
 		case section == sectionPlan:
 			item, err := parseItemLine(trimmed)
 			if err != nil {
 				return fmt.Errorf("line %d: %w", lineNo+1, err)
 			}
+			// Normalize depth: the first item is always top-level, and no
+			// item may jump more than one level deeper than the previous one
+			// (a hand-edited or corrupted indent is clamped rather than
+			// producing a disconnected subtree).
+			switch {
+			case prevDepth < 0:
+				item.Depth = 0
+			case item.Depth > prevDepth+1:
+				item.Depth = prevDepth + 1
+			}
+			prevDepth = item.Depth
 			d.Plan = append(d.Plan, item)
 		case section == sectionDone:
 			text, err := parseDoneBullet(trimmed)
