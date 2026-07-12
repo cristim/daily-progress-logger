@@ -285,13 +285,34 @@ func (w *mainWindow) addItem() {
 	if text == "" {
 		return
 	}
-	add := func() error { return w.app.store.AddPlanItem(w.viewedDate, text) }
 	// Detection only needs the recurrence keyword; AddRecurring resolves
 	// project tags with the real known-ID predicate.
 	if _, _, ok := recur.Parse(text, w.app.morning.Hour, w.app.morning.Minute, nil); ok {
-		add = func() error { return w.app.store.AddRecurring(text) }
+		if err := w.app.store.AddRecurring(text); err != nil {
+			w.app.reportError(err)
+			return
+		}
+		w.newItem.Clear()
+		w.refresh()
+		return
 	}
-	if err := add(); err != nil {
+	// File the new task under the current tree selection: a selected project
+	// gets it as one of its tasks; a selected task gets it as a subtask;
+	// otherwise it lands Unfiled.
+	var err error
+	switch key := keyOf(w.tree.CurrentItem()); {
+	case strings.HasPrefix(key, "p:"):
+		err = w.app.store.AddTaggedTask(w.viewedDate, text, strings.TrimPrefix(key, "p:"))
+	case strings.HasPrefix(key, "t:"):
+		if date, index, ok := decodeTaskKey(key); ok {
+			err = w.app.store.AddSubtask(date, index, text)
+		} else {
+			err = w.app.store.AddPlanItem(w.viewedDate, text)
+		}
+	default:
+		err = w.app.store.AddPlanItem(w.viewedDate, text)
+	}
+	if err != nil {
 		w.app.reportError(err)
 		return
 	}
