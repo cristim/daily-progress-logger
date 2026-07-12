@@ -140,6 +140,7 @@ func (a *App) applyConfig(cfg *config.Config) error {
 
 // Show displays the main window.
 func (a *App) Show() {
+	a.window.materializeViewedDate()
 	a.window.refresh()
 	a.window.win.Show()
 }
@@ -264,8 +265,12 @@ func (a *App) CheckPrompts() {
 	now := time.Now()
 
 	// Midnight watchdog: if the main window still shows yesterday's plan,
-	// refresh it so the heading and item list reflect the new day.
+	// materialize the new today's recurring occurrences and refresh so the
+	// heading and item list reflect the new day.
 	if today := now.Format(time.DateOnly); a.window.renderedDate != "" && a.window.renderedDate != today {
+		if _, err := a.store.MaterializeRecurring(now); err != nil {
+			a.reportError(err)
+		}
 		a.window.scheduleRefresh()
 	}
 
@@ -628,6 +633,7 @@ func (a *App) GrabScreenshots(dir string) error {
 	// widths, item-widget geometry) before we grab the frames.
 	a.window.win.Show()
 	qt.QCoreApplication_ProcessEvents()
+	a.window.materializeViewedDate()
 	a.window.refresh()
 
 	morning, err := a.buildMorningDialog(now, false) // screenshots: use scheduled appearance
@@ -709,37 +715,32 @@ func (a *App) notifyBacklogMove(itemText string) {
 // fireRecurring shows a tray reminder for each recurring task whose occurrence
 // has come due and adds it to today's plan (preserving any story tag), so the
 // reminder is also actionable in the tree.
+// fireRecurring shows a tray reminder for every recurring occurrence newly
+// due at now (notification-only; RecurringDue tracks its own once-per-
+// occurrence state independent of materialization), then materializes today's
+// occurrences so a fired reminder makes the task appear even if today was
+// never opened in the window. The tree is refreshed only when either step
+// actually produced something.
 func (a *App) fireRecurring(now time.Time) {
 	due, err := a.store.RecurringDue(now)
 	if err != nil {
 		slog.Warn("checking recurring tasks", "error", err)
-		return
-	}
-	if len(due) == 0 {
-		return
+		due = nil
 	}
 	for _, t := range due {
 		if a.tray != nil {
 			a.tray.ShowMessage2("Reminder", t.Text)
 		}
-		if err := a.addRecurringToPlan(now, t); err != nil {
-			slog.Warn("adding recurring task to plan", "task", t.Text, "error", err)
-		}
 	}
-	a.window.scheduleRefresh()
-}
 
-// addRecurringToPlan adds a fired recurring task to day's plan, keeping its
-// project tag when the project still exists and otherwise falling back to an
-// untagged item.
-func (a *App) addRecurringToPlan(day time.Time, t store.RecurringTask) error {
-	if t.Project != "" {
-		if err := a.store.AddTaggedTask(day, t.Text, t.Project); err == nil {
-			return nil
-		}
-		// Project closed or removed since the template was created; fall back.
+	added, err := a.store.MaterializeRecurring(now)
+	if err != nil {
+		slog.Warn("materializing recurring tasks", "error", err)
 	}
-	return a.store.AddPlanItem(day, t.Text)
+
+	if len(due) > 0 || len(added) > 0 {
+		a.window.scheduleRefresh()
+	}
 }
 
 // notifyAdopt shows a tray balloon confirming that a backlog item was added

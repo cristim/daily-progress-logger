@@ -19,6 +19,11 @@ const (
 	// occurrence notifies once. It is a dotfile and is not synced across devices
 	// (reminders fire independently on each machine).
 	firedStateFile = ".recurring-fired.json"
+	// materializedStateFile records, per (template, day), whether that
+	// occurrence has already been created in the day's plan, so a since-deleted
+	// materialized task is never re-added. It is a dotfile and is not synced
+	// across devices (each machine materializes its own plan files).
+	materializedStateFile = ".recurring-materialized.json"
 )
 
 // RecurringTask is a parsed recurring template: its clean display text
@@ -33,6 +38,9 @@ type RecurringTask struct {
 
 func (s *Store) recurringPath() string  { return filepath.Join(s.DataDir, recurringFileName) }
 func (s *Store) firedStatePath() string { return filepath.Join(s.DataDir, firedStateFile) }
+func (s *Store) materializedStatePath() string {
+	return filepath.Join(s.DataDir, materializedStateFile)
+}
 
 // loadRecurringRaws returns the raw text of each stored recurring template, in
 // file order. A missing file is not an error (no recurring tasks yet).
@@ -197,6 +205,79 @@ func (s *Store) RecurringDue(now time.Time) ([]RecurringTask, error) {
 	return due, nil
 }
 
+// MaterializeRecurring creates a real plan item for every recurring template
+// that occurs on date and has not already been materialized for that day,
+// returning the tasks actually added. It never touches a day before today
+// (local midnight compare), so navigating to a past date cannot inject a task
+// into it. Each (template, day) pair is materialized at most once, tracked in
+// a persisted state file: once recorded, a since-deleted materialized task is
+// not re-added even though it no longer matches hasPlanItem. A template whose
+// clean text already appears in the day's plan (e.g. added by hand before
+// this feature, or by a previous run that crashed after writing the plan but
+// before recording state) is treated as already materialized rather than
+// duplicated. Cheap when nothing is due: only the templates and state are
+// loaded, and the state file is rewritten only when something changed.
+func (s *Store) MaterializeRecurring(date time.Time) (added []RecurringTask, err error) {
+	if midnight(date).Before(midnight(time.Now())) {
+		return nil, nil
+	}
+	templates, err := s.RecurringTasks()
+	if err != nil {
+		return nil, err
+	}
+	if len(templates) == 0 {
+		return nil, nil
+	}
+	materialized, err := s.loadMaterializedState()
+	if err != nil {
+		return nil, err
+	}
+	dateKey := date.Format(dateLayout)
+	changed := false
+	for _, t := range templates {
+		if !t.Rec.OccursOn(date) {
+			continue
+		}
+		key := t.Raw + "\n" + dateKey
+		if materialized[key] {
+			continue
+		}
+		d, derr := s.loadOrNewDaily(date)
+		if derr != nil {
+			return added, derr
+		}
+		if d.hasPlanItem(t.Text) {
+			materialized[key] = true
+			changed = true
+			continue
+		}
+		if aerr := s.materializeOne(date, t); aerr != nil {
+			return added, aerr
+		}
+		materialized[key] = true
+		changed = true
+		added = append(added, t)
+	}
+	if changed {
+		if serr := s.saveMaterializedState(materialized); serr != nil {
+			return added, serr
+		}
+	}
+	return added, nil
+}
+
+// materializeOne adds t's occurrence to date's plan, keeping its project tag
+// when the project still exists and otherwise falling back to an untagged
+// item so the occurrence still lands somewhere.
+func (s *Store) materializeOne(date time.Time, t RecurringTask) error {
+	if t.Project != "" {
+		if err := s.AddTaggedTask(date, t.Text, t.Project); err == nil {
+			return nil
+		}
+	}
+	return s.AddPlanItem(date, t.Text)
+}
+
 // changedState reports whether the firing state needs rewriting: a fired
 // occurrence, a new/removed template, or a baselined template.
 func changedState(prev, next map[string]string, due []RecurringTask) bool {
@@ -242,4 +323,30 @@ func parseFiredTime(s string) time.Time {
 		return time.Time{}
 	}
 	return t
+}
+
+// loadMaterializedState returns the set of (template raw text, day) pairs
+// already materialized into a plan file. A missing file means nothing has
+// been materialized yet.
+func (s *Store) loadMaterializedState() (map[string]bool, error) {
+	data, err := os.ReadFile(s.materializedStatePath())
+	if errors.Is(err, os.ErrNotExist) {
+		return map[string]bool{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", s.materializedStatePath(), err)
+	}
+	m := map[string]bool{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, fmt.Errorf("parsing %s: %w", s.materializedStatePath(), err)
+	}
+	return m, nil
+}
+
+func (s *Store) saveMaterializedState(m map[string]bool) error {
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encoding recurring materialized state: %w", err)
+	}
+	return writeFile(s.materializedStatePath(), string(data))
 }

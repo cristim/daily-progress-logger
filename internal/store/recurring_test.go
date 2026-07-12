@@ -128,6 +128,116 @@ func TestStore_RecurringDueFiresOncePerOccurrence(t *testing.T) {
 	assert.Equal(t, "Standup", due[0].Text)
 }
 
+func TestStore_MaterializeRecurring_OccursTodayOnce(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	require.NoError(t, s.AddRecurring("Standup @daily"))
+
+	today := midnight(time.Now())
+	added, err := s.MaterializeRecurring(today)
+	require.NoError(t, err)
+	require.Len(t, added, 1)
+	assert.Equal(t, "Standup", added[0].Text)
+
+	d, exists, err := s.LoadDaily(today)
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.Len(t, d.Plan, 1)
+	assert.Equal(t, "Standup", d.Plan[0].Text)
+
+	// Second call for the same day materializes nothing further.
+	added, err = s.MaterializeRecurring(today)
+	require.NoError(t, err)
+	assert.Empty(t, added)
+	d, _, err = s.LoadDaily(today)
+	require.NoError(t, err)
+	assert.Len(t, d.Plan, 1, "not duplicated")
+}
+
+func TestStore_MaterializeRecurring_DeletedTaskNotReadded(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	require.NoError(t, s.AddRecurring("Standup @daily"))
+
+	today := midnight(time.Now())
+	added, err := s.MaterializeRecurring(today)
+	require.NoError(t, err)
+	require.Len(t, added, 1)
+
+	// Delete the materialized task from the day's plan.
+	require.NoError(t, s.DeleteTask(today, 0))
+	d, _, err := s.LoadDaily(today)
+	require.NoError(t, err)
+	require.Empty(t, d.Plan, "task removed from the plan")
+
+	// Materializing the same day again must not resurrect it: the state file
+	// already marks this (template, day) as done.
+	added, err = s.MaterializeRecurring(today)
+	require.NoError(t, err)
+	assert.Empty(t, added)
+	d, _, err = s.LoadDaily(today)
+	require.NoError(t, err)
+	assert.Empty(t, d.Plan)
+}
+
+func TestStore_MaterializeRecurring_PastDateIsNoop(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	require.NoError(t, s.AddRecurring("Standup @daily"))
+
+	yesterday := midnight(time.Now()).AddDate(0, 0, -1)
+	added, err := s.MaterializeRecurring(yesterday)
+	require.NoError(t, err)
+	assert.Empty(t, added)
+
+	_, exists, err := s.LoadDaily(yesterday)
+	require.NoError(t, err)
+	assert.False(t, exists, "past day's plan file must not be created")
+}
+
+func TestStore_MaterializeRecurring_NonMatchingDayAddsNothing(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	require.NoError(t, s.AddRecurring("Standup @weekly @mon"))
+
+	// Find the next day at or after today that is not a Monday.
+	notMonday := midnight(time.Now())
+	for notMonday.Weekday() == time.Monday {
+		notMonday = notMonday.AddDate(0, 0, 1)
+	}
+
+	added, err := s.MaterializeRecurring(notMonday)
+	require.NoError(t, err)
+	assert.Empty(t, added)
+
+	_, exists, err := s.LoadDaily(notMonday)
+	require.NoError(t, err)
+	assert.False(t, exists)
+}
+
+func TestStore_MaterializeRecurring_ProjectTaggedAndUnfiled(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	pid, err := s.AddProject("Payments")
+	require.NoError(t, err)
+	require.NoError(t, s.AddRecurring("Reconcile ledger @"+pid+" @daily"))
+	require.NoError(t, s.AddRecurring("Vitamins @daily"))
+
+	today := midnight(time.Now())
+	added, err := s.MaterializeRecurring(today)
+	require.NoError(t, err)
+	require.Len(t, added, 2)
+
+	tree, err := s.BuildProjectTree(today)
+	require.NoError(t, err)
+	require.Len(t, tree.Projects, 1)
+	require.Len(t, tree.Projects[0].Tasks, 1)
+	assert.Equal(t, "Reconcile ledger", tree.Projects[0].Tasks[0].Text)
+
+	require.Len(t, tree.Unfiled, 1)
+	assert.Equal(t, "Vitamins", tree.Unfiled[0].Text)
+}
+
 func TestStore_RecurringDuePersistsAcrossReload(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

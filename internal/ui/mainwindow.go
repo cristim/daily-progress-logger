@@ -227,7 +227,25 @@ func (w *mainWindow) setViewedDate(date time.Time) {
 		return
 	}
 	w.viewedDate = date
+	w.materializeViewedDate()
 	w.scheduleRefresh()
+}
+
+// materializeViewedDate creates any due recurring occurrences into the
+// viewed day's plan (a no-op for a past day, and idempotent per template/day
+// — see Store.MaterializeRecurring), refreshing the tree only when something
+// was actually added. Called whenever the viewed day is opened or changed,
+// not on every refresh/rebuild, so viewing a day never forces an
+// unconditional write.
+func (w *mainWindow) materializeViewedDate() {
+	added, err := w.app.store.MaterializeRecurring(w.viewedDate)
+	if err != nil {
+		w.app.reportError(err)
+		return
+	}
+	if len(added) > 0 {
+		w.scheduleRefresh()
+	}
 }
 
 // shiftDay moves the viewed day by delta days (via the date editor, whose
