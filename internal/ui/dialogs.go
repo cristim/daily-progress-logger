@@ -301,6 +301,10 @@ func (a *App) buildEveningDialog(today time.Time, manual bool) (*dialogSpec, err
 	if daily != nil {
 		plan = daily.Plan
 	}
+	known, err := a.store.KnownProjectIDs()
+	if err != nil {
+		return nil, err
+	}
 
 	dialog := qt.NewQDialog(a.window.win.QWidget)
 	dialog.SetWindowTitle("Evening Check-in")
@@ -314,7 +318,12 @@ func (a *App) buildEveningDialog(today time.Time, manual bool) (*dialogSpec, err
 		area, rows := newRowsArea()
 		for i, item := range plan {
 			row := qt.NewQHBoxLayout2()
-			label := qt.NewQLabel3(item.Text)
+			// Indent subtasks and drop the project tag so the check-in mirrors
+			// the tree's Project -> Task -> Subtask nesting.
+			if item.Depth > 0 {
+				row.AddSpacing(item.Depth * 18)
+			}
+			label := qt.NewQLabel3(store.DisplayText(item, known))
 			label.SetTextFormat(qt.PlainText)
 			label.SetWordWrap(true)
 			selector := newChoiceSelector(eveningChoices(), int(store.EveningActionForState(item.State)))

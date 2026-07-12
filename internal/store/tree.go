@@ -80,6 +80,19 @@ func (s *Store) BuildProjectTree(date time.Time) (*ProjectTree, error) {
 	}, nil
 }
 
+// KnownProjectIDs returns the set of current project IDs, for UI code (e.g.
+// the check-in dialogs) that needs to strip project tags for display.
+func (s *Store) KnownProjectIDs() (map[string]bool, error) {
+	return s.knownProjectIDs()
+}
+
+// DisplayText returns item's text with its project tag stripped (subtasks are
+// returned unchanged), using the given known-ID set. Exported wrapper of
+// itemDisplayText for the UI layer.
+func DisplayText(item Item, known map[string]bool) string {
+	return itemDisplayText(item, known)
+}
+
 // itemDisplayText returns item's text with its project tag stripped, for
 // depth-0 items only (subtasks never carry a tag, so their text is returned
 // unchanged).
