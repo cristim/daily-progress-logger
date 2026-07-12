@@ -499,17 +499,22 @@ func (w *mainWindow) showProjectContextMenu(item *qt.QTreeWidgetItem, id string,
 
 // --- drag & drop ---
 
-// onDrop applies a drag: a task dropped on another task nests it as that
-// task's subtask; dropped on a project (or Unfiled) it is re-homed to the top
-// level and (re)tagged. We rebuild the tree ourselves and never call the base
-// handler, so Qt does not also move the items.
+// onDrop applies a drag: dropped ONTO a task it nests as that task's
+// subtask, ONTO a project (or Unfiled) it is re-homed to the top level and
+// (re)tagged, and dropped BETWEEN two tasks it is reordered to sit at that
+// position (see applyDrop). We rebuild the tree ourselves and never call the
+// base handler, so Qt does not also move the items.
 func (w *mainWindow) onDrop(event *qt.QDropEvent) {
 	_ = event
 	local := w.dragPoint()
 	src := w.dragSource()
 	target := w.tree.ItemAt(local)
-	slog.Debug("tree drop", "src", keyOf(src), "x", local.X(), "y", local.Y(), "target", keyOf(target))
-	w.applyDrop(src, target)
+	zone := dropOnto
+	if target != nil {
+		zone = w.resolveDropZone(target, local)
+	}
+	slog.Debug("tree drop", "src", keyOf(src), "x", local.X(), "y", local.Y(), "target", keyOf(target), "zone", zone)
+	w.applyDrop(src, target, zone)
 	w.clearDropIndicator()
 }
 
@@ -645,16 +650,31 @@ func (w *mainWindow) clearDropIndicator() {
 // applyDrop dispatches a task drop: onto another task it nests as a subtask;
 // onto a project or Unfiled it re-homes to the top level. Projects are not
 // draggable (no reparenting), so any other source key is ignored.
-func (w *mainWindow) applyDrop(src, target *qt.QTreeWidgetItem) {
+func (w *mainWindow) applyDrop(src, target *qt.QTreeWidgetItem, zone dropZone) {
 	srcKey := keyOf(src)
 	if !strings.HasPrefix(srcKey, "t:") {
-		return
+		return // projects don't reorder here
 	}
 	date, index, ok := decodeTaskKey(srcKey)
 	if !ok {
 		return
 	}
 	targetKey := keyOf(target)
+
+	// BETWEEN a task target reorders as its sibling at that position; BETWEEN
+	// on a project/Unfiled header (or any other non-task target) falls
+	// through to the ONTO handling below, appending into that container.
+	if zone != dropOnto && strings.HasPrefix(targetKey, "t:") {
+		targetDate, targetIndex, ok := decodeTaskKey(targetKey)
+		if !ok || !sameDay(date, targetDate) {
+			return // same viewed day only
+		}
+		w.runTaskAction(date, index, func(d time.Time, idx int) error {
+			return w.app.store.ReorderTask(d, idx, targetIndex, zone == dropBelow)
+		})
+		return
+	}
+
 	switch {
 	case strings.HasPrefix(targetKey, "t:"):
 		targetDate, targetIndex, ok := decodeTaskKey(targetKey)

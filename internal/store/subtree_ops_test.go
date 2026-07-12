@@ -78,6 +78,98 @@ func TestPostponeToNextDayCarriesSubtree(t *testing.T) {
 	assert.Equal(t, 1, tomorrow[1].Depth, "nesting preserved across the postpone")
 }
 
+func TestReorderTaskSiblingsWithinProject(t *testing.T) {
+	t.Parallel()
+	s, err := New(t.TempDir())
+	require.NoError(t, err)
+	proj, err := s.AddProject("Proj")
+	require.NoError(t, err)
+	day := time.Date(2026, 7, 12, 12, 0, 0, 0, time.Local)
+	require.NoError(t, s.AddTaggedTask(day, "Alpha", proj))
+	require.NoError(t, s.AddTaggedTask(day, "Beta", proj))
+
+	// Beta (index 1) moves before Alpha (index 0): order changes, both tags
+	// stay intact since both are already in proj.
+	require.NoError(t, s.ReorderTask(day, 1, 0, false))
+
+	plan := planOf(t, s, day)
+	require.Len(t, plan, 2)
+	assert.Equal(t, "Beta @"+proj, plan[0].Text)
+	assert.Equal(t, "Alpha @"+proj, plan[1].Text)
+	assert.Equal(t, 0, plan[0].Depth)
+	assert.Equal(t, 0, plan[1].Depth)
+}
+
+func TestReorderTaskBetweenSubtasksBecomesSiblingAtDepth(t *testing.T) {
+	t.Parallel()
+	s, err := New(t.TempDir())
+	require.NoError(t, err)
+	projA, err := s.AddProject("ProjA")
+	require.NoError(t, err)
+	projB, err := s.AddProject("ProjB")
+	require.NoError(t, err)
+	day := time.Date(2026, 7, 12, 12, 0, 0, 0, time.Local)
+	require.NoError(t, s.AddTaggedTask(day, "X", projA)) // index 0
+	require.NoError(t, s.AddSubtask(day, 0, "C1"))       // index 1, depth 1
+	require.NoError(t, s.AddSubtask(day, 0, "C2"))       // index 2, depth 1
+	require.NoError(t, s.AddTaggedTask(day, "Y", projB)) // index 3
+
+	// Y (a tagged top-level task) moves to sit right after C1, becoming X's
+	// child sandwiched between C1 and C2: it adopts C1's depth (1) and drops
+	// its own project tag (it now inherits X's).
+	require.NoError(t, s.ReorderTask(day, 3, 1, true))
+
+	plan := planOf(t, s, day)
+	require.Len(t, plan, 4)
+	assert.Equal(t, "X @"+projA, plan[0].Text)
+	assert.Equal(t, "C1", plan[1].Text)
+	assert.Equal(t, "Y", plan[2].Text, "Y's own @projB tag is stripped; it now inherits X")
+	assert.Equal(t, 1, plan[2].Depth, "Y adopts C1's depth, becoming X's child")
+	assert.Equal(t, "C2", plan[3].Text)
+}
+
+func TestReorderTaskCrossProjectRetags(t *testing.T) {
+	t.Parallel()
+	s, err := New(t.TempDir())
+	require.NoError(t, err)
+	projA, err := s.AddProject("ProjA")
+	require.NoError(t, err)
+	projB, err := s.AddProject("ProjB")
+	require.NoError(t, err)
+	day := time.Date(2026, 7, 12, 12, 0, 0, 0, time.Local)
+	require.NoError(t, s.AddTaggedTask(day, "Zulu", projA))  // index 0
+	require.NoError(t, s.AddTaggedTask(day, "Mango", projB)) // index 1
+
+	// Zulu moves to sit right after Mango: the order changes and Zulu is
+	// retagged to Mango's project.
+	require.NoError(t, s.ReorderTask(day, 0, 1, true))
+
+	plan := planOf(t, s, day)
+	require.Len(t, plan, 2)
+	assert.Equal(t, "Mango @"+projB, plan[0].Text)
+	assert.Equal(t, "Zulu @"+projB, plan[1].Text, "Zulu is retagged to its new sibling's project")
+}
+
+func TestReorderTaskCycleGuardIsNoOp(t *testing.T) {
+	t.Parallel()
+	s, day, projA, _ := seedParentChildDay(t) // Alpha @projA (depth 0) -> Beta (depth 1)
+	before := planOf(t, s, day)
+
+	require.NoError(t, s.ReorderTask(day, 0, 0, false), "refIndex == srcIndex is a no-op")
+	require.NoError(t, s.ReorderTask(day, 0, 1, false), "refIndex inside src's own subtree is a no-op")
+
+	after := planOf(t, s, day)
+	assert.Equal(t, before, after, "the plan is unchanged by either no-op request")
+	assert.Equal(t, "Alpha @"+projA, after[0].Text)
+}
+
+func TestReorderTaskOutOfRange(t *testing.T) {
+	t.Parallel()
+	s, day, _, _ := seedParentChildDay(t)
+	require.ErrorContains(t, s.ReorderTask(day, 99, 0, false), "out of range")
+	require.ErrorContains(t, s.ReorderTask(day, 0, 99, false), "out of range")
+}
+
 func TestMoveToBacklogRemovesWholeSubtree(t *testing.T) {
 	t.Parallel()
 	s, day, _, projC := seedParentChildDay(t)

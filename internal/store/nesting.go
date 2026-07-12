@@ -77,6 +77,70 @@ func (s *Store) MakeSubtask(date time.Time, childIndex, parentIndex int) error {
 	return s.SaveDaily(d)
 }
 
+// ReorderTask moves date's plan item at srcIndex (and its subtree) to sit
+// immediately before refIndex (below=false) or immediately after refIndex's
+// whole subtree (below=true). The moved top item adopts refIndex's Depth: a
+// depth-0 landing spot retags it to refIndex's own effective project
+// (stripped if refIndex is itself Unfiled), while any deeper landing spot
+// strips its own tag since it now inherits its new parent. Child depths
+// stay relative to the moved top. refIndex landing inside srcIndex's own
+// subtree (or equal to it) would create a cycle; that request is silently
+// ignored (plan left unchanged) rather than corrupting the plan.
+func (s *Store) ReorderTask(date time.Time, srcIndex, refIndex int, below bool) error {
+	d, err := s.loadOrNewDaily(date)
+	if err != nil {
+		return err
+	}
+	if srcIndex < 0 || srcIndex >= len(d.Plan) {
+		return fmt.Errorf("src index %d out of range (%d items)", srcIndex, len(d.Plan))
+	}
+	if refIndex < 0 || refIndex >= len(d.Plan) {
+		return fmt.Errorf("ref index %d out of range (%d items)", refIndex, len(d.Plan))
+	}
+	srcStart, srcEnd := subtreeSpan(d.Plan, srcIndex)
+	if refIndex == srcIndex || (refIndex >= srcStart && refIndex < srcEnd) {
+		return nil // no-op: would-be cycle
+	}
+	known, err := s.knownProjectIDs()
+	if err != nil {
+		return err
+	}
+	refItem := d.Plan[refIndex]
+
+	extracted, rest := extractSubtree(d.Plan, srcIndex)
+	for i := range extracted {
+		extracted[i].Depth += refItem.Depth
+	}
+	if refItem.Depth == 0 {
+		clean, _ := splitProjectTag(extracted[0].Text, known)
+		_, refTag := splitProjectTag(refItem.Text, known)
+		if refTag != "" {
+			clean = strings.TrimSpace(clean + " @" + refTag)
+		}
+		extracted[0].Text = clean
+	} else {
+		extracted[0].Text, _ = splitProjectTag(extracted[0].Text, known)
+	}
+
+	// Indices at or after srcEnd shifted left by the removed span's length;
+	// the cycle guard above already rules out refIndex landing inside it. When
+	// src was nested inside ref's own subtree, refIndex itself precedes it and
+	// so is unaffected; recomputing the "below" insertion point via
+	// subtreeSpan on rest (rather than a stored old end) then correctly
+	// reflects ref's shrunk subtree either way (see MakeSubtask for the same
+	// technique).
+	adjustedRef := refIndex
+	if srcStart < refIndex {
+		adjustedRef -= srcEnd - srcStart
+	}
+	insertAt := adjustedRef
+	if below {
+		_, insertAt = subtreeSpan(rest, adjustedRef)
+	}
+	d.Plan = slices.Insert(rest, insertAt, extracted...)
+	return s.SaveDaily(d)
+}
+
 // MoveTaskToProject re-homes date's plan item at index (and its subtree) to
 // the top level, tagging it to projectID (empty projectID clears the tag,
 // leaving the task Unfiled), and moves the block to the end of the plan.
