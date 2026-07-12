@@ -161,6 +161,35 @@ func TestStore_EveningUnknownTextIgnored(t *testing.T) {
 	assert.Equal(t, StateDone, d.Plan[0].State)
 }
 
+func TestStore_EditTaskTextPreservesTagAndDepth(t *testing.T) {
+	t.Parallel()
+	s, day, projA, _ := seedParentChildDay(t) // Alpha @projA (depth 0) -> Beta (depth 1)
+
+	require.NoError(t, s.EditTaskText(day, 0, "  Alpha renamed  "))
+	plan := planOf(t, s, day)
+	assert.Equal(t, "Alpha renamed @"+projA, plan[0].Text, "tagged top-level edit keeps its @project tag")
+	assert.Equal(t, 0, plan[0].Depth)
+
+	require.NoError(t, s.EditTaskText(day, 1, "Beta renamed"))
+	plan = planOf(t, s, day)
+	assert.Equal(t, "Beta renamed", plan[1].Text, "a subtask carries no tag to preserve")
+	assert.Equal(t, 1, plan[1].Depth, "depth is untouched by the edit")
+}
+
+func TestStore_EditTaskTextBlankIsNoOp(t *testing.T) {
+	t.Parallel()
+	s, day, projA, _ := seedParentChildDay(t)
+	require.NoError(t, s.EditTaskText(day, 0, "   "))
+	plan := planOf(t, s, day)
+	assert.Equal(t, "Alpha @"+projA, plan[0].Text, "a blank newText leaves the item unchanged")
+}
+
+func TestStore_EditTaskTextOutOfRange(t *testing.T) {
+	t.Parallel()
+	s, day, _, _ := seedParentChildDay(t)
+	require.ErrorContains(t, s.EditTaskText(day, 99, "x"), "out of range")
+}
+
 func TestStore_PostponeAndMoveToBacklog(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)

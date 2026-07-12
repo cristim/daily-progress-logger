@@ -105,6 +105,20 @@ func newMainWindow(app *App) *mainWindow {
 	})
 	w.tree.OnItemExpanded(func(item *qt.QTreeWidgetItem) { w.setExpanded(item, true) })
 	w.tree.OnItemCollapsed(func(item *qt.QTreeWidgetItem) { w.setExpanded(item, false) })
+	// Double-click edits a task's text or renames a project; single clicks on
+	// the row's own widgets (checkbox, buttons) are unaffected since they are
+	// handled by those child widgets directly.
+	w.tree.OnItemDoubleClicked(func(item *qt.QTreeWidgetItem, _ int) {
+		key := keyOf(item)
+		switch {
+		case strings.HasPrefix(key, "t:"):
+			if date, index, ok := decodeTaskKey(key); ok {
+				w.editTask(date, index, item.Data(0, taskTextRole).ToString())
+			}
+		case strings.HasPrefix(key, "p:"):
+			w.renameProject(strings.TrimPrefix(key, "p:"), item.Data(0, taskTextRole).ToString())
+		}
+	})
 	layout.AddWidget(w.tree.QWidget)
 
 	checkIns := qt.NewQHBoxLayout2()

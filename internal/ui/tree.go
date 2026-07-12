@@ -15,9 +15,10 @@ import (
 
 // nodeKeyRole is the item-data role holding each tree node's identity string:
 // "p:<projectID>", "t:<date>:<index>" (index into that day's plan), or "u:"
-// for Unfiled. taskTextRole additionally caches a task node's display text
-// (cosmetic uses only, e.g. a notification message; never used to resolve a
-// store action, which always goes through the index in nodeKeyRole).
+// for Unfiled. taskTextRole additionally caches a task's or project's
+// display text/name (used to seed the double-click edit dialog, and for
+// cosmetic uses like a notification message; never used to resolve a store
+// action, which always goes through the index in nodeKeyRole).
 const (
 	nodeKeyRole  = int(qt.UserRole)
 	taskTextRole = int(qt.UserRole) + 1
@@ -91,6 +92,7 @@ func (w *mainWindow) addProjectNode(p store.TreeProject) {
 	key := "p:" + p.ID
 	item := qt.NewQTreeWidgetItem()
 	item.SetData(0, nodeKeyRole, qt.NewQVariant11(key))
+	item.SetData(0, taskTextRole, qt.NewQVariant11(p.Name))
 	w.tree.AddTopLevelItem(item)
 	w.tree.SetItemWidget(item, 0, w.projectRow(p))
 	for _, task := range p.Tasks {
@@ -375,6 +377,18 @@ func (w *mainWindow) addProjectTask(projectID string) {
 func (w *mainWindow) addSubtask(date time.Time, index int) {
 	if name, ok := w.promptText("New Subtask", "Subtask:", ""); ok {
 		if err := w.app.store.AddSubtask(date, index, name); err != nil {
+			w.app.reportError(err)
+		}
+		w.scheduleRefresh()
+	}
+}
+
+// editTask prompts to replace the plan item at index on date's text (keeping
+// its project tag and depth via EditTaskText), shared by double-click and the
+// row's context-menu "Edit…" action.
+func (w *mainWindow) editTask(date time.Time, index int, currentText string) {
+	if name, ok := w.promptText("Edit Task", "Task:", currentText); ok {
+		if err := w.app.store.EditTaskText(date, index, name); err != nil {
 			w.app.reportError(err)
 		}
 		w.scheduleRefresh()

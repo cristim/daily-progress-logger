@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -455,6 +456,34 @@ func (s *Store) SetPlanItemState(date time.Time, index int, state ItemState) err
 	}
 	backlog.removeNextWeek(d.Plan[index].Text)
 	return s.SaveBacklog(backlog)
+}
+
+// EditTaskText replaces date's plan item at index with newText (trimmed),
+// re-appending its existing @project tag (if any) so an edit never silently
+// drops the task from its project; Depth and State are left untouched. A
+// blank newText is a no-op (no error, plan unchanged).
+func (s *Store) EditTaskText(date time.Time, index int, newText string) error {
+	newText = strings.TrimSpace(newText)
+	if newText == "" {
+		return nil
+	}
+	d, err := s.loadOrNewDaily(date)
+	if err != nil {
+		return err
+	}
+	if index < 0 || index >= len(d.Plan) {
+		return fmt.Errorf("plan item index %d out of range (%d items)", index, len(d.Plan))
+	}
+	known, err := s.knownProjectIDs()
+	if err != nil {
+		return err
+	}
+	_, tag := splitProjectTag(d.Plan[index].Text, known)
+	if tag != "" {
+		newText = strings.TrimSpace(newText + " @" + tag)
+	}
+	d.Plan[index].Text = newText
+	return s.SaveDaily(d)
 }
 
 // PostponePlanItem marks a plan item postponed and queues it in the backlog
