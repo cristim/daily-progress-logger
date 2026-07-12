@@ -176,12 +176,13 @@ func (w *mainWindow) recycleRow(task store.TreeTask) *qt.QWidget {
 	return row
 }
 
-// projectRow builds a project's row: its name (bold, struck through when
-// done), plus Add-task / Rename / Close actions. Renaming is also reachable
-// via double-click (see mainwindow.go's OnItemDoubleClicked) and the row's
-// right-click context menu.
+// projectRow builds a project's row: a hover drag grip, its name (bold,
+// struck through when done), plus Add-task / Rename / Close actions.
+// Renaming is also reachable via double-click (see mainwindow.go's
+// OnItemDoubleClicked) and the row's right-click context menu.
 func (w *mainWindow) projectRow(p store.TreeProject) *qt.QWidget {
 	row, layout := newRowWidget()
+	layout.AddWidget(w.dragGrip(row))
 	layout.AddWidget2(nodeLabel(p.Name, p.Done, true).QWidget, 1)
 	layout.AddWidget(w.textButton("+ Task", "Add a task to this project (today's plan)", func() { w.addProjectTask(p.ID) }))
 	layout.AddWidget(w.textButton("Rename", "Rename this project", func() { w.renameProject(p.ID, p.Name) }))
@@ -189,15 +190,16 @@ func (w *mainWindow) projectRow(p store.TreeProject) *qt.QWidget {
 	return row
 }
 
-// taskRow builds a task's row: a Done checkbox and the task's text
-// (stretched). The checkbox is interactive for a leaf task (toggling sets its
-// own state) but disabled for a task with children, whose Done is rolled up
-// from them and so is not directly togglable. Every other action (edit, add
-// subtask, postpone, move to backlog, delete) lives in the row's right-click
-// context menu (see showTaskContextMenu) and, for the selected row, the app's
-// keyboard shortcuts (see shortcuts.go).
+// taskRow builds a task's row: a hover drag grip, a Done checkbox, and the
+// task's text (stretched). The checkbox is interactive for a leaf task
+// (toggling sets its own state) but disabled for a task with children, whose
+// Done is rolled up from them and so is not directly togglable. Every other
+// action (edit, add subtask, postpone, move to backlog, delete) lives in the
+// row's right-click context menu (see showTaskContextMenu) and, for the
+// selected row, the app's keyboard shortcuts (see shortcuts.go).
 func (w *mainWindow) taskRow(task store.TreeTask) *qt.QWidget {
 	row, layout := newRowWidget()
+	layout.AddWidget(w.dragGrip(row))
 
 	date, index := task.Date, task.Index
 	checkbox := qt.NewQCheckBox2()
@@ -229,6 +231,30 @@ func (w *mainWindow) taskRow(task store.TreeTask) *qt.QWidget {
 	}
 	layout.AddWidget2(label.QWidget, 1)
 	return row
+}
+
+// dragGrip returns a small drag-handle glyph for a row, hidden (transparent)
+// until container (the row's own widget) is hovered, signalling the row is
+// draggable. Its width is fixed so toggling visibility never shifts the
+// row's layout (the label/style is changed, not the widget itself). Dragging
+// still originates from the tree view; the grip is purely a visual
+// affordance and never captures the drag itself.
+func (w *mainWindow) dragGrip(container *qt.QWidget) *qt.QWidget {
+	const hiddenStyle = "color: transparent;"
+	const shownStyle = "color: #999999;"
+	grip := qt.NewQLabel3("⠿")
+	grip.SetFixedWidth(14)
+	grip.SetAlignment(qt.AlignCenter)
+	grip.SetStyleSheet(hiddenStyle)
+	container.OnEnterEvent(func(super func(event *qt.QEnterEvent), event *qt.QEnterEvent) {
+		grip.SetStyleSheet(shownStyle)
+		super(event)
+	})
+	container.OnLeaveEvent(func(super func(event *qt.QEvent), event *qt.QEvent) {
+		grip.SetStyleSheet(hiddenStyle)
+		super(event)
+	})
+	return grip.QWidget
 }
 
 // newRowWidget makes the container + tight horizontal layout used by every tree
