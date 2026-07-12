@@ -46,43 +46,60 @@ var weekdayNames = map[string]time.Weekday{
 	"sat": time.Saturday, "saturday": time.Saturday,
 }
 
-// Parse extracts a trailing run of recurrence @tokens from text and returns the
-// remaining clean text plus the parsed Recurrence. ok is false when text has no
-// recurrence keyword (it is then a normal task). A missing @HH:MM defaults to
-// defHour:defMinute; a weekly with no weekday defaults to Monday; a monthly with
-// no day defaults to the 1st.
+// Parse extracts recurrence @tokens from the trailing run of @tokens in text
+// and returns the remaining clean text plus the parsed Recurrence. ok is
+// false when text has no recurrence keyword (it is then a normal task). A
+// missing @HH:MM defaults to defHour:defMinute; a weekly with no weekday
+// defaults to Monday; a monthly with no day defaults to the 1st.
 //
 // isID (may be nil) reports whether a token body is a known ID (e.g. a
-// project); such a token stops the trailing scan instead of being consumed as
-// a day/weekday, so an ID slug shaped like a recurrence token (a bare "15", or
-// "mon") stays in the clean text rather than being mistaken for a month-day /
-// weekday.
+// project). Scanning the trailing @tokens from the end, a recurrence token is
+// consumed (removed from clean) and scanning continues; a token isID
+// recognizes is kept in place (not removed) and scanning continues past it,
+// so a project tag interleaved with recurrence tags in either order is
+// recognized without being mistaken for a day/weekday (a bare "15", or
+// "mon"); the first @token that is neither, or a non-@ word, stops the scan
+// and everything from there leftward (plus any earlier kept ID tokens) stays
+// in clean.
 func Parse(text string, defHour, defMinute int, isID func(string) bool) (clean string, rec Recurrence, ok bool) {
 	fields := strings.Fields(text)
 	rec = Recurrence{Hour: defHour, Minute: defMinute, Weekday: time.Monday, MonthDay: 1}
 	hasKind := false
+	remove := make([]bool, len(fields))
 
-	end := len(fields)
-	for end > 0 {
-		tok := fields[end-1]
-		if !strings.HasPrefix(tok, "@") || !consume(strings.ToLower(tok[1:]), &rec, &hasKind, isID) {
+	i := len(fields) - 1
+	for i >= 0 {
+		tok := fields[i]
+		if !strings.HasPrefix(tok, "@") {
 			break
 		}
-		end--
+		body := strings.ToLower(tok[1:])
+		if isID != nil && isID(body) {
+			i-- // kept in clean; keep scanning past it
+			continue
+		}
+		if !consume(body, &rec, &hasKind) {
+			break
+		}
+		remove[i] = true
+		i--
 	}
 	if !hasKind {
 		return text, Recurrence{}, false
 	}
-	return strings.Join(fields[:end], " "), rec, true
+	kept := make([]string, 0, len(fields))
+	for idx, f := range fields {
+		if !remove[idx] {
+			kept = append(kept, f)
+		}
+	}
+	return strings.Join(kept, " "), rec, true
 }
 
-// consume applies one @token body to rec, returning false when it is not a
-// recognized recurrence token (which stops the trailing scan). A body that
-// isID recognizes is never consumed, so ID tags survive the scan.
-func consume(body string, rec *Recurrence, hasKind *bool, isID func(string) bool) bool {
-	if isID != nil && isID(body) {
-		return false
-	}
+// consume applies one @token body (already checked against isID) to rec,
+// returning false when it is not a recognized recurrence token, which stops
+// the trailing scan.
+func consume(body string, rec *Recurrence, hasKind *bool) bool {
 	switch body {
 	case "daily":
 		rec.Kind, *hasKind = Daily, true
@@ -141,6 +158,12 @@ func (r Recurrence) MostRecent(t time.Time) time.Time {
 			return occ
 		}
 	}
+}
+
+// OccursOn reports whether r has an occurrence on t's calendar date,
+// ignoring the time of day.
+func (r Recurrence) OccursOn(t time.Time) bool {
+	return r.matches(t)
 }
 
 // matches reports whether the recurrence has an occurrence on day's date.

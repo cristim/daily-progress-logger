@@ -285,9 +285,15 @@ func (w *mainWindow) addItem() {
 	if text == "" {
 		return
 	}
-	// Detection only needs the recurrence keyword; AddRecurring resolves
-	// project tags with the real known-ID predicate.
-	if _, _, ok := recur.Parse(text, w.app.morning.Hour, w.app.morning.Minute, nil); ok {
+	// Detection needs the real known-project predicate too: a project tag can
+	// appear anywhere in the trailing @-token run (e.g. "@payments @daily" or
+	// "@daily @payments"), and without isID a trailing project tag stops the
+	// scan before it reaches the recurrence keyword.
+	var isID func(string) bool
+	if known, err := w.app.store.KnownProjectIDs(); err == nil {
+		isID = func(id string) bool { return known[id] }
+	}
+	if _, _, ok := recur.Parse(text, w.app.morning.Hour, w.app.morning.Minute, isID); ok {
 		if err := w.app.store.AddRecurring(text); err != nil {
 			w.app.reportError(err)
 			return

@@ -77,6 +77,38 @@ func TestParseIDTagNotConsumed(t *testing.T) {
 	assert.Equal(t, Daily, rec.Kind)
 }
 
+func TestParseIDTagOrderIndependent(t *testing.T) {
+	t.Parallel()
+	// A project/ID tag interleaved with recurrence tags in either order is
+	// recognized: recurrence keywords are consumed regardless of position
+	// within the trailing @-token run, and the ID tag is kept in place.
+	isID := func(s string) bool { return s == "cudly" }
+
+	clean, rec, ok := Parse("Review 10 PRs @daily @cudly", 9, 0, isID)
+	assert.True(t, ok)
+	assert.Equal(t, "Review 10 PRs @cudly", clean)
+	assert.Equal(t, Daily, rec.Kind)
+
+	clean, rec, ok = Parse("Review 10 PRs @cudly @daily", 9, 0, isID)
+	assert.True(t, ok)
+	assert.Equal(t, "Review 10 PRs @cudly", clean)
+	assert.Equal(t, Daily, rec.Kind)
+
+	isPayments := func(s string) bool { return s == "payments" }
+
+	clean, rec, ok = Parse("Standup @weekly @mon @payments", 9, 0, isPayments)
+	assert.True(t, ok)
+	assert.Equal(t, "Standup @payments", clean)
+	assert.Equal(t, Weekly, rec.Kind)
+	assert.Equal(t, time.Monday, rec.Weekday)
+
+	clean, rec, ok = Parse("Standup @payments @weekly @mon", 9, 0, isPayments)
+	assert.True(t, ok)
+	assert.Equal(t, "Standup @payments", clean)
+	assert.Equal(t, Weekly, rec.Kind)
+	assert.Equal(t, time.Monday, rec.Weekday)
+}
+
 func TestDailyOccurrences(t *testing.T) {
 	t.Parallel()
 	r := Recurrence{Kind: Daily, Hour: 9}
