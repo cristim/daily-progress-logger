@@ -166,18 +166,21 @@ func (w *mainWindow) recycleRow(task store.TreeTask) *qt.QWidget {
 	layout.AddWidget(dateLabel.QWidget)
 
 	date, text := task.Date, task.Text
-	layout.AddWidget(w.textButton("Restore", "Restore to its day", func() {
+	restore := w.textButton("Restore", "Restore to its day", func() {
 		if err := w.app.store.RestoreTask(date, text); err != nil {
 			w.app.reportError(err)
 		}
 		w.scheduleRefresh()
-	}))
-	layout.AddWidget(w.textButton("Delete", "Delete permanently", func() {
+	})
+	del := w.textButton("Delete", "Delete permanently", func() {
 		if err := w.app.store.PurgeRecycled(date, text); err != nil {
 			w.app.reportError(err)
 		}
 		w.scheduleRefresh()
-	}))
+	})
+	layout.AddWidget(restore)
+	layout.AddWidget(del)
+	w.hoverReveal(row, restore, del)
 	return row
 }
 
@@ -187,11 +190,14 @@ func (w *mainWindow) recycleRow(task store.TreeTask) *qt.QWidget {
 // OnItemDoubleClicked) and the row's right-click context menu.
 func (w *mainWindow) projectRow(p store.TreeProject) *qt.QWidget {
 	row, layout := newRowWidget()
-	layout.AddWidget(w.dragGrip(row))
 	layout.AddWidget2(nodeLabel(p.Name, p.Done, true).QWidget, 1)
-	layout.AddWidget(w.textButton("+ Task", "Add a task to this project (today's plan)", func() { w.addProjectTask(p.ID) }))
-	layout.AddWidget(w.textButton("Rename", "Rename this project", func() { w.renameProject(p.ID, p.Name) }))
-	layout.AddWidget(w.textButton("Close", "Close (archive) this project", func() { w.closeProject(p.ID) }))
+	addTask := w.textButton("+ Task", "Add a task to this project (today's plan)", func() { w.addProjectTask(p.ID) })
+	rename := w.textButton("Rename", "Rename this project", func() { w.renameProject(p.ID, p.Name) })
+	closeBtn := w.textButton("Close", "Close (archive) this project", func() { w.closeProject(p.ID) })
+	layout.AddWidget(addTask)
+	layout.AddWidget(rename)
+	layout.AddWidget(closeBtn)
+	w.hoverReveal(row, addTask, rename, closeBtn)
 	return row
 }
 
@@ -204,9 +210,10 @@ func (w *mainWindow) projectRow(p store.TreeProject) *qt.QWidget {
 // selected row, the app's keyboard shortcuts (see shortcuts.go).
 func (w *mainWindow) taskRow(task store.TreeTask) *qt.QWidget {
 	row, layout := newRowWidget()
-	layout.AddWidget(w.dragGrip(row))
+	gripCellW, grip := gripCell()
+	layout.AddWidget(gripCellW)
 
-	date, index := task.Date, task.Index
+	date, index, text := task.Date, task.Index, task.Text
 	checkbox := qt.NewQCheckBox2()
 	checkbox.SetToolTip("Done")
 	// Block signals while setting the initial state so it does not re-enter
@@ -235,31 +242,80 @@ func (w *mainWindow) taskRow(task store.TreeTask) *qt.QWidget {
 		label.SetToolTip(task.Text)
 	}
 	layout.AddWidget2(label.QWidget, 1)
+
+	// Hover-revealed per-row actions (also in the right-click menu / shortcuts).
+	sub := w.textButton("+ Sub", "Add a subtask", func() { w.addSubtask(date, index) })
+	nextDay := w.taskActionButton(postponeIcon(), "Postpone to the next day",
+		date, index, w.app.store.PostponeToNextDay)
+	nextWeek := w.taskActionButton(standardIcon(qt.QStyle__SP_ArrowUp), "Postpone to next week",
+		date, index, w.app.store.PostponePlanItem)
+	backlog := w.taskActionButton(backlogIcon(), "Move to the cross-week backlog",
+		date, index, func(d time.Time, idx int) error {
+			if err := w.app.store.MoveToBacklog(d, idx); err != nil {
+				return err
+			}
+			w.app.notifyBacklogMove(text)
+			return nil
+		})
+	del := w.taskActionButton(standardIcon(qt.QStyle__SP_TrashIcon), "Delete (moves to the recycle bin)",
+		date, index, w.app.store.DeleteTask)
+	for _, b := range []*qt.QWidget{sub, nextDay, nextWeek, backlog, del} {
+		layout.AddWidget(b)
+	}
+	w.hoverReveal(row, grip, sub, nextDay, nextWeek, backlog, del)
 	return row
 }
 
-// dragGrip returns a small drag-handle glyph for a row, hidden (transparent)
-// until container (the row's own widget) is hovered, signalling the row is
-// draggable. Its width is fixed so toggling visibility never shifts the
-// row's layout (the label/style is changed, not the widget itself). Dragging
-// still originates from the tree view; the grip is purely a visual
-// affordance and never captures the drag itself.
-func (w *mainWindow) dragGrip(container *qt.QWidget) *qt.QWidget {
-	const hiddenStyle = "color: transparent;"
-	const shownStyle = "color: #999999;"
-	grip := qt.NewQLabel3("⠿")
-	grip.SetFixedWidth(14)
-	grip.SetAlignment(qt.AlignCenter)
-	grip.SetStyleSheet(hiddenStyle)
+// gripCell returns a fixed-width cell holding the drag-handle glyph, plus the
+// glyph widget itself (which the caller adds to the row's hover-revealed set).
+// The cell reserves the glyph's width so toggling the glyph's visibility never
+// shifts the rest of the row. Dragging still originates from the tree view; the
+// grip is purely a visual affordance and never captures the drag itself.
+func gripCell() (cell, glyph *qt.QWidget) {
+	c := qt.NewQWidget2()
+	c.SetFixedWidth(16)
+	l := qt.NewQHBoxLayout(c)
+	l.SetContentsMargins(0, 0, 0, 0)
+	g := qt.NewQLabel3("⠿")
+	g.SetAlignment(qt.AlignCenter)
+	g.SetStyleSheet("color: #999999;")
+	g.SetToolTip("Drag to move")
+	l.AddWidget(g.QWidget)
+	return c, g.QWidget
+}
+
+// hoverReveal hides the given widgets and shows them only while container is
+// hovered, so a resting row stays uncluttered and its actions (drag grip,
+// per-row buttons) appear on mouse-over.
+func (w *mainWindow) hoverReveal(container *qt.QWidget, widgets ...*qt.QWidget) {
+	setVisible := func(v bool) {
+		for _, wd := range widgets {
+			wd.SetVisible(v)
+		}
+	}
+	setVisible(false)
 	container.OnEnterEvent(func(super func(event *qt.QEnterEvent), event *qt.QEnterEvent) {
-		grip.SetStyleSheet(shownStyle)
+		setVisible(true)
 		super(event)
 	})
 	container.OnLeaveEvent(func(super func(event *qt.QEvent), event *qt.QEvent) {
-		grip.SetStyleSheet(hiddenStyle)
+		setVisible(false)
 		super(event)
 	})
-	return grip.QWidget
+}
+
+// taskActionButton makes a flat icon button that applies action to the plan
+// item at index on date (via runTaskAction), for the hover-revealed row
+// actions.
+func (w *mainWindow) taskActionButton(icon *qt.QIcon, tip string, date time.Time, index int, action taskFunc) *qt.QWidget {
+	btn := qt.NewQToolButton2()
+	btn.SetIcon(icon)
+	btn.SetToolButtonStyle(qt.ToolButtonIconOnly)
+	btn.SetToolTip(tip)
+	btn.SetAccessibleName(tip)
+	btn.SetAutoRaise(true)
+	btn.OnClicked(func() { w.runTaskAction(date, index, action) })
+	return btn.QWidget
 }
 
 // newRowWidget makes the container + tight horizontal layout used by every tree
