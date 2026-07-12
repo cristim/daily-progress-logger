@@ -160,10 +160,21 @@ func (w *mainWindow) recycleRow(task store.TreeTask) *qt.QWidget {
 	}
 	layout.AddWidget2(label.QWidget, 1)
 
+	// Hover-revealed metadata (project it came from, original day) and actions.
+	hover := make([]*qt.QWidget, 0, 4)
+	if task.Project != "" {
+		projLabel := qt.NewQLabel3(fmt.Sprintf(`<span style="color:#888888">%s</span>`,
+			html.EscapeString(task.Project)))
+		projLabel.SetTextFormat(qt.RichText)
+		layout.AddWidget(projLabel.QWidget)
+		hover = append(hover, projLabel.QWidget)
+	}
+
 	dateLabel := qt.NewQLabel3(fmt.Sprintf(`<span style="color:#888888">%s</span>`,
 		html.EscapeString(task.Date.Format("2 Jan"))))
 	dateLabel.SetTextFormat(qt.RichText)
 	layout.AddWidget(dateLabel.QWidget)
+	hover = append(hover, dateLabel.QWidget)
 
 	date, text := task.Date, task.Text
 	restore := w.textButton("Restore", "Restore to its day", func() {
@@ -180,7 +191,8 @@ func (w *mainWindow) recycleRow(task store.TreeTask) *qt.QWidget {
 	})
 	layout.AddWidget(restore)
 	layout.AddWidget(del)
-	w.hoverReveal(row, restore, del)
+	hover = append(hover, restore, del)
+	w.hoverReveal(row, hover...)
 	return row
 }
 
@@ -245,20 +257,24 @@ func (w *mainWindow) taskRow(task store.TreeTask) *qt.QWidget {
 
 	// Hover-revealed per-row actions (also in the right-click menu / shortcuts).
 	sub := w.textButton("+ Sub", "Add a subtask", func() { w.addSubtask(date, index) })
-	nextDay := w.taskActionButton(postponeIcon(), "Postpone to the next day",
-		date, index, w.app.store.PostponeToNextDay)
-	nextWeek := w.taskActionButton(standardIcon(qt.QStyle__SP_ArrowUp), "Postpone to next week",
-		date, index, w.app.store.PostponePlanItem)
-	backlog := w.taskActionButton(backlogIcon(), "Move to the cross-week backlog",
-		date, index, func(d time.Time, idx int) error {
+	nextDay := w.textButton("Next day", "Postpone to the next day", func() {
+		w.runTaskAction(date, index, w.app.store.PostponeToNextDay)
+	})
+	nextWeek := w.textButton("Next week", "Postpone to next week", func() {
+		w.runTaskAction(date, index, w.app.store.PostponePlanItem)
+	})
+	backlog := w.textButton("Backlog", "Move to the cross-week backlog", func() {
+		w.runTaskAction(date, index, func(d time.Time, idx int) error {
 			if err := w.app.store.MoveToBacklog(d, idx); err != nil {
 				return err
 			}
 			w.app.notifyBacklogMove(text)
 			return nil
 		})
-	del := w.taskActionButton(standardIcon(qt.QStyle__SP_TrashIcon), "Delete (moves to the recycle bin)",
-		date, index, w.app.store.DeleteTask)
+	})
+	del := w.textButton("Delete", "Delete (moves to the recycle bin)", func() {
+		w.runTaskAction(date, index, w.app.store.DeleteTask)
+	})
 	for _, b := range []*qt.QWidget{sub, nextDay, nextWeek, backlog, del} {
 		layout.AddWidget(b)
 	}
@@ -302,20 +318,6 @@ func (w *mainWindow) hoverReveal(container *qt.QWidget, widgets ...*qt.QWidget) 
 		setVisible(false)
 		super(event)
 	})
-}
-
-// taskActionButton makes a flat icon button that applies action to the plan
-// item at index on date (via runTaskAction), for the hover-revealed row
-// actions.
-func (w *mainWindow) taskActionButton(icon *qt.QIcon, tip string, date time.Time, index int, action taskFunc) *qt.QWidget {
-	btn := qt.NewQToolButton2()
-	btn.SetIcon(icon)
-	btn.SetToolButtonStyle(qt.ToolButtonIconOnly)
-	btn.SetToolTip(tip)
-	btn.SetAccessibleName(tip)
-	btn.SetAutoRaise(true)
-	btn.OnClicked(func() { w.runTaskAction(date, index, action) })
-	return btn.QWidget
 }
 
 // newRowWidget makes the container + tight horizontal layout used by every tree

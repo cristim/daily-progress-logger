@@ -21,6 +21,7 @@ type TreeTask struct {
 	State    ItemState
 	Date     time.Time
 	Done     bool
+	Project  string // project display name; set for recycle-bin entries
 	Children []TreeTask
 }
 
@@ -63,7 +64,7 @@ func (s *Store) BuildProjectTree(date time.Time) (*ProjectTree, error) {
 	if err != nil {
 		return nil, err
 	}
-	recycled, err := s.recycledTasks(known)
+	recycled, err := s.recycledTasks(known, projectNames(projects))
 	if err != nil {
 		return nil, err
 	}
@@ -247,16 +248,35 @@ func (s *Store) dayTasks(date time.Time, known map[string]bool) (byProject map[s
 
 // recycledTasks maps every recycle-bin entry to a TreeTask (project tag
 // stripped for display, original day and state kept).
-func (s *Store) recycledTasks(known map[string]bool) ([]TreeTask, error) {
+func (s *Store) recycledTasks(known map[string]bool, names map[string]string) ([]TreeTask, error) {
 	bin, err := s.LoadRecycleBin()
 	if err != nil {
 		return nil, err
 	}
 	out := make([]TreeTask, 0, len(bin))
 	for _, e := range bin {
-		out = append(out, TreeTask{Text: itemDisplayText(e.Item, known), State: e.Item.State, Date: e.Date})
+		var project string
+		if e.Item.Depth == 0 {
+			if _, pid := splitProjectTag(e.Item.Text, known); pid != "" {
+				project = names[pid]
+			}
+		}
+		out = append(out, TreeTask{
+			Text: itemDisplayText(e.Item, known), State: e.Item.State, Date: e.Date, Project: project,
+		})
 	}
 	return out, nil
+}
+
+// projectNames maps each project ID to its display name.
+func projectNames(projects []Project) map[string]string {
+	m := make(map[string]string, len(projects))
+	for _, p := range projects {
+		if p.ID != "" {
+			m[p.ID] = p.Name
+		}
+	}
+	return m
 }
 
 // taskKey identifies a logical task by effective project and normalized
