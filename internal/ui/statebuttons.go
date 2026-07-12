@@ -133,11 +133,6 @@ func backlogIcon() *qt.QIcon {
 	return qt.NewQIcon2(pixmap)
 }
 
-// onChanged registers a handler invoked when the user picks a state.
-func (s *stateSelector) onChanged(handler func(store.ItemState)) {
-	s.group.OnIdClicked(func(id int) { handler(store.ItemState(id)) })
-}
-
 // standardIcon fetches one of the platform style's built-in icons.
 func standardIcon(pixmap qt.QStyle__StandardPixmap) *qt.QIcon {
 	return qt.QApplication_Style().StandardIcon(pixmap, nil, nil)

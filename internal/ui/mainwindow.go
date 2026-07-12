@@ -105,6 +105,11 @@ func newMainWindow(app *App) *mainWindow {
 	})
 	w.tree.OnItemExpanded(func(item *qt.QTreeWidgetItem) { w.setExpanded(item, true) })
 	w.tree.OnItemCollapsed(func(item *qt.QTreeWidgetItem) { w.setExpanded(item, false) })
+	// Right-click opens a context menu holding the task/project row actions
+	// that no longer have their own row button (see tree.go's
+	// showContextMenu).
+	w.tree.SetContextMenuPolicy(qt.CustomContextMenu)
+	w.tree.OnCustomContextMenuRequested(func(pos *qt.QPoint) { w.showContextMenu(pos) })
 	// Double-click edits a task's text or renames a project; single clicks on
 	// the row's own widgets (checkbox, buttons) are unaffected since they are
 	// handled by those child widgets directly.

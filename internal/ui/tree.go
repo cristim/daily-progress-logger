@@ -16,9 +16,10 @@ import (
 // nodeKeyRole is the item-data role holding each tree node's identity string:
 // "p:<projectID>", "t:<date>:<index>" (index into that day's plan), or "u:"
 // for Unfiled. taskTextRole additionally caches a task's or project's
-// display text/name (used to seed the double-click edit dialog, and for
-// cosmetic uses like a notification message; never used to resolve a store
-// action, which always goes through the index in nodeKeyRole).
+// display text/name (used to seed the double-click and context-menu edit
+// dialogs, and for cosmetic uses like a notification message; never used to
+// resolve a store action, which always goes through the index in
+// nodeKeyRole).
 const (
 	nodeKeyRole  = int(qt.UserRole)
 	taskTextRole = int(qt.UserRole) + 1
@@ -175,8 +176,10 @@ func (w *mainWindow) recycleRow(task store.TreeTask) *qt.QWidget {
 	return row
 }
 
-// projectRow builds a project's row: its name (bold, struck through when done)
-// plus Add-task / Rename / Close actions.
+// projectRow builds a project's row: its name (bold, struck through when
+// done), plus Add-task / Rename / Close actions. Renaming is also reachable
+// via double-click (see mainwindow.go's OnItemDoubleClicked) and the row's
+// right-click context menu.
 func (w *mainWindow) projectRow(p store.TreeProject) *qt.QWidget {
 	row, layout := newRowWidget()
 	layout.AddWidget2(nodeLabel(p.Name, p.Done, true).QWidget, 1)
@@ -186,11 +189,38 @@ func (w *mainWindow) projectRow(p store.TreeProject) *qt.QWidget {
 	return row
 }
 
-// taskRow builds a task's row: its text plus the Done/Not-done selector, the
-// next-day / next-week / backlog defer buttons (all acting on the task's own
-// day), a "+ Sub" button to add a nested subtask, and Delete.
+// taskRow builds a task's row: a Done checkbox and the task's text
+// (stretched). The checkbox is interactive for a leaf task (toggling sets its
+// own state) but disabled for a task with children, whose Done is rolled up
+// from them and so is not directly togglable. Every other action (edit, add
+// subtask, postpone, move to backlog, delete) lives in the row's right-click
+// context menu (see showTaskContextMenu) and, for the selected row, the app's
+// keyboard shortcuts (see shortcuts.go).
 func (w *mainWindow) taskRow(task store.TreeTask) *qt.QWidget {
 	row, layout := newRowWidget()
+
+	date, index := task.Date, task.Index
+	checkbox := qt.NewQCheckBox2()
+	checkbox.SetToolTip("Done")
+	// Block signals while setting the initial state so it does not re-enter
+	// SetPlanItemState during construction.
+	checkbox.BlockSignals(true)
+	checkbox.SetChecked(task.Done)
+	checkbox.BlockSignals(false)
+	if len(task.Children) > 0 {
+		checkbox.SetEnabled(false) // rolled-up from children; not directly togglable
+	} else {
+		checkbox.OnToggled(func(checked bool) {
+			state := store.StateTodo
+			if checked {
+				state = store.StateDone
+			}
+			w.runTaskAction(date, index, func(d time.Time, idx int) error {
+				return w.app.store.SetPlanItemState(d, idx, state)
+			})
+		})
+	}
+	layout.AddWidget(checkbox.QWidget)
 
 	display, truncated := elideText(task.Text, 100)
 	label := taskLabel(display, task.State, task.Done)
@@ -198,30 +228,6 @@ func (w *mainWindow) taskRow(task store.TreeTask) *qt.QWidget {
 		label.SetToolTip(task.Text)
 	}
 	layout.AddWidget2(label.QWidget, 1)
-
-	date, index := task.Date, task.Index
-	selector := newStateSelector(task.State)
-	selector.onChanged(func(state store.ItemState) {
-		w.runTaskAction(date, index, func(d time.Time, idx int) error {
-			return w.app.store.SetPlanItemState(d, idx, state)
-		})
-	})
-	layout.AddWidget(selector.widget)
-	layout.AddWidget(w.taskActionButton(postponeIcon(), "Postpone to the next day", date, index,
-		w.app.store.PostponeToNextDay))
-	layout.AddWidget(w.taskActionButton(standardIcon(qt.QStyle__SP_ArrowUp), "Postpone to next week", date, index,
-		w.app.store.PostponePlanItem))
-	layout.AddWidget(w.taskActionButton(backlogIcon(), "Move to the cross-week backlog", date, index,
-		func(d time.Time, idx int) error {
-			if err := w.app.store.MoveToBacklog(d, idx); err != nil {
-				return err
-			}
-			w.app.notifyBacklogMove(task.Text)
-			return nil
-		}))
-	layout.AddWidget(w.textButton("+ Sub", "Add a subtask", func() { w.addSubtask(date, index) }))
-	layout.AddWidget(w.taskActionButton(standardIcon(qt.QStyle__SP_TrashIcon),
-		"Delete (moves to the recycle bin)", date, index, w.app.store.DeleteTask))
 	return row
 }
 
@@ -273,19 +279,6 @@ func (w *mainWindow) textButton(text, tip string, handler func()) *qt.QWidget {
 	btn.SetToolTip(tip)
 	btn.SetAutoRaise(true)
 	btn.OnClicked(handler)
-	return btn.QWidget
-}
-
-// taskActionButton makes an icon button that applies action to the plan item
-// at index on date.
-func (w *mainWindow) taskActionButton(icon *qt.QIcon, tip string, date time.Time, index int, action taskFunc) *qt.QWidget {
-	btn := qt.NewQToolButton2()
-	btn.SetIcon(icon)
-	btn.SetToolButtonStyle(qt.ToolButtonIconOnly)
-	btn.SetToolTip(tip)
-	btn.SetAccessibleName(tip)
-	btn.SetAutoRaise(true)
-	btn.OnClicked(func() { w.runTaskAction(date, index, action) })
 	return btn.QWidget
 }
 
@@ -409,6 +402,68 @@ func (w *mainWindow) closeProject(id string) {
 		w.app.reportError(err)
 	}
 	w.scheduleRefresh()
+}
+
+// --- context menu ---
+
+// showContextMenu resolves the row under pos (a task or a project; any other
+// row, including the section headers, gets no menu) and shows its actions.
+// Wired from the tree's OnCustomContextMenuRequested in mainwindow.go.
+func (w *mainWindow) showContextMenu(pos *qt.QPoint) {
+	item := w.tree.ItemAt(pos)
+	key := keyOf(item)
+	global := w.tree.Viewport().MapToGlobalWithQPoint(pos)
+	switch {
+	case strings.HasPrefix(key, "t:"):
+		w.showTaskContextMenu(item, key, global)
+	case strings.HasPrefix(key, "p:"):
+		w.showProjectContextMenu(item, strings.TrimPrefix(key, "p:"), global)
+	}
+}
+
+// showTaskContextMenu builds the right-click menu for a task row, holding
+// every action the simplified row no longer shows as its own button. The
+// task's (date, index) and cached display text are resolved fresh from key
+// and item at click time.
+func (w *mainWindow) showTaskContextMenu(item *qt.QTreeWidgetItem, key string, global *qt.QPoint) {
+	date, index, ok := decodeTaskKey(key)
+	if !ok {
+		return
+	}
+	text := item.Data(0, taskTextRole).ToString()
+
+	menu := qt.NewQMenu2()
+	addMenuAction(menu, "Edit…", func() { w.editTask(date, index, text) })
+	addMenuAction(menu, "Add subtask…", func() { w.addSubtask(date, index) })
+	addMenuAction(menu, "Postpone to next day", func() {
+		w.runTaskAction(date, index, w.app.store.PostponeToNextDay)
+	})
+	addMenuAction(menu, "Postpone to next week", func() {
+		w.runTaskAction(date, index, w.app.store.PostponePlanItem)
+	})
+	addMenuAction(menu, "Move to backlog", func() {
+		w.runTaskAction(date, index, func(d time.Time, idx int) error {
+			if err := w.app.store.MoveToBacklog(d, idx); err != nil {
+				return err
+			}
+			w.app.notifyBacklogMove(text)
+			return nil
+		})
+	})
+	menu.AddSeparator()
+	addMenuAction(menu, "Delete", func() { w.runTaskAction(date, index, w.app.store.DeleteTask) })
+	menu.ExecWithPos(global)
+}
+
+// showProjectContextMenu mirrors the project row's own + Task / Rename /
+// Close buttons, for parity with the task row's right-click menu.
+func (w *mainWindow) showProjectContextMenu(item *qt.QTreeWidgetItem, id string, global *qt.QPoint) {
+	name := item.Data(0, taskTextRole).ToString()
+	menu := qt.NewQMenu2()
+	addMenuAction(menu, "+ Task", func() { w.addProjectTask(id) })
+	addMenuAction(menu, "Rename…", func() { w.renameProject(id, name) })
+	addMenuAction(menu, "Close", func() { w.closeProject(id) })
+	menu.ExecWithPos(global)
 }
 
 // --- drag & drop ---
