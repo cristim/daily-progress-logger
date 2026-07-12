@@ -31,6 +31,11 @@ type taskFunc func(date time.Time, idx int) error
 // buildTree rebuilds the whole tree from the aggregated model, preserving each
 // node's expand state (nodes not seen before default to expanded).
 func (w *mainWindow) buildTree(model *store.ProjectTree) {
+	// Clear drops every row widget, including any currently tracked as the
+	// drop-highlighted row; forget it now rather than risk restoring a
+	// stylesheet on (or otherwise touching) a widget Qt already destroyed.
+	w.dropHighlightRow = nil
+	w.dropHighlightStyle = ""
 	w.tree.Clear()
 	for _, p := range model.Projects {
 		w.addProjectNode(p)
@@ -499,17 +504,25 @@ func (w *mainWindow) showProjectContextMenu(item *qt.QTreeWidgetItem, id string,
 // level and (re)tagged. We rebuild the tree ourselves and never call the base
 // handler, so Qt does not also move the items.
 func (w *mainWindow) onDrop(event *qt.QDropEvent) {
-	// The custom per-row widgets make the drop event's own position unreliable
-	// (it arrives in the row widget's local coordinates, so ItemAt always maps
-	// it to the top row). Resolve the target from the real cursor position
-	// mapped into the tree's viewport instead.
 	_ = event
-	global := qt.NewQPointF2(qt.QCursor_Pos())
-	local := w.tree.Viewport().MapFromGlobal(global).ToPoint()
+	local := w.dragPoint()
 	src := w.dragSource()
 	target := w.tree.ItemAt(local)
 	slog.Debug("tree drop", "src", keyOf(src), "x", local.X(), "y", local.Y(), "target", keyOf(target))
 	w.applyDrop(src, target)
+	w.clearDropIndicator()
+}
+
+// dragPoint resolves the current drag/drop cursor position into the tree's
+// viewport. The custom per-row widgets make the event's own position
+// unreliable (it arrives in the row widget's local coordinates, so ItemAt
+// always maps it to the top row), so the real cursor position is mapped from
+// global screen coordinates instead. Shared by onDrop and the drag-move
+// indicator (updateDropIndicator), which resolve the same target the same
+// way.
+func (w *mainWindow) dragPoint() *qt.QPoint {
+	global := qt.NewQPointF2(qt.QCursor_Pos())
+	return w.tree.Viewport().MapFromGlobal(global).ToPoint()
 }
 
 // dragSource returns the item being dragged: the current item, or the first
@@ -522,6 +535,111 @@ func (w *mainWindow) dragSource() *qt.QTreeWidgetItem {
 		return sel[0]
 	}
 	return nil
+}
+
+// --- drop indicator ---
+
+// dropZone identifies where within a target row's rect a drag point falls,
+// splitting the row into thirds: the top third means BETWEEN above the
+// target, the bottom third BETWEEN below it, and the middle third ONTO it.
+type dropZone int
+
+const (
+	dropOnto dropZone = iota
+	dropAbove
+	dropBelow
+)
+
+// resolveDropZone maps pt (already in viewport coordinates) to a dropZone
+// against target's row. Shared by the live indicator (updateDropIndicator)
+// and onDrop/applyDrop, so the drop always lands exactly where the indicator
+// showed it would.
+func (w *mainWindow) resolveDropZone(target *qt.QTreeWidgetItem, pt *qt.QPoint) dropZone {
+	rect := w.tree.VisualItemRect(target)
+	third := rect.Height() / 3
+	relY := pt.Y() - rect.Y()
+	switch {
+	case relY < third:
+		return dropAbove
+	case relY >= rect.Height()-third:
+		return dropBelow
+	default:
+		return dropOnto
+	}
+}
+
+// updateDropIndicator recomputes and redraws the live drag indicator for pt
+// (viewport coordinates): no target clears it, otherwise it renders as an
+// onto-highlight or a between-line per resolveDropZone. Called from
+// OnDragMoveEvent in mainwindow.go on every drag-move.
+func (w *mainWindow) updateDropIndicator(pt *qt.QPoint) {
+	target := w.tree.ItemAt(pt)
+	if target == nil {
+		w.clearDropIndicator()
+		return
+	}
+	switch w.resolveDropZone(target, pt) {
+	case dropAbove:
+		w.showBetweenIndicator(target, false)
+	case dropBelow:
+		w.showBetweenIndicator(target, true)
+	case dropOnto:
+		w.showOntoIndicator(target)
+	}
+}
+
+// showOntoIndicator highlights target's row (an accent background) to signal
+// an ONTO drop, hiding any between-line and restoring a previously
+// highlighted row first.
+func (w *mainWindow) showOntoIndicator(target *qt.QTreeWidgetItem) {
+	w.dropLine.Hide()
+	row := w.tree.ItemWidget(target, 0)
+	if row == w.dropHighlightRow {
+		return
+	}
+	w.restoreDropHighlight()
+	if row == nil {
+		return
+	}
+	w.dropHighlightRow = row
+	w.dropHighlightStyle = row.StyleSheet()
+	row.SetStyleSheet("background-color: rgba(61, 126, 255, 60);")
+}
+
+// showBetweenIndicator shows the reusable drop line at the gap above (below
+// == false) or below (below == true) target's row, indented to target's own
+// depth so the user sees the level the drop will land at, restoring any
+// onto-highlighted row first.
+func (w *mainWindow) showBetweenIndicator(target *qt.QTreeWidgetItem, below bool) {
+	w.restoreDropHighlight()
+	rect := w.tree.VisualItemRect(target)
+	y := rect.Y()
+	if below {
+		y = rect.Y() + rect.Height()
+	}
+	viewportWidth := w.tree.Viewport().Width()
+	w.dropLine.SetGeometry(rect.X(), y-1, viewportWidth-rect.X(), 2)
+	w.dropLine.Show()
+	w.dropLine.Raise()
+}
+
+// restoreDropHighlight restores the currently onto-highlighted row (if any)
+// to its stylesheet from before the highlight, then forgets it.
+func (w *mainWindow) restoreDropHighlight() {
+	if w.dropHighlightRow == nil {
+		return
+	}
+	w.dropHighlightRow.SetStyleSheet(w.dropHighlightStyle)
+	w.dropHighlightRow = nil
+	w.dropHighlightStyle = ""
+}
+
+// clearDropIndicator hides the between-line and restores any onto-highlighted
+// row, leaving no visible trace of the indicator. Called on drag-leave and
+// after every drop so the indicator never leaks past the drag's end.
+func (w *mainWindow) clearDropIndicator() {
+	w.dropLine.Hide()
+	w.restoreDropHighlight()
 }
 
 // applyDrop dispatches a task drop: onto another task it nests as a subtask;

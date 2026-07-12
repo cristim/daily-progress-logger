@@ -33,6 +33,16 @@ type mainWindow struct {
 	// expanded remembers each node's expand state by node key across rebuilds;
 	// a key absent from the map defaults to expanded.
 	expanded map[string]bool
+	// dropLine is the single reusable horizontal indicator shown during a drag
+	// to mark a between-siblings drop point; hidden otherwise (see
+	// showBetweenIndicator in tree.go).
+	dropLine *qt.QFrame
+	// dropHighlightRow is the row widget currently highlighted for an
+	// onto-target drop (nil when none), and dropHighlightStyle its stylesheet
+	// before the highlight was applied, so it can be restored when the drag
+	// moves off it or ends (see restoreDropHighlight in tree.go).
+	dropHighlightRow   *qt.QWidget
+	dropHighlightStyle string
 }
 
 func newMainWindow(app *App) *mainWindow {
@@ -93,12 +103,23 @@ func newMainWindow(app *App) *mainWindow {
 	w.tree.SetDragEnabled(true)
 	w.tree.SetAcceptDrops(true)
 	w.tree.SetDragDropMode(qt.QAbstractItemView__DragDrop)
-	w.tree.SetDropIndicatorShown(true)
+	// The built-in drop indicator is unreliable with custom per-row widgets
+	// (same reason ItemAt needs the cursor-mapped workaround in onDrop), so it
+	// is replaced by our own onto-highlight / between-line overlay below.
+	w.tree.SetDropIndicatorShown(false)
+	w.dropLine = qt.NewQFrame(w.tree.Viewport())
+	w.dropLine.SetStyleSheet("background-color: #3d7eff;")
+	w.dropLine.SetFixedHeight(2)
+	w.dropLine.Hide()
 	w.tree.OnDragEnterEvent(func(_ func(event *qt.QDragEnterEvent), event *qt.QDragEnterEvent) {
 		event.AcceptProposedAction()
 	})
 	w.tree.OnDragMoveEvent(func(_ func(event *qt.QDragMoveEvent), event *qt.QDragMoveEvent) {
+		w.updateDropIndicator(w.dragPoint())
 		event.AcceptProposedAction()
+	})
+	w.tree.OnDragLeaveEvent(func(_ func(event *qt.QDragLeaveEvent), _ *qt.QDragLeaveEvent) {
+		w.clearDropIndicator()
 	})
 	w.tree.OnDropEvent(func(_ func(event *qt.QDropEvent), event *qt.QDropEvent) {
 		w.onDrop(event)
