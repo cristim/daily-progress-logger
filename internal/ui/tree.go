@@ -64,18 +64,25 @@ func (w *mainWindow) recurringRow(t store.RecurringTask) *qt.QWidget {
 	}
 	layout.AddWidget2(label.QWidget, 1)
 
+	// Schedule is always visible: identifying metadata, like the recycle date.
 	sched := qt.NewQLabel3(fmt.Sprintf(`<span style="color:#888888">%s</span>`,
 		html.EscapeString(t.Rec.Describe())))
 	sched.SetTextFormat(qt.RichText)
 	layout.AddWidget(sched.QWidget)
 
 	raw := t.Raw
-	layout.AddWidget(w.textButton("Delete", "Delete this recurring task", func() {
+	deleteBtn := w.textButtonTool("Delete", "Delete this recurring task", func() {
 		if err := w.app.store.RemoveRecurring(raw); err != nil {
 			w.app.reportError(err)
 		}
 		w.refresh()
-	}))
+	})
+
+	controls, ctrlLayout := newControlsContainer()
+	ctrlLayout.AddWidget(deleteBtn.QWidget)
+	layout.AddWidget(controls)
+
+	hoverReveal(row, controls, []*qt.QAbstractButton{deleteBtn.QAbstractButton})
 	return row
 }
 
@@ -337,11 +344,6 @@ func (w *mainWindow) textButtonTool(text, tip string, handler func()) *qt.QToolB
 	btn.SetAutoRaise(true)
 	btn.OnClicked(handler)
 	return btn
-}
-
-// textButton makes a flat auto-raised text tool button for a node action.
-func (w *mainWindow) textButton(text, tip string, handler func()) *qt.QWidget {
-	return w.textButtonTool(text, tip, handler).QWidget
 }
 
 // taskActionButtonTool makes an icon button that resolves the task freshly (by
