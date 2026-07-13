@@ -339,7 +339,7 @@ func (a *App) buildEveningDialog(today time.Time, manual bool) (*dialogSpec, err
 		layout.AddWidget(noplan.QWidget)
 	}
 
-	layout.AddWidget(qt.NewQLabel3("Anything else you accomplished?").QWidget)
+	layout.AddWidget(qt.NewQLabel3("Anything else you accomplished? (Items checked above are recorded automatically.)").QWidget)
 	editor := qt.NewQPlainTextEdit2()
 	editor.SetPlaceholderText("One accomplishment per line…")
 	editor.SetFocus()
