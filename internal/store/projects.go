@@ -411,6 +411,20 @@ func (s *Store) AssignTaskStory(date time.Time, index int, storyID string) error
 	return s.retagTask(date, index, allIDs(projects), "@"+storyID)
 }
 
+// AssignTaskProject tags the plan item at index (on date) with projectID,
+// replacing any existing story/project tag. It is the project-level analogue
+// of AssignTaskStory for tasks that belong directly under a project (no story).
+func (s *Store) AssignTaskProject(date time.Time, index int, projectID string) error {
+	projects, err := s.LoadProjects()
+	if err != nil {
+		return err
+	}
+	if findProject(projects, projectID) < 0 {
+		return fmt.Errorf("project %q not found", projectID)
+	}
+	return s.retagTask(date, index, allIDs(projects), "@"+projectID)
+}
+
 // AddTaggedTask appends a new todo to date's plan already tagged with storyID
 // (used when adding a task directly under a story in the tree).
 func (s *Store) AddTaggedTask(date time.Time, text, storyID string) error {
@@ -521,11 +535,13 @@ type TreeStory struct {
 	Tasks []TreeTask
 }
 
-// TreeProject is an open project with its open stories.
+// TreeProject is an open project with its open stories and any project-level
+// tasks (tasks tagged with the project ID directly, with no story under them).
 type TreeProject struct {
 	ID      string
 	Name    string
 	Done    bool
+	Tasks   []TreeTask // tasks tagged with the project ID (no story level)
 	Stories []TreeStory
 }
 
@@ -550,9 +566,11 @@ type taggedTasks struct {
 
 // BuildProjectTree builds the tree for the given day: each open project/story
 // shows that day's tasks (open first, done struck at the bottom), while the
-// derived done state (strikethrough) is global — a story/project is done when it
-// has tasks and none remain open on any day. Untagged tasks of the day collect
-// under Unfiled; closed projects/stories are dropped.
+// derived done state (strikethrough) is global -- a story/project is done when
+// it has tasks and none remain open on any day. Tasks tagged with a project ID
+// (no story) appear directly under the project node. Untagged tasks collect
+// under Unfiled; tasks whose tag belongs to a closed project/story fall back to
+// Unfiled rather than disappearing. Closed projects/stories are dropped.
 func (s *Store) BuildProjectTree(date time.Time) (*ProjectTree, error) {
 	projects, err := s.LoadProjects()
 	if err != nil {
@@ -567,6 +585,40 @@ func (s *Store) BuildProjectTree(date time.Time) (*ProjectTree, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Determine which slugs are rendered in the visible tree (open project or
+	// open story within an open project). Any dayByStory bucket whose slug is
+	// NOT consumed belongs to a closed project/story and falls back to Unfiled.
+	consumed := map[string]bool{}
+	for _, p := range projects {
+		if p.Status == StatusClosed {
+			continue
+		}
+		consumed[p.ID] = true
+		for _, st := range p.Stories {
+			if st.Status != StatusClosed {
+				consumed[st.ID] = true
+			}
+		}
+	}
+	for slug, tasks := range dayByStory {
+		if !consumed[slug] {
+			dayUnfiled = append(dayUnfiled, tasks...)
+		}
+	}
+	if len(dayUnfiled) > 1 {
+		sort.Slice(dayUnfiled, func(i, j int) bool {
+			di, dj := dayUnfiled[i].State == StateDone, dayUnfiled[j].State == StateDone
+			if di != dj {
+				return !di
+			}
+			if !dayUnfiled[i].Date.Equal(dayUnfiled[j].Date) {
+				return dayUnfiled[i].Date.Before(dayUnfiled[j].Date)
+			}
+			return dayUnfiled[i].Text < dayUnfiled[j].Text
+		})
+	}
+
 	recycled, err := s.recycledTasks(known)
 	if err != nil {
 		return nil, err
@@ -712,8 +764,9 @@ func sortAndStrip(list []scannedTask) []TreeTask {
 }
 
 // openProjectTree assembles the open projects/stories, showing dayByStory tasks
-// (the selected day) under each story while deriving done state globally from
-// agg (all days).
+// (the selected day) under each story and directly under the project for tasks
+// tagged with the project ID (no story level). Done state is derived globally
+// from agg (all days).
 func openProjectTree(projects []Project, agg taggedTasks, dayByStory map[string][]TreeTask) []TreeProject {
 	var out []TreeProject
 	for _, p := range projects {
@@ -721,7 +774,15 @@ func openProjectTree(projects []Project, agg taggedTasks, dayByStory map[string]
 			continue
 		}
 		tp := TreeProject{ID: p.ID, Name: p.Name}
-		projectSeen, projectOpen := false, false
+
+		// Project-level tasks: tagged with the project ID directly.
+		tp.Tasks = dayByStory[p.ID]
+
+		// Derive done state: project is seen when it (or any story) has tasks
+		// on any day; open when any such task is still open.
+		projectSeen := agg.seenByStory[p.ID]
+		projectOpen := anyOpen(agg.tasksByStory[p.ID])
+
 		for _, st := range p.Stories {
 			if st.Status == StatusClosed {
 				continue

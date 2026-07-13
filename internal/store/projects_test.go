@@ -317,6 +317,148 @@ func TestStore_BuildProjectTreeExcludesClosed(t *testing.T) {
 	assert.Empty(t, tree.Projects, "closed project hidden")
 }
 
+// TestStore_BuildProjectTreeProjectLevelTasks covers the core bug: tasks tagged
+// with a project ID (not a story ID) must appear in TreeProject.Tasks, not
+// disappear silently.
+func TestStore_BuildProjectTreeProjectLevelTasks(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	// A story-less project (the common case that triggered the bug).
+	pid, err := s.AddProject("Marketing")
+	require.NoError(t, err)
+	assert.Equal(t, "marketing", pid)
+
+	// Three tasks on Tuesday: two tagged with the project, one untagged.
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"DMs", "LinkedIn post", "standalone"}, nil))
+	require.NoError(t, s.AssignTaskProject(tuesday, 0, pid))
+	require.NoError(t, s.AssignTaskProject(tuesday, 1, pid))
+
+	tree, err := s.BuildProjectTree(tuesday)
+	require.NoError(t, err)
+	require.Len(t, tree.Projects, 1)
+	p := tree.Projects[0]
+	assert.Empty(t, p.Stories, "story-less project has no stories")
+	require.Len(t, p.Tasks, 2, "project-tagged tasks must appear in TreeProject.Tasks")
+	assert.Equal(t, "DMs", p.Tasks[0].Text)
+	assert.Equal(t, "LinkedIn post", p.Tasks[1].Text)
+	assert.False(t, p.Done, "open project tasks keep project open")
+	require.Len(t, tree.Unfiled, 1)
+	assert.Equal(t, "standalone", tree.Unfiled[0].Text, "untagged task in Unfiled")
+
+	// A different day shows no tasks under the project.
+	tree, err = s.BuildProjectTree(monday)
+	require.NoError(t, err)
+	assert.Empty(t, tree.Projects[0].Tasks, "other day shows no tasks")
+
+	// Completing all project tasks marks the project globally done.
+	require.NoError(t, s.SetPlanItemState(tuesday, 0, StateDone))
+	require.NoError(t, s.SetPlanItemState(tuesday, 1, StateDone))
+	tree, err = s.BuildProjectTree(tuesday)
+	require.NoError(t, err)
+	p = tree.Projects[0]
+	assert.True(t, p.Done, "no open tasks on any day -> project done")
+	require.Len(t, p.Tasks, 2, "done tasks remain visible")
+	assert.Equal(t, StateDone, p.Tasks[0].State)
+}
+
+// TestStore_BuildProjectTreeClosedProjectTagFallback verifies the fail-visible
+// rule: a task tagged with a CLOSED project ID must fall back to Unfiled
+// rather than disappearing from the tree.
+func TestStore_BuildProjectTreeClosedProjectTagFallback(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	pid, err := s.AddProject("Archive")
+	require.NoError(t, err)
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"old task"}, nil))
+	require.NoError(t, s.AssignTaskProject(tuesday, 0, pid))
+
+	// Close the project. The task was tagged before closing; it must not vanish.
+	require.NoError(t, s.SetProjectStatus(pid, StatusClosed))
+
+	tree, err := s.BuildProjectTree(tuesday)
+	require.NoError(t, err)
+	assert.Empty(t, tree.Projects, "closed project hidden from tree")
+	require.Len(t, tree.Unfiled, 1, "task falls back to Unfiled when its project is closed")
+	assert.Equal(t, "old task", tree.Unfiled[0].Text)
+}
+
+// TestStore_BuildProjectTreeClosedStoryTagFallback mirrors the above for a
+// closed story within an open project.
+func TestStore_BuildProjectTreeClosedStoryTagFallback(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	pid, err := s.AddProject("Ship v2")
+	require.NoError(t, err)
+	sid, err := s.AddStory(pid, "Payments")
+	require.NoError(t, err)
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"fix charge"}, nil))
+	require.NoError(t, s.AssignTaskStory(tuesday, 0, sid))
+
+	require.NoError(t, s.SetStoryStatus(sid, StatusClosed))
+
+	tree, err := s.BuildProjectTree(tuesday)
+	require.NoError(t, err)
+	require.Len(t, tree.Projects, 1)
+	assert.Empty(t, tree.Projects[0].Stories, "closed story hidden")
+	require.Len(t, tree.Unfiled, 1, "task falls back to Unfiled when its story is closed")
+	assert.Equal(t, "fix charge", tree.Unfiled[0].Text)
+}
+
+// TestStore_BuildProjectTreeMixedProjectAndStoryTasks verifies that project-
+// level tasks and story-level tasks coexist correctly within the same project.
+func TestStore_BuildProjectTreeMixedProjectAndStoryTasks(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	pid, err := s.AddProject("Ship v2")
+	require.NoError(t, err)
+	sid, err := s.AddStory(pid, "Payments")
+	require.NoError(t, err)
+
+	// One task tagged with the project, one with the story.
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"planning call", "wire refunds"}, nil))
+	require.NoError(t, s.AssignTaskProject(tuesday, 0, pid))
+	require.NoError(t, s.AssignTaskStory(tuesday, 1, sid))
+
+	tree, err := s.BuildProjectTree(tuesday)
+	require.NoError(t, err)
+	require.Len(t, tree.Projects, 1)
+	p := tree.Projects[0]
+	require.Len(t, p.Tasks, 1, "project-level task appears in TreeProject.Tasks")
+	assert.Equal(t, "planning call", p.Tasks[0].Text)
+	require.Len(t, p.Stories, 1, "story still rendered")
+	require.Len(t, p.Stories[0].Tasks, 1, "story-level task appears under story")
+	assert.Equal(t, "wire refunds", p.Stories[0].Tasks[0].Text)
+	assert.Empty(t, tree.Unfiled, "no task leaked to Unfiled")
+}
+
+// TestStore_AssignTaskProject verifies the store method that re-tags a plan
+// item with a project ID.
+func TestStore_AssignTaskProject(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	pid, err := s.AddProject("Ship v2")
+	require.NoError(t, err)
+	require.NoError(t, s.ApplyMorning(tuesday, []string{"task a"}, nil))
+
+	require.NoError(t, s.AssignTaskProject(tuesday, 0, pid))
+	d, _, err := s.LoadDaily(tuesday)
+	require.NoError(t, err)
+	assert.Equal(t, "task a @ship-v2", d.Plan[0].Text)
+
+	// Reassigning replaces the tag.
+	require.NoError(t, s.AssignTaskProject(tuesday, 0, pid))
+	d, _, err = s.LoadDaily(tuesday)
+	require.NoError(t, err)
+	assert.Equal(t, "task a @ship-v2", d.Plan[0].Text)
+
+	require.ErrorContains(t, s.AssignTaskProject(tuesday, 0, "nope"), "not found")
+	require.ErrorContains(t, s.AssignTaskProject(tuesday, 9, pid), "out of range")
+}
+
 func TestSlugify(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{

@@ -85,6 +85,11 @@ func (w *mainWindow) addProjectNode(p store.TreeProject) {
 	item.SetData(0, nodeKeyRole, qt.NewQVariant11(key))
 	w.tree.AddTopLevelItem(item)
 	w.tree.SetItemWidget(item, 0, w.projectRow(p))
+	// Project-level tasks (tagged with the project ID, no story level) appear
+	// above stories so they are immediately visible under the project header.
+	for _, task := range p.Tasks {
+		w.addTaskNode(item, task)
+	}
 	for _, st := range p.Stories {
 		w.addStoryNode(item, st)
 	}
@@ -423,16 +428,25 @@ func (w *mainWindow) dropTask(srcKey string, target *qt.QTreeWidgetItem) {
 	if !ok {
 		return
 	}
+	// Try story/Unfiled target first (highest precedence).
 	storyID, unfiled, ok := storyTarget(target)
-	if !ok {
+	if ok {
+		w.runTaskAction(date, text, func(d time.Time, idx int) error {
+			if unfiled {
+				return w.app.store.UnassignTaskStory(d, idx)
+			}
+			return w.app.store.AssignTaskStory(d, idx, storyID)
+		})
 		return
 	}
-	w.runTaskAction(date, text, func(d time.Time, idx int) error {
-		if unfiled {
-			return w.app.store.UnassignTaskStory(d, idx)
-		}
-		return w.app.store.AssignTaskStory(d, idx, storyID)
-	})
+	// Fall back to project target: dropping a task directly onto a project node
+	// (or onto another project-level task) re-tags it with the project ID.
+	projectID, ok := taskProjectTarget(target)
+	if ok {
+		w.runTaskAction(date, text, func(d time.Time, idx int) error {
+			return w.app.store.AssignTaskProject(d, idx, projectID)
+		})
+	}
 }
 
 func (w *mainWindow) dropStory(storyID string, target *qt.QTreeWidgetItem) {
@@ -459,6 +473,21 @@ func storyTarget(target *qt.QTreeWidgetItem) (storyID string, unfiled, ok bool) 
 		return storyTarget(target.Parent())
 	}
 	return "", false, false
+}
+
+// taskProjectTarget resolves the project a task was dropped onto when no story
+// is in the path: a project node directly, or the project parent of a
+// project-level task node. It deliberately does NOT follow story nodes
+// upward -- dropping onto a story or its tasks uses storyTarget.
+func taskProjectTarget(target *qt.QTreeWidgetItem) (string, bool) {
+	key := keyOf(target)
+	switch {
+	case strings.HasPrefix(key, "p:"):
+		return strings.TrimPrefix(key, "p:"), true
+	case strings.HasPrefix(key, "t:"):
+		return taskProjectTarget(target.Parent())
+	}
+	return "", false
 }
 
 // projectTarget resolves the project a story was dropped onto: a project node

@@ -691,6 +691,29 @@ current choice at rest. Hover fallback was NOT needed: the bounds check
 eliminates the enter/leave flicker that child widgets typically cause.
 **Status:** implemented (commit d6d6e0b)
 
+### 45. Project-tagged tasks invisible in main-window tree
+**Severity:** high
+**Problem:** Tasks tagged with a project ID (e.g. `@marketing`) in the daily
+plan were silently dropped from the tree when the project had no stories.
+`dayTasks` correctly bucketed them by their project-ID slug, but
+`openProjectTree` only looked up story IDs in the `dayByStory` map; project-ID
+buckets were never consumed and rendered nowhere -- not under any project, not
+in Unfiled. On real data (8 story-less projects, 12 project-tagged tasks),
+the tree showed zero tasks for the day.
+**Fix:**
+- `TreeProject` gains a `Tasks []TreeTask` field for tasks tagged with the
+  project ID directly (no story level).
+- `openProjectTree` attaches `dayByStory[p.ID]` to `tp.Tasks` and folds
+  project-level tasks into the project's global done-state calculation
+  (mirroring how story tasks feed `projectSeen`/`projectOpen`).
+- `BuildProjectTree` computes a `consumed` set of open project/story IDs;
+  any `dayByStory` bucket whose slug is not consumed (closed project/story)
+  falls back to Unfiled rather than disappearing.
+- `internal/ui/tree.go`: `addProjectNode` renders project-level tasks above
+  stories, reusing existing `addTaskNode`/`taskRow` machinery; `dropTask`
+  extended to handle project-node drop targets via `AssignTaskProject`.
+**Status:** implemented
+
 ## Other notes
 
 - **[wontfix] Dock icon visibility:** hiding the Dock icon (LSUIElement) is
