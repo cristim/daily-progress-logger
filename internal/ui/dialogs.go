@@ -372,28 +372,88 @@ func (a *App) buildWeekReviewDialog(week store.WeekID, rollover bool) (*dialogSp
 	label.SetWordWrap(true)
 	layout.AddWidget(label.QWidget)
 
+	// Text-caption buttons for the review choices; keep tooltips and accessible
+	// names so keyboard and screen-reader users get the full description.
 	reviewChoices := []choice{
 		// "Keep on backlog" is the honest label: the item stays in backlog
 		// Current (not in today's plan), and will surface again at the next
 		// morning check-in with the "(backlog)" suffix.
-		{id: int(store.ReviewKeep), icon: qt.QStyle__SP_DialogApplyButton, tooltip: "Keep on backlog"},
-		{id: int(store.ReviewPostpone), customIcon: postponeIcon(), tooltip: "Postpone to next week"},
-		{id: int(store.ReviewDrop), icon: qt.QStyle__SP_TrashIcon, tooltip: "Drop"},
+		{id: int(store.ReviewKeep), label: "Keep", tooltip: "Keep on backlog"},
+		{id: int(store.ReviewPostpone), label: "Next week", tooltip: "Postpone to next week"},
+		{id: int(store.ReviewDrop), label: "Drop", tooltip: "Drop"},
+	}
+	// Choice names used to update the always-visible state label on each row.
+	choiceNames := map[int]string{
+		int(store.ReviewKeep):     "Keep",
+		int(store.ReviewPostpone): "Next week",
+		int(store.ReviewDrop):     "Drop",
 	}
 
 	selectors := make([]*choiceSelector, len(items))
 	if len(items) > 0 {
 		area, rows := newRowsArea()
 		for i, text := range items {
-			row := qt.NewQHBoxLayout2()
+			// Each row is a proper widget (not just a layout) so we can attach
+			// Enter/Leave events for the hover-reveal behavior.
+			rowWidget := qt.NewQWidget2()
+			rowLayout := qt.NewQHBoxLayout(rowWidget)
+			rowLayout.SetContentsMargins(0, 0, 0, 0)
+
 			itemLabel := qt.NewQLabel3(text)
 			itemLabel.SetTextFormat(qt.PlainText)
 			itemLabel.SetWordWrap(true)
+
 			sel := newChoiceSelector(reviewChoices, int(store.ReviewKeep))
 			selectors[i] = sel
-			row.AddWidget2(itemLabel.QWidget, 1)
-			row.AddWidget(sel.widget)
-			rows.AddLayout(row.QLayout)
+			// Buttons start hidden; they appear on hover or keyboard focus.
+			sel.widget.SetVisible(false)
+
+			// Always-visible state label at the row's right edge: keeps the
+			// current choice discoverable when buttons are hidden at rest.
+			stateLabel := qt.NewQLabel3(choiceNames[int(store.ReviewKeep)])
+			stateLabel.SetTextFormat(qt.PlainText)
+			stateLabel.SetAlignment(qt.AlignRight | qt.AlignVCenter)
+			stateLabel.SetStyleSheet("color: palette(mid);")
+			stateLabel.SetMinimumWidth(62)
+
+			// Capture per-iteration variables for closures.
+			currentSel := sel
+			currentStateLabel := stateLabel
+			currentRowWidget := rowWidget
+
+			// Update the state label whenever the user picks a different action.
+			sel.group.OnIdClicked(func(id int) {
+				if name, ok := choiceNames[id]; ok {
+					currentStateLabel.SetText(name)
+				}
+			})
+
+			showButtons := func() { currentSel.widget.SetVisible(true) }
+			// Hide only when the cursor has genuinely left the row's bounds.
+			// When the mouse moves from the row background onto a child button,
+			// Qt fires Leave on the row widget but the cursor is still within
+			// the row's geometry — the bounds check prevents spurious hiding.
+			hideIfLeft := func() {
+				local := currentRowWidget.MapFromGlobalWithQPoint(qt.QCursor_Pos())
+				if !currentRowWidget.Rect().ContainsWithQPoint(local) {
+					currentSel.widget.SetVisible(false)
+				}
+			}
+
+			rowWidget.OnEnterEvent(func(_ func(*qt.QEnterEvent), _ *qt.QEnterEvent) { showButtons() })
+			rowWidget.OnLeaveEvent(func(_ func(*qt.QEvent), _ *qt.QEvent) { hideIfLeft() })
+
+			// Keyboard accessibility: reveal buttons when any button gets focus
+			// so keyboard-only users can operate the dialog without a mouse.
+			for _, ab := range sel.group.Buttons() {
+				btn := qt.UnsafeNewQToolButton(ab.UnsafePointer())
+				btn.OnFocusInEvent(func(_ func(*qt.QFocusEvent), _ *qt.QFocusEvent) { showButtons() })
+			}
+
+			rowLayout.AddWidget2(itemLabel.QWidget, 1)
+			rowLayout.AddWidget(stateLabel.QWidget)
+			rowLayout.AddWidget(sel.widget)
+			rows.AddWidget(rowWidget)
 		}
 		layout.AddWidget(area.QWidget)
 	}

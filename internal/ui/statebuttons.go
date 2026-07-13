@@ -12,6 +12,7 @@ type choice struct {
 	icon       qt.QStyle__StandardPixmap
 	customIcon *qt.QIcon // overrides icon when non-nil
 	tooltip    string
+	label      string // when non-empty, button shows text caption instead of an icon
 }
 
 // choiceSelector is a row of mutually exclusive icon buttons where each
@@ -35,12 +36,18 @@ func newChoiceSelector(choices []choice, initialID int) *choiceSelector {
 
 	for _, c := range choices {
 		button := qt.NewQToolButton2()
-		if c.customIcon != nil {
+		switch {
+		case c.label != "":
+			// Text-caption mode: show the label text, no icon.
+			button.SetText(c.label)
+			button.SetToolButtonStyle(qt.ToolButtonTextOnly)
+		case c.customIcon != nil:
 			button.SetIcon(c.customIcon)
-		} else {
+			button.SetToolButtonStyle(qt.ToolButtonIconOnly)
+		default:
 			button.SetIcon(standardIcon(c.icon))
+			button.SetToolButtonStyle(qt.ToolButtonIconOnly)
 		}
-		button.SetToolButtonStyle(qt.ToolButtonIconOnly)
 		button.SetCheckable(true)
 		button.SetToolTip(c.tooltip)
 		button.SetAccessibleName(c.tooltip)
