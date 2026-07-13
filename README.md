@@ -49,9 +49,10 @@ markdown files you can grep, sync, or feed to an LLM at review time.
   `Review metrics @weekly @mon @16:00`, `Rent @monthly @1 @9:00`, or
   `Vitamins @daily`. The keyword (`@daily`, `@weekday`, `@weekly`, `@monthly`)
   can be followed by an optional day (`@mon`..`@sun` for weekly, `@1`..`@31` for
-  monthly) and time (`@HH:MM`, defaulting to the morning check-in time); a story
-  tag placed *before* the recurrence keywords (`Reconcile @payments @weekly`) is
-  preserved. Recurring templates live in a collapsible **Recurring** section of
+  monthly) and time (`@HH:MM`, defaulting to the morning check-in time); a project
+  or story ref tag placed *before* the recurrence keywords
+  (`Reconcile #payments @weekly`) is preserved. To tag a task with a project or
+  story use `#slug` (e.g. `DMs #marketing`); `@` is reserved for recurrence. Recurring templates live in a collapsible **Recurring** section of
   the tree (each with its schedule and a *Delete* button). When an occurrence
   comes due the app shows a notification and adds the task to that day's plan so
   you can check it off; each occurrence fires once, and a reminder missed while

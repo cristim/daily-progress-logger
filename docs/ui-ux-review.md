@@ -641,6 +641,106 @@ any later day, or fold a missed summary into the Monday review flow.
   triggers `ApplicationActive` and pops the hidden main window via
   `HandleReopen` before a tray action's `dialogOpen` guard engages.
 
+## Post-launch fixes (2026-07-13)
+
+### 42. Duplication in weekly Done summary (two causes)
+**Severity:** medium
+**Problem:** The week 2026-W28 review showed heavy duplication with two
+code-addressable root causes:
+(a) Users hand-copy plan lines into `## Done` with the checkbox still
+attached (`- [x] Shift Invoice`). `parseDoneBullet` kept the marker,
+so the stored text `"[x] Shift Invoice"` did not match the checked
+plan item `"Shift Invoice"` on normalized comparison.
+(b) An item carried over and checked in two daily files (e.g. Thursday
+and Friday) appeared under both days in the weekly aggregation.
+**Fix:**
+(a) `parseDoneBullet` strips leading checkbox markers (`[ ] `, `[x] `,
+`[X] `, `[>] `) before storing the text. Render is unaffected (Done
+section always emits plain `- text` bullets), so a parse+save
+normalizes the file.
+(b) `DoneByDay` (internal/store/weekly.go) now maintains a `globalSeen`
+map across all days. First occurrence wins; later days' copies of the
+same normalized text are silently dropped. The weekly summary dialog
+(internal/ui/dialogs.go) already calls `DoneByDay`, so no separate
+loop was needed.
+**Status:** implemented (commits ed7266a, 1dd5fa5)
+
+### 43. Evening dialog free-text section misleads users into duplication
+**Severity:** low
+**Problem:** The label "Anything else you accomplished?" does not
+signal that checked plan items are already recorded, so users re-enter
+them in different words ("Visited Mom" vs checked "Visit Mom"). No
+dedup can catch phrasing differences.
+**Fix:** Label changed to "Anything else you accomplished? (Items
+checked above are recorded automatically.)" to steer users toward the
+free-text box's intended purpose (truly unplanned accomplishments).
+**Status:** implemented (commit 0e14be3)
+
+### 44. Week-review dialog buttons icon-only and always visible
+**Severity:** low
+**Problem:** Keep/Postpone/Drop buttons in the week-review dialog used
+icons only, requiring a tooltip hover to learn the action. All buttons
+were always visible, adding visual noise across many items.
+**Fix:** Text-caption buttons ("Keep", "Next week", "Drop") with
+tooltips retained. Buttons are hidden at rest and revealed on hover
+(OnEnterEvent/OnLeaveEvent on each row widget, with a
+QCursor::pos() bounds check to avoid flicker when the cursor moves onto
+a child button). Keyboard users see buttons via OnFocusInEvent. An
+always-visible dimmed state label at the row's right edge shows the
+current choice at rest. Hover fallback was NOT needed: the bounds check
+eliminates the enter/leave flicker that child widgets typically cause.
+**Status:** implemented (commit d6d6e0b)
+
+### 45. Project-tagged tasks invisible in main-window tree
+**Severity:** high
+**Problem:** Tasks tagged with a project ID (e.g. `@marketing`) in the daily
+plan were silently dropped from the tree when the project had no stories.
+`dayTasks` correctly bucketed them by their project-ID slug, but
+`openProjectTree` only looked up story IDs in the `dayByStory` map; project-ID
+buckets were never consumed and rendered nowhere -- not under any project, not
+in Unfiled. On real data (8 story-less projects, 12 project-tagged tasks),
+the tree showed zero tasks for the day.
+**Fix:**
+- `TreeProject` gains a `Tasks []TreeTask` field for tasks tagged with the
+  project ID directly (no story level).
+- `openProjectTree` attaches `dayByStory[p.ID]` to `tp.Tasks` and folds
+  project-level tasks into the project's global done-state calculation
+  (mirroring how story tasks feed `projectSeen`/`projectOpen`).
+- `BuildProjectTree` computes a `consumed` set of open project/story IDs;
+  any `dayByStory` bucket whose slug is not consumed (closed project/story)
+  falls back to Unfiled rather than disappearing.
+- `internal/ui/tree.go`: `addProjectNode` renders project-level tasks above
+  stories, reusing existing `addTaskNode`/`taskRow` machinery; `dropTask`
+  extended to handle project-node drop targets via `AssignTaskProject`.
+**Status:** implemented
+
+### 46. Project/story ref tag syntax: @ → #
+**Severity:** medium
+**Problem:** Both project/story references (`DMs @marketing`) and recurrence
+keywords (`Standup @weekly @mon @9:00`) used the same `@` prefix. The parser
+disambiguated by checking whether the token body matched a known project/story
+id, which silently broke whenever a project was named after a recurrence keyword
+(e.g. `daily`, `mon`, `15`). Real-world example: `"Review/merge 10 PRs @daily @cudly"` --
+`@cudly` is the project ref, `@daily` is a plain context mention, but if a
+project were named "daily" the two would be indistinguishable.
+**Fix:**
+- `#slug` is now the canonical syntax for project/story refs (e.g. `DMs #marketing`).
+- `@` is reserved exclusively for recurrence/scheduling tokens.
+- `internal/store/projects.go:splitStoryTag` recognizes trailing `#<known-id>`
+  (canonical) and still accepts legacy `@<known-id>` for backward compatibility
+  with existing data files.
+- All write paths (`AssignTaskStory`, `AssignTaskProject`, `AddTaggedTask`)
+  emit `#id` exclusively.
+- `internal/recur/recur.go:Parse` no longer needs the `isStory` guard: `#slug`
+  refs are never `@tokens`, so the scan stops naturally before them. `isStory`
+  is kept in the function signature but is no longer passed at call sites in the
+  store (passed as `nil`).
+- One-time startup migration (`store.MigrateRefTags`): rewrites ` @<known-id>`
+  to ` #<known-id>` in daily/*, weekly/*, backlog.md, recycle.md, recurring.md;
+  skips unknown ids (recurrence keywords, context mentions, times); backs up
+  affected files to `.pre-hashtag-backup/` once; idempotent.
+**Status:** implemented (2026-07-13, branch feat/hash-tag-syntax)
+
 ## Other notes
 
 - **[wontfix] Dock icon visibility:** hiding the Dock icon (LSUIElement) is
