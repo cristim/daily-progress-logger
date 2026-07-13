@@ -641,6 +641,56 @@ any later day, or fold a missed summary into the Monday review flow.
   triggers `ApplicationActive` and pops the hidden main window via
   `HandleReopen` before a tray action's `dialogOpen` guard engages.
 
+## Post-launch fixes (2026-07-13)
+
+### 42. Duplication in weekly Done summary (two causes)
+**Severity:** medium
+**Problem:** The week 2026-W28 review showed heavy duplication with two
+code-addressable root causes:
+(a) Users hand-copy plan lines into `## Done` with the checkbox still
+attached (`- [x] Shift Invoice`). `parseDoneBullet` kept the marker,
+so the stored text `"[x] Shift Invoice"` did not match the checked
+plan item `"Shift Invoice"` on normalized comparison.
+(b) An item carried over and checked in two daily files (e.g. Thursday
+and Friday) appeared under both days in the weekly aggregation.
+**Fix:**
+(a) `parseDoneBullet` strips leading checkbox markers (`[ ] `, `[x] `,
+`[X] `, `[>] `) before storing the text. Render is unaffected (Done
+section always emits plain `- text` bullets), so a parse+save
+normalizes the file.
+(b) `DoneByDay` (internal/store/weekly.go) now maintains a `globalSeen`
+map across all days. First occurrence wins; later days' copies of the
+same normalized text are silently dropped. The weekly summary dialog
+(internal/ui/dialogs.go) already calls `DoneByDay`, so no separate
+loop was needed.
+**Status:** implemented (commits ed7266a, 1dd5fa5)
+
+### 43. Evening dialog free-text section misleads users into duplication
+**Severity:** low
+**Problem:** The label "Anything else you accomplished?" does not
+signal that checked plan items are already recorded, so users re-enter
+them in different words ("Visited Mom" vs checked "Visit Mom"). No
+dedup can catch phrasing differences.
+**Fix:** Label changed to "Anything else you accomplished? (Items
+checked above are recorded automatically.)" to steer users toward the
+free-text box's intended purpose (truly unplanned accomplishments).
+**Status:** implemented (commit 0e14be3)
+
+### 44. Week-review dialog buttons icon-only and always visible
+**Severity:** low
+**Problem:** Keep/Postpone/Drop buttons in the week-review dialog used
+icons only, requiring a tooltip hover to learn the action. All buttons
+were always visible, adding visual noise across many items.
+**Fix:** Text-caption buttons ("Keep", "Next week", "Drop") with
+tooltips retained. Buttons are hidden at rest and revealed on hover
+(OnEnterEvent/OnLeaveEvent on each row widget, with a
+QCursor::pos() bounds check to avoid flicker when the cursor moves onto
+a child button). Keyboard users see buttons via OnFocusInEvent. An
+always-visible dimmed state label at the row's right edge shows the
+current choice at rest. Hover fallback was NOT needed: the bounds check
+eliminates the enter/leave flicker that child widgets typically cause.
+**Status:** implemented (commit d6d6e0b)
+
 ## Other notes
 
 - **[wontfix] Dock icon visibility:** hiding the Dock icon (LSUIElement) is
