@@ -113,12 +113,25 @@ func (d *Daily) parseBody(body string) error {
 	return nil
 }
 
-// parseDoneBullet parses a plain "- text" bullet from the Done section.
+// parseDoneBullet parses a "- text" bullet from the Done section. Users
+// sometimes hand-copy plan lines into Done, producing bullets like
+// "- [x] Shift Invoice". The checkbox marker is stripped so the stored text
+// normalizes to "Shift Invoice" for dedup against the checked plan item.
 func parseDoneBullet(line string) (string, error) {
 	if !strings.HasPrefix(line, "- ") {
 		return "", fmt.Errorf("expected a bullet in Done section, got %q", line)
 	}
-	text := strings.TrimSpace(line[2:])
+	// Do not TrimSpace before the prefix check: the marker must appear
+	// immediately after "- " with its trailing space intact (e.g. "[x] ").
+	text := line[2:]
+	// Strip any leading checkbox marker so hand-copied plan lines dedup correctly.
+	for _, pfx := range []string{"[ ] ", "[x] ", "[X] ", "[>] "} {
+		if strings.HasPrefix(text, pfx) {
+			text = text[len(pfx):]
+			break
+		}
+	}
+	text = strings.TrimSpace(text)
 	if text == "" {
 		return "", errors.New("empty Done bullet")
 	}
