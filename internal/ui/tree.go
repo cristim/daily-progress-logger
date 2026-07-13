@@ -143,7 +143,7 @@ func (w *mainWindow) addRecycleNode(tasks []store.TreeTask) {
 }
 
 // recycleRow shows a deleted task with its original day plus Restore / Delete
-// (permanent) actions.
+// (permanent) actions hidden until hover or keyboard focus.
 func (w *mainWindow) recycleRow(task store.TreeTask) *qt.QWidget {
 	row, layout := newRowWidget()
 	display, truncated := elideText(task.Text, 90)
@@ -153,51 +153,85 @@ func (w *mainWindow) recycleRow(task store.TreeTask) *qt.QWidget {
 	}
 	layout.AddWidget2(label.QWidget, 1)
 
+	// Date is always visible: compact metadata that helps identify the item
+	// without needing to hover.
 	dateLabel := qt.NewQLabel3(fmt.Sprintf(`<span style="color:#888888">%s</span>`,
 		html.EscapeString(task.Date.Format("2 Jan"))))
 	dateLabel.SetTextFormat(qt.RichText)
 	layout.AddWidget(dateLabel.QWidget)
 
 	date, text := task.Date, task.Text
-	layout.AddWidget(w.textButton("Restore", "Restore to its day", func() {
+	restoreBtn := w.textButtonTool("Restore", "Restore to its day", func() {
 		if err := w.app.store.RestoreTask(date, text); err != nil {
 			w.app.reportError(err)
 		}
 		w.refresh()
-	}))
-	layout.AddWidget(w.textButton("Delete", "Delete permanently", func() {
+	})
+	deleteBtn := w.textButtonTool("Delete", "Delete permanently", func() {
 		if err := w.app.store.PurgeRecycled(date, text); err != nil {
 			w.app.reportError(err)
 		}
 		w.refresh()
-	}))
+	})
+
+	controls, ctrlLayout := newControlsContainer()
+	ctrlLayout.AddWidget(restoreBtn.QWidget)
+	ctrlLayout.AddWidget(deleteBtn.QWidget)
+	layout.AddWidget(controls)
+
+	hoverReveal(row, controls, []*qt.QAbstractButton{
+		restoreBtn.QAbstractButton, deleteBtn.QAbstractButton,
+	})
 	return row
 }
 
 // projectRow builds a project's row: its name (bold, struck through when done)
-// plus Add-story / Rename / Close actions.
-func (w *mainWindow) projectRow(p store.TreeProject) *qt.QWidget {
+// plus Add-story / Rename / Close actions hidden until hover or keyboard focus.
+func (w *mainWindow) projectRow(p store.TreeProject) *qt.QWidget { //nolint:dupl // structurally mirrors storyRow by design
 	row, layout := newRowWidget()
 	layout.AddWidget2(nodeLabel(p.Name, p.Done, true).QWidget, 1)
-	layout.AddWidget(w.textButton("+ Story", "Add a story to this project", func() { w.addStory(p.ID) }))
-	layout.AddWidget(w.textButton("Rename", "Rename this project", func() { w.renameProject(p.ID, p.Name) }))
-	layout.AddWidget(w.textButton("Close", "Close (archive) this project", func() { w.closeProject(p.ID) }))
+
+	storyBtn := w.textButtonTool("+ Story", "Add a story to this project", func() { w.addStory(p.ID) })
+	renameBtn := w.textButtonTool("Rename", "Rename this project", func() { w.renameProject(p.ID, p.Name) })
+	closeBtn := w.textButtonTool("Close", "Close (archive) this project", func() { w.closeProject(p.ID) })
+
+	controls, ctrlLayout := newControlsContainer()
+	ctrlLayout.AddWidget(storyBtn.QWidget)
+	ctrlLayout.AddWidget(renameBtn.QWidget)
+	ctrlLayout.AddWidget(closeBtn.QWidget)
+	layout.AddWidget(controls)
+
+	hoverReveal(row, controls, []*qt.QAbstractButton{
+		storyBtn.QAbstractButton, renameBtn.QAbstractButton, closeBtn.QAbstractButton,
+	})
 	return row
 }
 
 // storyRow builds a story's row: its name (struck through when done) plus
-// Add-task / Rename / Close actions.
-func (w *mainWindow) storyRow(st store.TreeStory) *qt.QWidget {
+// Add-task / Rename / Close actions hidden until hover or keyboard focus.
+func (w *mainWindow) storyRow(st store.TreeStory) *qt.QWidget { //nolint:dupl // structurally mirrors projectRow by design
 	row, layout := newRowWidget()
 	layout.AddWidget2(nodeLabel(st.Name, st.Done, false).QWidget, 1)
-	layout.AddWidget(w.textButton("+ Task", "Add a task to this story (today's plan)", func() { w.addTask(st.ID) }))
-	layout.AddWidget(w.textButton("Rename", "Rename this story", func() { w.renameStory(st.ID, st.Name) }))
-	layout.AddWidget(w.textButton("Close", "Close (archive) this story", func() { w.closeStory(st.ID) }))
+
+	taskBtn := w.textButtonTool("+ Task", "Add a task to this story (today's plan)", func() { w.addTask(st.ID) })
+	renameBtn := w.textButtonTool("Rename", "Rename this story", func() { w.renameStory(st.ID, st.Name) })
+	closeBtn := w.textButtonTool("Close", "Close (archive) this story", func() { w.closeStory(st.ID) })
+
+	controls, ctrlLayout := newControlsContainer()
+	ctrlLayout.AddWidget(taskBtn.QWidget)
+	ctrlLayout.AddWidget(renameBtn.QWidget)
+	ctrlLayout.AddWidget(closeBtn.QWidget)
+	layout.AddWidget(controls)
+
+	hoverReveal(row, controls, []*qt.QAbstractButton{
+		taskBtn.QAbstractButton, renameBtn.QAbstractButton, closeBtn.QAbstractButton,
+	})
 	return row
 }
 
 // taskRow builds a task's row: its text plus the Done/Not-done selector and the
 // next-day / next-week / backlog defer buttons, all acting on the task's own day.
+// Action controls are hidden at rest and revealed on hover or keyboard focus.
 func (w *mainWindow) taskRow(task store.TreeTask) *qt.QWidget {
 	row, layout := newRowWidget()
 
@@ -215,21 +249,40 @@ func (w *mainWindow) taskRow(task store.TreeTask) *qt.QWidget {
 			return w.app.store.SetPlanItemState(d, idx, state)
 		})
 	})
-	layout.AddWidget(selector.widget)
-	layout.AddWidget(w.taskActionButton(postponeIcon(), "Postpone to the next day", date, text,
-		w.app.store.PostponeToNextDay))
-	layout.AddWidget(w.taskActionButton(standardIcon(qt.QStyle__SP_ArrowUp), "Postpone to next week", date, text,
-		w.app.store.PostponePlanItem))
-	layout.AddWidget(w.taskActionButton(backlogIcon(), "Move to the cross-week backlog", date, text,
+
+	ndBtn := w.taskActionButtonTool(postponeIcon(), "Postpone to the next day", date, text,
+		w.app.store.PostponeToNextDay)
+	nwBtn := w.taskActionButtonTool(standardIcon(qt.QStyle__SP_ArrowUp), "Postpone to next week", date, text,
+		w.app.store.PostponePlanItem)
+	blBtn := w.taskActionButtonTool(backlogIcon(), "Move to the cross-week backlog", date, text,
 		func(d time.Time, idx int) error {
 			if err := w.app.store.MoveToBacklog(d, idx); err != nil {
 				return err
 			}
 			w.app.notifyBacklogMove(text)
 			return nil
-		}))
-	layout.AddWidget(w.taskActionButton(standardIcon(qt.QStyle__SP_TrashIcon),
-		"Delete (moves to the recycle bin)", date, text, w.app.store.DeleteTask))
+		})
+	delBtn := w.taskActionButtonTool(standardIcon(qt.QStyle__SP_TrashIcon),
+		"Delete (moves to the recycle bin)", date, text, w.app.store.DeleteTask)
+
+	controls, ctrlLayout := newControlsContainer()
+	ctrlLayout.AddWidget(selector.widget)
+	ctrlLayout.AddWidget(ndBtn.QWidget)
+	ctrlLayout.AddWidget(nwBtn.QWidget)
+	ctrlLayout.AddWidget(blBtn.QWidget)
+	ctrlLayout.AddWidget(delBtn.QWidget)
+	layout.AddWidget(controls)
+
+	// Keyboard-accessible focus buttons: state selector buttons plus each
+	// action button. The app's global shortcuts (Ctrl+Shift+X etc.) operate on
+	// the selected task without needing the row buttons visible, so hiding at
+	// rest does not lock out keyboard users; the focus-in reveal is an extra
+	// affordance for tab-navigation users.
+	focusButtons := append(selector.group.Buttons(),
+		ndBtn.QAbstractButton, nwBtn.QAbstractButton,
+		blBtn.QAbstractButton, delBtn.QAbstractButton)
+	hoverReveal(row, controls, focusButtons)
+
 	return row
 }
 
@@ -273,20 +326,27 @@ func taskLabel(display string, state store.ItemState) *qt.QLabel {
 	return label
 }
 
-// textButton makes a flat auto-raised text tool button for a node action.
-func (w *mainWindow) textButton(text, tip string, handler func()) *qt.QWidget {
+// textButtonTool makes a flat auto-raised text tool button for a node action,
+// returning the QToolButton so callers can access QAbstractButton for focus
+// wiring with hoverReveal.
+func (w *mainWindow) textButtonTool(text, tip string, handler func()) *qt.QToolButton {
 	btn := qt.NewQToolButton2()
 	btn.SetText(text)
 	btn.SetToolButtonStyle(qt.ToolButtonTextOnly)
 	btn.SetToolTip(tip)
 	btn.SetAutoRaise(true)
 	btn.OnClicked(handler)
-	return btn.QWidget
+	return btn
 }
 
-// taskActionButton makes an icon button that resolves the task freshly (by day +
-// text) and applies action.
-func (w *mainWindow) taskActionButton(icon *qt.QIcon, tip string, date time.Time, text string, action taskFunc) *qt.QWidget {
+// textButton makes a flat auto-raised text tool button for a node action.
+func (w *mainWindow) textButton(text, tip string, handler func()) *qt.QWidget {
+	return w.textButtonTool(text, tip, handler).QWidget
+}
+
+// taskActionButtonTool makes an icon button that resolves the task freshly (by
+// day + text) and applies action, returning the QToolButton for focus wiring.
+func (w *mainWindow) taskActionButtonTool(icon *qt.QIcon, tip string, date time.Time, text string, action taskFunc) *qt.QToolButton {
 	btn := qt.NewQToolButton2()
 	btn.SetIcon(icon)
 	btn.SetToolButtonStyle(qt.ToolButtonIconOnly)
@@ -294,7 +354,7 @@ func (w *mainWindow) taskActionButton(icon *qt.QIcon, tip string, date time.Time
 	btn.SetAccessibleName(tip)
 	btn.SetAutoRaise(true)
 	btn.OnClicked(func() { w.runTaskAction(date, text, action) })
-	return btn.QWidget
+	return btn
 }
 
 // elideText truncates s to maxRunes runes, appending "…" when it truncates.
