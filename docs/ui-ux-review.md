@@ -714,6 +714,33 @@ the tree showed zero tasks for the day.
   extended to handle project-node drop targets via `AssignTaskProject`.
 **Status:** implemented
 
+### 46. Project/story ref tag syntax: @ → #
+**Severity:** medium
+**Problem:** Both project/story references (`DMs @marketing`) and recurrence
+keywords (`Standup @weekly @mon @9:00`) used the same `@` prefix. The parser
+disambiguated by checking whether the token body matched a known project/story
+id, which silently broke whenever a project was named after a recurrence keyword
+(e.g. `daily`, `mon`, `15`). Real-world example: `"Review/merge 10 PRs @daily @cudly"` --
+`@cudly` is the project ref, `@daily` is a plain context mention, but if a
+project were named "daily" the two would be indistinguishable.
+**Fix:**
+- `#slug` is now the canonical syntax for project/story refs (e.g. `DMs #marketing`).
+- `@` is reserved exclusively for recurrence/scheduling tokens.
+- `internal/store/projects.go:splitStoryTag` recognizes trailing `#<known-id>`
+  (canonical) and still accepts legacy `@<known-id>` for backward compatibility
+  with existing data files.
+- All write paths (`AssignTaskStory`, `AssignTaskProject`, `AddTaggedTask`)
+  emit `#id` exclusively.
+- `internal/recur/recur.go:Parse` no longer needs the `isStory` guard: `#slug`
+  refs are never `@tokens`, so the scan stops naturally before them. `isStory`
+  is kept in the function signature but is no longer passed at call sites in the
+  store (passed as `nil`).
+- One-time startup migration (`store.MigrateRefTags`): rewrites ` @<known-id>`
+  to ` #<known-id>` in daily/*, weekly/*, backlog.md, recycle.md, recurring.md;
+  skips unknown ids (recurrence keywords, context mentions, times); backs up
+  affected files to `.pre-hashtag-backup/` once; idempotent.
+**Status:** implemented (2026-07-13, branch feat/hash-tag-syntax)
+
 ## Other notes
 
 - **[wontfix] Dock icon visibility:** hiding the Dock icon (LSUIElement) is
