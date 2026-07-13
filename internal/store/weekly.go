@@ -16,26 +16,32 @@ type DayDone struct {
 
 // DoneByDay computes per-day done items across dailies. Within each day,
 // checked plan items are listed first, then Done-section bullets; duplicates
-// (compared by normalizeText) are omitted. Days with no items are omitted.
-// The result preserves the order of dailies.
+// (compared by normalizeText) are omitted. An item that appears on multiple
+// days (e.g. a carried-over task completed in two copies) is attributed only
+// to the first day — subsequent days' copies are silently dropped. Days with
+// no items after deduplication are omitted. The result preserves the order of
+// dailies.
 func DoneByDay(dailies []*Daily) []DayDone {
 	var result []DayDone
+	globalSeen := map[string]bool{} // cross-day dedup: first occurrence wins
 	for _, d := range dailies {
-		seen := map[string]bool{}
+		daySeen := map[string]bool{} // within-day dedup (plan vs Done bullets)
 		var items []string
 		for _, item := range d.Plan {
 			if item.State == StateDone {
 				norm := normalizeText(item.Text)
-				if !seen[norm] {
-					seen[norm] = true
+				if !daySeen[norm] && !globalSeen[norm] {
+					daySeen[norm] = true
+					globalSeen[norm] = true
 					items = append(items, item.Text)
 				}
 			}
 		}
 		for _, text := range d.Done {
 			norm := normalizeText(text)
-			if !seen[norm] {
-				seen[norm] = true
+			if !daySeen[norm] && !globalSeen[norm] {
+				daySeen[norm] = true
+				globalSeen[norm] = true
 				items = append(items, text)
 			}
 		}
