@@ -405,8 +405,6 @@ func (a *App) buildWeekReviewDialog(week store.WeekID, rollover bool) (*dialogSp
 
 			sel := newChoiceSelector(reviewChoices, int(store.ReviewKeep))
 			selectors[i] = sel
-			// Buttons start hidden; they appear on hover or keyboard focus.
-			sel.widget.SetVisible(false)
 
 			// Always-visible state label at the row's right edge: keeps the
 			// current choice discoverable when buttons are hidden at rest.
@@ -419,40 +417,19 @@ func (a *App) buildWeekReviewDialog(week store.WeekID, rollover bool) (*dialogSp
 			// Capture per-iteration variables for closures.
 			currentSel := sel
 			currentStateLabel := stateLabel
-			currentRowWidget := rowWidget
 
 			// Update the state label whenever the user picks a different action.
-			sel.group.OnIdClicked(func(id int) {
+			currentSel.group.OnIdClicked(func(id int) {
 				if name, ok := choiceNames[id]; ok {
 					currentStateLabel.SetText(name)
 				}
 			})
 
-			showButtons := func() { currentSel.widget.SetVisible(true) }
-			// Hide only when the cursor has genuinely left the row's bounds.
-			// When the mouse moves from the row background onto a child button,
-			// Qt fires Leave on the row widget but the cursor is still within
-			// the row's geometry — the bounds check prevents spurious hiding.
-			hideIfLeft := func() {
-				local := currentRowWidget.MapFromGlobalWithQPoint(qt.QCursor_Pos())
-				if !currentRowWidget.Rect().ContainsWithQPoint(local) {
-					currentSel.widget.SetVisible(false)
-				}
-			}
-
-			rowWidget.OnEnterEvent(func(_ func(*qt.QEnterEvent), _ *qt.QEnterEvent) { showButtons() })
-			rowWidget.OnLeaveEvent(func(_ func(*qt.QEvent), _ *qt.QEvent) { hideIfLeft() })
-
-			// Keyboard accessibility: reveal buttons when any button gets focus
-			// so keyboard-only users can operate the dialog without a mouse.
-			for _, ab := range sel.group.Buttons() {
-				btn := qt.UnsafeNewQToolButton(ab.UnsafePointer())
-				btn.OnFocusInEvent(func(_ func(*qt.QFocusEvent), _ *qt.QFocusEvent) { showButtons() })
-			}
-
 			rowLayout.AddWidget2(itemLabel.QWidget, 1)
 			rowLayout.AddWidget(stateLabel.QWidget)
-			rowLayout.AddWidget(sel.widget)
+			rowLayout.AddWidget(currentSel.widget)
+			// Hover-reveal: buttons start hidden; appear on pointer enter or focus.
+			hoverReveal(rowWidget, currentSel.widget, currentSel.group.Buttons())
 			rows.AddWidget(rowWidget)
 		}
 		layout.AddWidget(area.QWidget)
