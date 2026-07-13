@@ -190,7 +190,7 @@ func uniqueSlug(base string, taken map[string]bool) string {
 }
 
 // allIDs collects every project and story ID; story IDs share one namespace
-// with project IDs so a task's @slug tag is globally unambiguous.
+// with project IDs so a task's #slug ref tag is globally unambiguous.
 func allIDs(projects []Project) map[string]bool {
 	ids := map[string]bool{}
 	for _, p := range projects {
@@ -378,17 +378,25 @@ func (s *Store) MoveStory(storyID, toProjectID string) error {
 	return s.SaveProjects(projects)
 }
 
-// splitStoryTag separates a trailing "@<slug>" story tag from a task's text.
-// The tag is recognised only when <slug> is a known project/story ID, so an
-// ordinary trailing "@mention" in the text is left untouched.
+// splitStoryTag separates a trailing "#<slug>" or legacy "@<slug>" ref tag
+// from a task's text. "#" is the canonical prefix; "@" is accepted for
+// backward compatibility with files written before the migration. The tag is
+// recognised only when <slug> is a known project/story ID, so an ordinary
+// trailing "#hashtag" or "@mention" whose body is not a known ID is left
+// untouched. Only the last token is examined (one trailing ref tag per task).
 func splitStoryTag(text string, known map[string]bool) (clean, slug string) {
 	trimmed := strings.TrimRight(text, " \t")
 	space := strings.LastIndexByte(trimmed, ' ')
 	last := trimmed[space+1:] // whole string when there is no space
-	if !strings.HasPrefix(last, "@") {
+	var candidate string
+	switch {
+	case strings.HasPrefix(last, "#"):
+		candidate = last[1:]
+	case strings.HasPrefix(last, "@"):
+		candidate = last[1:]
+	default:
 		return text, ""
 	}
-	candidate := last[1:]
 	if !known[candidate] {
 		return text, ""
 	}
@@ -408,7 +416,7 @@ func (s *Store) AssignTaskStory(date time.Time, index int, storyID string) error
 	if pi, _ := findStory(projects, storyID); pi < 0 {
 		return fmt.Errorf("story %q not found", storyID)
 	}
-	return s.retagTask(date, index, allIDs(projects), "@"+storyID)
+	return s.retagTask(date, index, allIDs(projects), "#"+storyID)
 }
 
 // AssignTaskProject tags the plan item at index (on date) with projectID,
@@ -422,7 +430,7 @@ func (s *Store) AssignTaskProject(date time.Time, index int, projectID string) e
 	if findProject(projects, projectID) < 0 {
 		return fmt.Errorf("project %q not found", projectID)
 	}
-	return s.retagTask(date, index, allIDs(projects), "@"+projectID)
+	return s.retagTask(date, index, allIDs(projects), "#"+projectID)
 }
 
 // AddTaggedTask appends a new todo to date's plan already tagged with storyID
@@ -443,7 +451,7 @@ func (s *Store) AddTaggedTask(date time.Time, text, storyID string) error {
 	if err != nil {
 		return err
 	}
-	tagged := text + " @" + storyID
+	tagged := text + " #" + storyID
 	if d.hasPlanItem(tagged) {
 		return nil
 	}

@@ -85,10 +85,16 @@ func (s *Store) RecurringTasks() ([]RecurringTask, error) {
 		return nil, err
 	}
 	known := allIDs(projects)
-	isStory := func(id string) bool { return known[id] }
+	// isStory is no longer passed to recur.Parse: ref tags now use "#slug" and
+	// are never @tokens, so @tokens are unambiguously recurrence keywords. The
+	// guard is kept here only during backward-compat parsing of legacy "@slug"
+	// refs that slip through before migration (story slugs not shaped like
+	// recurrence keywords still parse correctly without the guard; only slugs
+	// shaped like keywords, e.g. "mon", needed it, and those are migrated to
+	// "#mon" at startup before RecurringTasks is called).
 	out := make([]RecurringTask, 0, len(raws))
 	for _, raw := range raws {
-		clean, rec, ok := recur.Parse(raw, s.defReminderHour, s.defReminderMinute, isStory)
+		clean, rec, ok := recur.Parse(raw, s.defReminderHour, s.defReminderMinute, nil)
 		if !ok {
 			continue
 		}
@@ -102,12 +108,7 @@ func (s *Store) RecurringTasks() ([]RecurringTask, error) {
 // text carries no recurrence keyword.
 func (s *Store) AddRecurring(text string) error {
 	text = strings.TrimSpace(text)
-	projects, err := s.LoadProjects()
-	if err != nil {
-		return err
-	}
-	known := allIDs(projects)
-	clean, _, ok := recur.Parse(text, s.defReminderHour, s.defReminderMinute, func(id string) bool { return known[id] })
+	clean, _, ok := recur.Parse(text, s.defReminderHour, s.defReminderMinute, nil)
 	if !ok {
 		return fmt.Errorf("no recurrence tag in %q", text)
 	}

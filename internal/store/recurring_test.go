@@ -59,7 +59,7 @@ func TestStore_RecurringPreservesStoryTag(t *testing.T) {
 	sid, err := s.AddStory(pid, "Reconciliation")
 	require.NoError(t, err)
 
-	require.NoError(t, s.AddRecurring("Reconcile ledger @"+sid+" @weekly @fri @17:00"))
+	require.NoError(t, s.AddRecurring("Reconcile ledger #"+sid+" @weekly @fri @17:00"))
 	tasks, err := s.RecurringTasks()
 	require.NoError(t, err)
 	require.Len(t, tasks, 1)
@@ -79,13 +79,72 @@ func TestStore_RecurringStorySlugShapedLikeToken(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "mon", sid)
 
-	require.NoError(t, s.AddRecurring("Standup @"+sid+" @weekly @fri @9:00"))
+	require.NoError(t, s.AddRecurring("Standup #"+sid+" @weekly @fri @9:00"))
 	tasks, err := s.RecurringTasks()
 	require.NoError(t, err)
 	require.Len(t, tasks, 1)
 	assert.Equal(t, "Standup", tasks[0].Text)
 	assert.Equal(t, "mon", tasks[0].Story)
-	assert.Equal(t, time.Friday, tasks[0].Rec.Weekday) // @mon did not set the weekday
+	assert.Equal(t, time.Friday, tasks[0].Rec.Weekday) // #mon is a ref tag, not a weekday token
+}
+
+// TestStore_RecurringHashRefCoexistsWithRecurrence proves that a project named
+// "weekly" can be referenced as "#weekly" in a recurring task alongside the
+// "@weekly" recurrence keyword without ambiguity.
+func TestStore_RecurringHashRefCoexistsWithRecurrence(t *testing.T) {
+	t.Parallel()
+	s := New(t.TempDir())
+	pid, err := s.AddProject("Weekly review")
+	require.NoError(t, err)
+	// Force the slug to "weekly" by using a project whose slug would collide;
+	// instead, create the project file directly.
+	_ = pid
+	// Write projects.md with a project whose id is "weekly".
+	require.NoError(t, writeFile(s.ProjectsPath(),
+		"# Projects\n\n## Weekly review\nid: weekly\nstatus: open\n"))
+
+	// A recurring task that references the "weekly" project AND uses @weekly
+	// as the recurrence keyword. The "#weekly" ref must survive as a ref tag;
+	// "@weekly" must be consumed as the recurrence kind.
+	require.NoError(t, s.AddRecurring("Standup #weekly @weekly @mon @9:00"))
+
+	tasks, err := s.RecurringTasks()
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+	assert.Equal(t, "Standup", tasks[0].Text, "display text has ref tag stripped")
+	assert.Equal(t, "weekly", tasks[0].Story, "#weekly recognised as project ref")
+	assert.Equal(t, recur.Weekly, tasks[0].Rec.Kind, "@weekly consumed as recurrence kind")
+	assert.Equal(t, time.Monday, tasks[0].Rec.Weekday)
+}
+
+// TestStore_RecurringBackcompatLegacyAtSlug proves that a recurring template
+// stored in the old "@<storyID>" format (before migration) still parses
+// correctly via the backward-compat leg of splitStoryTag, as long as the story
+// slug is not shaped like a recurrence keyword (migration converts keyword-shaped
+// slugs at startup before RecurringTasks is ever called).
+func TestStore_RecurringBackcompatLegacyAtSlug(t *testing.T) {
+	t.Parallel()
+	s := New(t.TempDir())
+	pid, err := s.AddProject("Payments")
+	require.NoError(t, err)
+	sid, err := s.AddStory(pid, "Reconciliation")
+	require.NoError(t, err)
+	// "reconciliation" is not a recurrence keyword, so the legacy @sid form
+	// is left alone by recur.Parse and then picked up by splitStoryTag's
+	// backward-compat leg.
+	require.Equal(t, "reconciliation", sid)
+
+	// Simulate a pre-migration recurring.md by writing the raw file directly.
+	raw := "Reconcile ledger @" + sid + " @weekly @fri @17:00"
+	require.NoError(t, s.saveRecurringRaws([]string{raw}))
+
+	tasks, err := s.RecurringTasks()
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+	assert.Equal(t, "Reconcile ledger", tasks[0].Text, "display text has legacy @ ref stripped")
+	assert.Equal(t, sid, tasks[0].Story, "legacy @sid recognised via backward-compat leg")
+	assert.Equal(t, recur.Weekly, tasks[0].Rec.Kind)
+	assert.Equal(t, time.Friday, tasks[0].Rec.Weekday)
 }
 
 func TestStore_AddRecurringRejectsNonRecurring(t *testing.T) {

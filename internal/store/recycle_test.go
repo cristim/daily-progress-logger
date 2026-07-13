@@ -27,7 +27,7 @@ func TestStore_DeleteRestoreAndPurge(t *testing.T) {
 	bin, err := s.LoadRecycleBin()
 	require.NoError(t, err)
 	require.Len(t, bin, 1)
-	assert.Equal(t, "wire refunds @payments", bin[0].Item.Text, "tag and state preserved")
+	assert.Equal(t, "wire refunds #payments", bin[0].Item.Text, "tag and state preserved")
 	assert.Equal(t, StateDone, bin[0].Item.State)
 
 	// It appears in the tree's Recycled list (tag stripped for display).
@@ -41,7 +41,7 @@ func TestStore_DeleteRestoreAndPurge(t *testing.T) {
 	d, _, err = s.LoadDaily(tuesday)
 	require.NoError(t, err)
 	require.Len(t, d.Plan, 2)
-	assert.Equal(t, "wire refunds @payments", d.Plan[1].Text)
+	assert.Equal(t, "wire refunds #payments", d.Plan[1].Text)
 	assert.Equal(t, StateDone, d.Plan[1].State)
 	bin, err = s.LoadRecycleBin()
 	require.NoError(t, err)

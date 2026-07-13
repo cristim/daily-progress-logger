@@ -77,6 +77,32 @@ func TestParseStoryTagNotConsumed(t *testing.T) {
 	assert.Equal(t, Daily, rec.Kind)
 }
 
+// TestParseHashRefCoexistsWithRecurrence verifies that a "#<slug>" project ref
+// tag placed before recurrence @tokens is preserved verbatim in the clean text
+// while the @tokens are fully consumed. This is the post-migration case: @tokens
+// are unambiguously recurrence, and #tokens are unambiguously ref tags, so no
+// isStory guard is needed.
+func TestParseHashRefCoexistsWithRecurrence(t *testing.T) {
+	t.Parallel()
+	// A project literally named "weekly" is referenced as "#weekly"; the @weekly
+	// recurrence keyword must still be parsed correctly.
+	clean, rec, ok := Parse("Standup #weekly @weekly @mon @9:00", 9, 0, nil)
+	assert.True(t, ok)
+	assert.Equal(t, "Standup #weekly", clean, "#weekly preserved as-is in clean text")
+	assert.Equal(t, Weekly, rec.Kind, "@weekly consumed as recurrence kind")
+	assert.Equal(t, time.Monday, rec.Weekday)
+	assert.Equal(t, 9, rec.Hour)
+	assert.Equal(t, 0, rec.Minute)
+
+	// A project named "daily" alongside @daily recurrence; no collision.
+	clean, rec, ok = Parse("Morning notes #daily @daily @8:30", 9, 0, nil)
+	assert.True(t, ok)
+	assert.Equal(t, "Morning notes #daily", clean)
+	assert.Equal(t, Daily, rec.Kind)
+	assert.Equal(t, 8, rec.Hour)
+	assert.Equal(t, 30, rec.Minute)
+}
+
 func TestDailyOccurrences(t *testing.T) {
 	t.Parallel()
 	r := Recurrence{Kind: Daily, Hour: 9}

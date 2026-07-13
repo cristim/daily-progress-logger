@@ -134,12 +134,19 @@ func TestSplitStoryTag(t *testing.T) {
 	cases := []struct {
 		text, clean, slug string
 	}{
+		// Canonical # prefix.
+		{"Fix payment bug #payments", "Fix payment bug", "payments"},
+		{"#payments", "", "payments"},
+		{"Fix bug #payments  ", "Fix bug", "payments"}, // trailing space tolerated
+		{"#unknown", "#unknown", ""},                   // unknown id: left as plain text
+		// Legacy @ prefix (backward compat for files before migration).
 		{"Fix payment bug @payments", "Fix payment bug", "payments"},
+		{"@payments", "", "payments"},
+		{"Fix bug @payments  ", "Fix bug", "payments"},
+		// Non-ref tokens: unknown body means it stays as plain text.
 		{"ping @alice about it", "ping @alice about it", ""}, // not trailing
 		{"ping @alice", "ping @alice", ""},                   // unknown slug
 		{"no tag here", "no tag here", ""},
-		{"@payments", "", "payments"},
-		{"Fix bug @payments  ", "Fix bug", "payments"}, // trailing space tolerated
 	}
 	for _, c := range cases {
 		clean, slug := splitStoryTag(c.text, known)
@@ -160,13 +167,13 @@ func TestStore_AssignAndUnassignTaskStory(t *testing.T) {
 	require.NoError(t, s.AssignTaskStory(tuesday, 0, sid))
 	d, _, err := s.LoadDaily(tuesday)
 	require.NoError(t, err)
-	assert.Equal(t, "task a @payments", d.Plan[0].Text)
+	assert.Equal(t, "task a #payments", d.Plan[0].Text)
 
 	// Reassigning replaces the tag rather than stacking a second one.
 	require.NoError(t, s.AssignTaskStory(tuesday, 0, sid))
 	d, _, err = s.LoadDaily(tuesday)
 	require.NoError(t, err)
-	assert.Equal(t, "task a @payments", d.Plan[0].Text)
+	assert.Equal(t, "task a #payments", d.Plan[0].Text)
 
 	require.NoError(t, s.UnassignTaskStory(tuesday, 0))
 	d, _, err = s.LoadDaily(tuesday)
@@ -447,16 +454,39 @@ func TestStore_AssignTaskProject(t *testing.T) {
 	require.NoError(t, s.AssignTaskProject(tuesday, 0, pid))
 	d, _, err := s.LoadDaily(tuesday)
 	require.NoError(t, err)
-	assert.Equal(t, "task a @ship-v2", d.Plan[0].Text)
+	assert.Equal(t, "task a #ship-v2", d.Plan[0].Text)
 
 	// Reassigning replaces the tag.
 	require.NoError(t, s.AssignTaskProject(tuesday, 0, pid))
 	d, _, err = s.LoadDaily(tuesday)
 	require.NoError(t, err)
-	assert.Equal(t, "task a @ship-v2", d.Plan[0].Text)
+	assert.Equal(t, "task a #ship-v2", d.Plan[0].Text)
 
 	require.ErrorContains(t, s.AssignTaskProject(tuesday, 0, "nope"), "not found")
 	require.ErrorContains(t, s.AssignTaskProject(tuesday, 9, pid), "out of range")
+}
+
+// TestStore_AddTaggedTaskEmitsHash verifies that AddTaggedTask writes the
+// canonical "#<storyID>" suffix rather than the legacy "@<storyID>" form.
+func TestStore_AddTaggedTaskEmitsHash(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	pid, err := s.AddProject("Ship v2")
+	require.NoError(t, err)
+	sid, err := s.AddStory(pid, "Payments")
+	require.NoError(t, err)
+
+	require.NoError(t, s.AddTaggedTask(tuesday, "wire refunds", sid))
+	d, _, err := s.LoadDaily(tuesday)
+	require.NoError(t, err)
+	require.Len(t, d.Plan, 1)
+	assert.Equal(t, "wire refunds #payments", d.Plan[0].Text, "AddTaggedTask must use # prefix")
+
+	// Dedup: adding the same text again is a no-op.
+	require.NoError(t, s.AddTaggedTask(tuesday, "wire refunds", sid))
+	d, _, err = s.LoadDaily(tuesday)
+	require.NoError(t, err)
+	assert.Len(t, d.Plan, 1, "duplicate must not be added")
 }
 
 func TestSlugify(t *testing.T) {
