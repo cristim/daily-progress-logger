@@ -18,6 +18,76 @@ func date(s string) time.Time {
 	return t
 }
 
+func TestParseDoneBullet(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		line    string
+		want    string
+		wantErr string
+	}{
+		{name: "plain bullet", line: "- Helped Ana debug", want: "Helped Ana debug"},
+		{name: "todo marker stripped", line: "- [ ] Shift Invoice", want: "Shift Invoice"},
+		{name: "done lowercase stripped", line: "- [x] Shift Invoice", want: "Shift Invoice"},
+		{name: "done uppercase stripped", line: "- [X] Shift Invoice", want: "Shift Invoice"},
+		{name: "postponed marker stripped", line: "- [>] Shift Invoice", want: "Shift Invoice"},
+		{name: "extra whitespace after marker", line: "- [x]  Lots of spaces ", want: "Lots of spaces"},
+		{name: "not a bullet", line: "plain text", wantErr: "expected a bullet in Done section"},
+		{name: "empty bullet", line: "- ", wantErr: "empty Done bullet"},
+		{name: "empty after checkbox", line: "- [x] ", wantErr: "empty Done bullet"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseDoneBullet(tt.line)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestDoneBulletRoundTrip verifies that a Done bullet with a checkbox marker
+// is stripped on parse and rendered back as a plain bullet, so a parse+save
+// normalizes the file.
+func TestDoneBulletRoundTrip(t *testing.T) {
+	t.Parallel()
+	// A daily file where the user hand-copied a plan line into Done.
+	const raw = `---
+date: 2026-07-07
+morning_done: true
+evening_done: true
+---
+
+# Tuesday, 7 July 2026
+
+## Plan
+
+- [x] Shift Invoice
+
+## Done
+
+- [x] Shift Invoice
+- plain accomplishment
+`
+	d, err := parseDaily(raw)
+	require.NoError(t, err)
+	// Checkbox marker must be stripped; text stored as plain string.
+	assert.Equal(t, []string{"Shift Invoice", "plain accomplishment"}, d.Done)
+	// Rendering must emit exactly one plain Done bullet "- Shift Invoice" (the
+	// Plan section will also render "- [x] Shift Invoice", but the Done section
+	// must not add another one with the checkbox).
+	rendered := d.render()
+	assert.Equal(t, 1, strings.Count(rendered, "- [x] Shift Invoice\n"),
+		"Plan renders the checked item; Done section must not repeat it with a marker")
+	assert.Equal(t, 1, strings.Count(rendered, "- Shift Invoice\n"),
+		"Done section must render a plain bullet without checkbox")
+	assert.Contains(t, rendered, "- plain accomplishment\n")
+}
+
 func TestParseItemLine(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -254,6 +324,72 @@ func TestBacklogOps(t *testing.T) {
 	assert.Empty(t, b.NextWeek)
 	b.removeCurrent("a")
 	assert.Equal(t, []string{"b"}, b.Current)
+}
+
+// TestDoneByDayCrossDay verifies cross-day deduplication in DoneByDay.
+// An item completed on an earlier day must not appear again under a later day
+// even when it is checked in both daily files (carried over and re-completed).
+func TestDoneByDayCrossDay(t *testing.T) {
+	t.Parallel()
+
+	thursday := date("2026-07-09")
+	friday := date("2026-07-10")
+
+	t.Run("carried_over_checked_item_first_day_wins", func(t *testing.T) {
+		t.Parallel()
+		dailies := []*Daily{
+			{
+				Date: thursday,
+				Plan: []Item{{Text: "Deploy v2", State: StateDone}},
+			},
+			{
+				// Same item checked in Friday's file (carry-over completed again).
+				Date: friday,
+				Plan: []Item{{Text: "Deploy v2", State: StateDone}},
+			},
+		}
+		got := DoneByDay(dailies)
+		require.Len(t, got, 1, "item appearing on two days must produce exactly one DayDone entry")
+		assert.Equal(t, thursday, got[0].Date, "first occurrence (Thursday) must win")
+		assert.Equal(t, []string{"Deploy v2"}, got[0].Items)
+	})
+
+	t.Run("done_bullet_day2_deduped_against_checked_item_day1", func(t *testing.T) {
+		t.Parallel()
+		dailies := []*Daily{
+			{
+				Date: thursday,
+				Plan: []Item{{Text: "Deploy v2", State: StateDone}},
+			},
+			{
+				// User typed the same accomplishment into the Friday Done section.
+				Date: friday,
+				Done: []string{"Deploy v2"},
+			},
+		}
+		got := DoneByDay(dailies)
+		require.Len(t, got, 1, "Done bullet on day 2 matching checked item on day 1 must be deduplicated")
+		assert.Equal(t, thursday, got[0].Date)
+		assert.Equal(t, []string{"Deploy v2"}, got[0].Items)
+	})
+
+	t.Run("unrelated_items_both_kept", func(t *testing.T) {
+		t.Parallel()
+		dailies := []*Daily{
+			{
+				Date: thursday,
+				Plan: []Item{{Text: "Deploy v2", State: StateDone}},
+			},
+			{
+				Date: friday,
+				Plan: []Item{{Text: "Write post-mortem", State: StateDone}},
+			},
+		}
+		got := DoneByDay(dailies)
+		require.Len(t, got, 2, "unrelated items on different days must both appear")
+		assert.Equal(t, thursday, got[0].Date)
+		assert.Equal(t, friday, got[1].Date)
+	})
 }
 
 func TestWeeklyRenderAndMeta(t *testing.T) {
