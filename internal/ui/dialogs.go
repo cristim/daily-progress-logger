@@ -302,7 +302,10 @@ func (a *App) buildEveningDialog(today time.Time, manual bool) (*dialogSpec, err
 
 	dialog := qt.NewQDialog(a.window.win.QWidget)
 	dialog.SetWindowTitle("Evening Check-in")
-	dialog.SetMinimumWidth(460)
+	// 560px accommodates the five text-caption buttons (Done | Not done | Next
+	// day | Next week | Backlog) alongside a word-wrapped item label without
+	// clipping.
+	dialog.SetMinimumWidth(560)
 	layout := qt.NewQVBoxLayout(dialog.QWidget)
 
 	layout.AddWidget(qt.NewQLabel3("<b>How did today go?</b>").QWidget)

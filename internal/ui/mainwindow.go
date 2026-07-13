@@ -39,7 +39,11 @@ func newMainWindow(app *App) *mainWindow {
 	w := &mainWindow{app: app, expanded: map[string]bool{}, viewedDate: midnight(time.Now())}
 	w.win = qt.NewQMainWindow2()
 	w.win.SetWindowTitle("Daily Progress Logger")
-	w.win.Resize(620, 620)
+	// 780px wide gives the task-row caption cluster (Done | Not done | Next day |
+	// Next week | Backlog | Delete) room to render without clipping when revealed
+	// on hover, at the cost of a slightly wider default footprint.
+	w.win.SetMinimumWidth(780)
+	w.win.Resize(780, 620)
 
 	central := qt.NewQWidget2()
 	layout := qt.NewQVBoxLayout(central)

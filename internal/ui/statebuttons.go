@@ -81,8 +81,8 @@ type stateSelector struct {
 // neither button checked (postpone is no longer a selectable state here).
 func newStateSelector(initial store.ItemState) *stateSelector {
 	cs := newChoiceSelector([]choice{
-		{id: int(store.StateDone), icon: qt.QStyle__SP_DialogApplyButton, tooltip: "Done"},
-		{id: int(store.StateTodo), icon: qt.QStyle__SP_DialogCancelButton, tooltip: "Not done (keep as an open todo)"},
+		{id: int(store.StateDone), label: "Done", tooltip: "Done"},
+		{id: int(store.StateTodo), label: "Not done", tooltip: "Not done (keep as an open todo)"},
 	}, int(initial))
 	return &stateSelector{widget: cs.widget, group: cs.group}
 }
@@ -90,21 +90,22 @@ func newStateSelector(initial store.ItemState) *stateSelector {
 // eveningChoices are the per-item outcome buttons in the evening check-in:
 // Done, Not done, and the three defer targets. The button ids are
 // store.EveningAction values so the checked group id maps straight back to an
-// action. The next-day/next-week/backlog glyphs match the main window's row
-// buttons for consistency.
+// action. Caption wording matches the main window's task-row action buttons for
+// consistency ("Next day", "Next week", "Backlog").
 func eveningChoices() []choice {
 	return []choice{
-		{id: int(store.EveningActionDone), icon: qt.QStyle__SP_DialogApplyButton, tooltip: "Done"},
-		{id: int(store.EveningActionTodo), icon: qt.QStyle__SP_DialogCancelButton, tooltip: "Not done (keep as an open todo)"},
-		{id: int(store.EveningActionNextDay), customIcon: postponeIcon(), tooltip: "Postpone to the next day"},
-		{id: int(store.EveningActionNextWeek), icon: qt.QStyle__SP_ArrowUp, tooltip: "Postpone to next week"},
-		{id: int(store.EveningActionBacklog), customIcon: backlogIcon(), tooltip: "Move to the cross-week backlog"},
+		{id: int(store.EveningActionDone), label: "Done", tooltip: "Done"},
+		{id: int(store.EveningActionTodo), label: "Not done", tooltip: "Not done (keep as an open todo)"},
+		{id: int(store.EveningActionNextDay), label: "Next day", tooltip: "Postpone to the next day"},
+		{id: int(store.EveningActionNextWeek), label: "Next week", tooltip: "Postpone to next week"},
+		{id: int(store.EveningActionBacklog), label: "Backlog", tooltip: "Move to the cross-week backlog"},
 	}
 }
 
 // postponeIcon draws a right-pointing chevron in a visible mid-gray on a
 // 16x16 transparent pixmap. SP_ArrowForward is nearly invisible as an
 // unchecked button in dark mode; this custom glyph is always legible.
+// Used by the backlog dialog's "Move to next week" button.
 func postponeIcon() *qt.QIcon {
 	const size = 16
 	pixmap := qt.NewQPixmap2(size, size)
@@ -117,25 +118,6 @@ func postponeIcon() *qt.QIcon {
 	// Right-pointing chevron: two lines meeting at the right tip.
 	painter.DrawLine2(3, 4, 12, 8)
 	painter.DrawLine2(3, 12, 12, 8)
-	painter.End()
-	return qt.NewQIcon2(pixmap)
-}
-
-// backlogIcon draws a small three-line "list" glyph for the cross-week backlog,
-// in the same mid-gray as postponeIcon so unchecked buttons stay legible in
-// dark mode and the glyph reads distinctly from the next-day/next-week arrows.
-func backlogIcon() *qt.QIcon {
-	const size = 16
-	pixmap := qt.NewQPixmap2(size, size)
-	pixmap.FillWithFillColor(qt.NewQColor11(0, 0, 0, 0))
-	painter := qt.NewQPainter2(pixmap.QPaintDevice)
-	painter.SetRenderHint(qt.QPainter__Antialiasing)
-	pen := qt.NewQPen3(qt.NewQColor3(140, 140, 140))
-	pen.SetWidth(2)
-	painter.SetPenWithPen(pen)
-	painter.DrawLine2(3, 4, 13, 4)
-	painter.DrawLine2(3, 8, 13, 8)
-	painter.DrawLine2(3, 12, 13, 12)
 	painter.End()
 	return qt.NewQIcon2(pixmap)
 }

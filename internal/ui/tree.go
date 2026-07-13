@@ -257,20 +257,24 @@ func (w *mainWindow) taskRow(task store.TreeTask) *qt.QWidget {
 		})
 	})
 
-	ndBtn := w.taskActionButtonTool(postponeIcon(), "Postpone to the next day", date, text,
-		w.app.store.PostponeToNextDay)
-	nwBtn := w.taskActionButtonTool(standardIcon(qt.QStyle__SP_ArrowUp), "Postpone to next week", date, text,
-		w.app.store.PostponePlanItem)
-	blBtn := w.taskActionButtonTool(backlogIcon(), "Move to the cross-week backlog", date, text,
-		func(d time.Time, idx int) error {
+	ndBtn := w.textButtonTool("Next day", "Postpone to the next day", func() {
+		w.runTaskAction(date, text, w.app.store.PostponeToNextDay)
+	})
+	nwBtn := w.textButtonTool("Next week", "Postpone to next week", func() {
+		w.runTaskAction(date, text, w.app.store.PostponePlanItem)
+	})
+	blBtn := w.textButtonTool("Backlog", "Move to the cross-week backlog", func() {
+		w.runTaskAction(date, text, func(d time.Time, idx int) error {
 			if err := w.app.store.MoveToBacklog(d, idx); err != nil {
 				return err
 			}
 			w.app.notifyBacklogMove(text)
 			return nil
 		})
-	delBtn := w.taskActionButtonTool(standardIcon(qt.QStyle__SP_TrashIcon),
-		"Delete (moves to the recycle bin)", date, text, w.app.store.DeleteTask)
+	})
+	delBtn := w.textButtonTool("Delete", "Delete (moves to the recycle bin)", func() {
+		w.runTaskAction(date, text, w.app.store.DeleteTask)
+	})
 
 	controls, ctrlLayout := newControlsContainer()
 	ctrlLayout.AddWidget(selector.widget)
@@ -343,19 +347,6 @@ func (w *mainWindow) textButtonTool(text, tip string, handler func()) *qt.QToolB
 	btn.SetToolTip(tip)
 	btn.SetAutoRaise(true)
 	btn.OnClicked(handler)
-	return btn
-}
-
-// taskActionButtonTool makes an icon button that resolves the task freshly (by
-// day + text) and applies action, returning the QToolButton for focus wiring.
-func (w *mainWindow) taskActionButtonTool(icon *qt.QIcon, tip string, date time.Time, text string, action taskFunc) *qt.QToolButton {
-	btn := qt.NewQToolButton2()
-	btn.SetIcon(icon)
-	btn.SetToolButtonStyle(qt.ToolButtonIconOnly)
-	btn.SetToolTip(tip)
-	btn.SetAccessibleName(tip)
-	btn.SetAutoRaise(true)
-	btn.OnClicked(func() { w.runTaskAction(date, text, action) })
 	return btn
 }
 

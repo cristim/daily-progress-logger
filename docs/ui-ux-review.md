@@ -741,6 +741,37 @@ project were named "daily" the two would be indistinguishable.
   affected files to `.pre-hashtag-backup/` once; idempotent.
 **Status:** implemented (2026-07-13, branch feat/hash-tag-syntax)
 
+### 47. Task-row action buttons (next-day/next-week/backlog/delete) are icon-only
+**Severity:** low
+**Problem:** The four per-item action buttons in main-window task rows used
+custom-drawn or platform icons with no visible label. Users had to hover over
+each icon to read its tooltip before discovering the action. The icons were also
+visually inconsistent with the rest of the row controls, which already used text.
+**Fix:** Replaced the four `taskActionButtonTool` icon buttons with
+`textButtonTool` calls carrying captions "Next day", "Next week", "Backlog",
+"Delete" (wording matches the evening dialog for consistency). The
+`taskActionButtonTool` helper and the `postponeIcon`/`backlogIcon` drawing
+functions are removed as they are now unused. The main window default and minimum
+width is bumped from 620 px to 780 px so the revealed six-button cluster (Done |
+Not done | Next day | Next week | Backlog | Delete) renders without clipping.
+**Status:** implemented (2026-07-13, branch feat/caption-buttons)
+
+### 48. Per-item state and evening check-in buttons are icon-only
+**Severity:** low
+**Problem:** The Done/Not-done `stateSelector` (used on task rows and in the
+weekly-plan dialog) and all five evening check-in outcome buttons
+(`eveningChoices`) used platform or custom icons with no text label. Only the
+week-review dialog had already been converted to text captions. The inconsistency
+made the evening dialog harder to use quickly (five cryptic icons vs. clear
+captions on the review dialog).
+**Fix:** Added `label:` fields to every `choice` in `newStateSelector` ("Done",
+"Not done") and `eveningChoices` ("Done", "Not done", "Next day", "Next week",
+"Backlog"), removed the icon/customIcon fields. The `newChoiceSelector` switch
+already supports text-caption mode via the `c.label != ""` branch introduced for
+the week-review dialog; no new rendering logic is needed. Evening dialog minimum
+width bumped from 460 px to 560 px to avoid clipping the five-caption cluster.
+**Status:** implemented (2026-07-13, branch feat/caption-buttons)
+
 ## Other notes
 
 - **[wontfix] Dock icon visibility:** hiding the Dock icon (LSUIElement) is
