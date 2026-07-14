@@ -267,12 +267,21 @@ func (s *Store) MaterializeRecurring(date time.Time) (added []RecurringTask, err
 }
 
 // materializeOne adds t's occurrence to date's plan, keeping its project tag
-// when the project still exists and otherwise falling back to an untagged
-// item so the occurrence still lands somewhere.
+// when the project still exists and otherwise falling back to an untagged item
+// so the occurrence still lands somewhere. Only ErrProjectNotFound triggers the
+// fallback; all other errors (I/O failures, encoding errors) are returned to
+// the caller so they are not silently swallowed by a blind second write attempt.
 func (s *Store) materializeOne(date time.Time, t RecurringTask) error {
 	if t.Project != "" {
-		if err := s.AddTaggedTask(date, t.Text, t.Project); err == nil {
-			return nil
+		err := s.AddTaggedTask(date, t.Text, t.Project)
+		switch {
+		case err == nil:
+			return nil // tagged write succeeded
+		case errors.Is(err, ErrProjectNotFound):
+			// Project was deleted or renamed since the template was saved:
+			// fall through to add an untagged item so the occurrence is not lost.
+		default:
+			return err // I/O or other real error: propagate it
 		}
 	}
 	return s.AddPlanItem(date, t.Text)

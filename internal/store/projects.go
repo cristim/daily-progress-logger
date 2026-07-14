@@ -340,8 +340,15 @@ func (s *Store) UnassignTaskProject(date time.Time, index int) error {
 	return s.retagTask(date, index, allIDs(projects), "")
 }
 
+// ErrProjectNotFound is returned by AddTaggedTask when projectID does not
+// match any project in the store. Callers can test with errors.Is to
+// distinguish a missing project (safe to fall back to untagged) from genuine
+// I/O or other errors (which must be propagated).
+var ErrProjectNotFound = errors.New("project not found")
+
 // AddTaggedTask appends a new depth-0 todo to date's plan already tagged with
 // projectID (used when adding a task directly under a project in the tree).
+// Returns an error wrapping ErrProjectNotFound when projectID is unknown.
 func (s *Store) AddTaggedTask(date time.Time, text, projectID string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -352,7 +359,7 @@ func (s *Store) AddTaggedTask(date time.Time, text, projectID string) error {
 		return err
 	}
 	if findProject(projects, projectID) < 0 {
-		return fmt.Errorf("project %q not found", projectID)
+		return fmt.Errorf("project %q: %w", projectID, ErrProjectNotFound)
 	}
 	d, err := s.loadOrNewDaily(date)
 	if err != nil {

@@ -240,6 +240,49 @@ func TestStore_MaterializeRecurring_ProjectTaggedAndUnfiled(t *testing.T) {
 	assert.Equal(t, "Vitamins", tree.Unfiled[0].Text)
 }
 
+// TestStore_MaterializeRecurring_DeletedProjectFallsBack verifies M6: when the
+// project referenced by a recurring template is deleted between RecurringTasks
+// and the actual write (simulating an external edit race), materializeOne falls
+// back to an untagged AddPlanItem rather than returning an error and dropping
+// the occurrence.
+//
+// To reproduce the race we call materializeOne directly with a RecurringTask
+// that names a project not (or no longer) present in projects.md.
+func TestStore_MaterializeRecurring_DeletedProjectFallsBack(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	today := midnight(time.Now())
+
+	// Build a RecurringTask that references a project not in the store.
+	// This mirrors the state after an external edit deletes the project between
+	// RecurringTasks() (which would have set t.Project) and the write.
+	ghostTask := RecurringTask{
+		Text:    "Reconcile ledger",
+		Project: "payments", // project does not exist in this store
+	}
+	err := s.materializeOne(today, ghostTask)
+	require.NoError(t, err, "ErrProjectNotFound must trigger fallback, not surface as error")
+
+	d, exists, errLoad := s.LoadDaily(today)
+	require.NoError(t, errLoad)
+	require.True(t, exists)
+	require.Len(t, d.Plan, 1)
+	assert.Equal(t, "Reconcile ledger", d.Plan[0].Text,
+		"fallback item must have no project tag")
+}
+
+// TestStore_AddTaggedTask_UnknownProjectReturnsTypedError verifies M6: that
+// AddTaggedTask wraps ErrProjectNotFound so callers can errors.Is-test it.
+func TestStore_AddTaggedTask_UnknownProjectReturnsTypedError(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	today := midnight(time.Now())
+	err := s.AddTaggedTask(today, "Task", "nonexistent-project")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrProjectNotFound,
+		"AddTaggedTask with unknown project must wrap ErrProjectNotFound")
+}
+
 func TestStore_RecurringDuePersistsAcrossReload(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
