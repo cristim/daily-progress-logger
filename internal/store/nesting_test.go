@@ -21,7 +21,7 @@ func TestStore_AddSubtask(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, d.Plan, 3)
 	assert.Equal(t, []Item{
-		{Text: "Task A @ship-v2", State: StateTodo, Depth: 0},
+		{Text: "Task A #ship-v2", State: StateTodo, Depth: 0},
 		{Text: "S1", State: StateTodo, Depth: 1},
 		{Text: "S2", State: StateTodo, Depth: 1},
 	}, d.Plan)
@@ -48,7 +48,7 @@ func TestStore_MakeSubtask(t *testing.T) {
 	d, _, err := s.LoadDaily(tuesday)
 	require.NoError(t, err)
 	assert.Equal(t, []Item{
-		{Text: "Task A @" + pidA, State: StateTodo, Depth: 0},
+		{Text: "Task A #" + pidA, State: StateTodo, Depth: 0},
 		{Text: "Task B", State: StateTodo, Depth: 1}, // own project tag stripped
 	}, d.Plan)
 }
@@ -68,7 +68,7 @@ func TestStore_MakeSubtaskMovesWholeSubtreeAndShiftsDepth(t *testing.T) {
 	d, _, err := s.LoadDaily(tuesday)
 	require.NoError(t, err)
 	require.Len(t, d.Plan, 4)
-	require.Equal(t, "Task B @"+pidB, d.Plan[3].Text, "sanity: Task B sits last, untouched so far")
+	require.Equal(t, "Task B #"+pidB, d.Plan[3].Text, "sanity: Task B sits last, untouched so far")
 
 	// Make Task A (whose subtree is itself + S1 + S2) a subtask of Task B.
 	require.NoError(t, s.MakeSubtask(tuesday, 0, 3))
@@ -76,7 +76,7 @@ func TestStore_MakeSubtaskMovesWholeSubtreeAndShiftsDepth(t *testing.T) {
 	d, _, err = s.LoadDaily(tuesday)
 	require.NoError(t, err)
 	assert.Equal(t, []Item{
-		{Text: "Task B @" + pidB, State: StateTodo, Depth: 0},
+		{Text: "Task B #" + pidB, State: StateTodo, Depth: 0},
 		{Text: "Task A", State: StateTodo, Depth: 1}, // tag stripped, whole subtree shifted +1
 		{Text: "S1", State: StateTodo, Depth: 2},
 		{Text: "S2", State: StateTodo, Depth: 3},
@@ -113,8 +113,8 @@ func TestStore_MoveTaskToProject(t *testing.T) {
 	d, _, err := s.LoadDaily(tuesday)
 	require.NoError(t, err)
 	assert.Equal(t, []Item{
-		{Text: "Task A @" + pidA, State: StateTodo, Depth: 0}, // untouched
-		{Text: "S1 @" + pidB, State: StateTodo, Depth: 0},     // moved to the end, tagged, depth reset
+		{Text: "Task A #" + pidA, State: StateTodo, Depth: 0}, // untouched
+		{Text: "S1 #" + pidB, State: StateTodo, Depth: 0},     // moved to the end, tagged, depth reset
 	}, d.Plan)
 
 	// Empty projectID clears the tag (Unfiled) rather than removing the item.

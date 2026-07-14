@@ -10,9 +10,9 @@ import (
 
 // seedParentChildDay builds a day whose plan is:
 //
-//	Alpha @proja   (depth 0)
+//	Alpha #proja   (depth 0)
 //	  Beta         (depth 1, subtask of Alpha)
-//	Gamma @projc   (depth 0)
+//	Gamma #projc   (depth 0)
 func seedParentChildDay(t *testing.T) (s *Store, day time.Time, projA, projC string) {
 	t.Helper()
 	s, err := New(t.TempDir())
@@ -49,7 +49,7 @@ func TestDeleteTaskRemovesWholeSubtree(t *testing.T) {
 
 	plan := planOf(t, s, day)
 	require.Len(t, plan, 1, "only Gamma remains; Beta must not be orphaned or reparented")
-	assert.Equal(t, "Gamma @"+projC, plan[0].Text)
+	assert.Equal(t, "Gamma #"+projC, plan[0].Text)
 	assert.Equal(t, 0, plan[0].Depth)
 
 	bin, err := s.LoadRecycleBin()
@@ -67,11 +67,11 @@ func TestPostponeToNextDayCarriesSubtree(t *testing.T) {
 
 	today := planOf(t, s, day)
 	require.Len(t, today, 1, "Beta must not be left behind on today")
-	assert.Equal(t, "Gamma @"+projC, today[0].Text)
+	assert.Equal(t, "Gamma #"+projC, today[0].Text)
 
 	tomorrow := planOf(t, s, day.AddDate(0, 0, 1))
 	require.Len(t, tomorrow, 2, "Alpha and its nested Beta both carried over")
-	assert.Equal(t, "Alpha @"+projA, tomorrow[0].Text)
+	assert.Equal(t, "Alpha #"+projA, tomorrow[0].Text)
 	assert.Equal(t, StateTodo, tomorrow[0].State, "parent re-planned as todo")
 	assert.Equal(t, 0, tomorrow[0].Depth)
 	assert.Equal(t, "Beta", tomorrow[1].Text)
@@ -94,8 +94,8 @@ func TestReorderTaskSiblingsWithinProject(t *testing.T) {
 
 	plan := planOf(t, s, day)
 	require.Len(t, plan, 2)
-	assert.Equal(t, "Beta @"+proj, plan[0].Text)
-	assert.Equal(t, "Alpha @"+proj, plan[1].Text)
+	assert.Equal(t, "Beta #"+proj, plan[0].Text)
+	assert.Equal(t, "Alpha #"+proj, plan[1].Text)
 	assert.Equal(t, 0, plan[0].Depth)
 	assert.Equal(t, 0, plan[1].Depth)
 }
@@ -121,9 +121,9 @@ func TestReorderTaskBetweenSubtasksBecomesSiblingAtDepth(t *testing.T) {
 
 	plan := planOf(t, s, day)
 	require.Len(t, plan, 4)
-	assert.Equal(t, "X @"+projA, plan[0].Text)
+	assert.Equal(t, "X #"+projA, plan[0].Text)
 	assert.Equal(t, "C1", plan[1].Text)
-	assert.Equal(t, "Y", plan[2].Text, "Y's own @projB tag is stripped; it now inherits X")
+	assert.Equal(t, "Y", plan[2].Text, "Y's own #projB tag is stripped; it now inherits X")
 	assert.Equal(t, 1, plan[2].Depth, "Y adopts C1's depth, becoming X's child")
 	assert.Equal(t, "C2", plan[3].Text)
 }
@@ -146,8 +146,8 @@ func TestReorderTaskCrossProjectRetags(t *testing.T) {
 
 	plan := planOf(t, s, day)
 	require.Len(t, plan, 2)
-	assert.Equal(t, "Mango @"+projB, plan[0].Text)
-	assert.Equal(t, "Zulu @"+projB, plan[1].Text, "Zulu is retagged to its new sibling's project")
+	assert.Equal(t, "Mango #"+projB, plan[0].Text)
+	assert.Equal(t, "Zulu #"+projB, plan[1].Text, "Zulu is retagged to its new sibling's project")
 }
 
 func TestReorderTaskCycleGuardIsNoOp(t *testing.T) {
@@ -160,7 +160,7 @@ func TestReorderTaskCycleGuardIsNoOp(t *testing.T) {
 
 	after := planOf(t, s, day)
 	assert.Equal(t, before, after, "the plan is unchanged by either no-op request")
-	assert.Equal(t, "Alpha @"+projA, after[0].Text)
+	assert.Equal(t, "Alpha #"+projA, after[0].Text)
 }
 
 func TestReorderTaskOutOfRange(t *testing.T) {
@@ -177,7 +177,7 @@ func TestMoveToBacklogRemovesWholeSubtree(t *testing.T) {
 
 	plan := planOf(t, s, day)
 	require.Len(t, plan, 1, "Beta must not be orphaned on the plan")
-	assert.Equal(t, "Gamma @"+projC, plan[0].Text)
+	assert.Equal(t, "Gamma #"+projC, plan[0].Text)
 
 	backlog, err := s.LoadBacklog()
 	require.NoError(t, err)

@@ -167,7 +167,7 @@ func TestStore_EditTaskTextPreservesTagAndDepth(t *testing.T) {
 
 	require.NoError(t, s.EditTaskText(day, 0, "  Alpha renamed  "))
 	plan := planOf(t, s, day)
-	assert.Equal(t, "Alpha renamed @"+projA, plan[0].Text, "tagged top-level edit keeps its @project tag")
+	assert.Equal(t, "Alpha renamed #"+projA, plan[0].Text, "tagged top-level edit keeps its #project tag")
 	assert.Equal(t, 0, plan[0].Depth)
 
 	require.NoError(t, s.EditTaskText(day, 1, "Beta renamed"))
@@ -181,7 +181,7 @@ func TestStore_EditTaskTextBlankIsNoOp(t *testing.T) {
 	s, day, projA, _ := seedParentChildDay(t)
 	require.NoError(t, s.EditTaskText(day, 0, "   "))
 	plan := planOf(t, s, day)
-	assert.Equal(t, "Alpha @"+projA, plan[0].Text, "a blank newText leaves the item unchanged")
+	assert.Equal(t, "Alpha #"+projA, plan[0].Text, "a blank newText leaves the item unchanged")
 }
 
 func TestStore_EditTaskTextOutOfRange(t *testing.T) {

@@ -480,7 +480,7 @@ func (s *Store) EditTaskText(date time.Time, index int, newText string) error {
 	}
 	_, tag := splitProjectTag(d.Plan[index].Text, known)
 	if tag != "" {
-		newText = strings.TrimSpace(newText + " @" + tag)
+		newText = strings.TrimSpace(newText + " #" + tag)
 	}
 	d.Plan[index].Text = newText
 	return s.SaveDaily(d)

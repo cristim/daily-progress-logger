@@ -106,12 +106,18 @@ func TestSplitProjectTag(t *testing.T) {
 	cases := []struct {
 		text, clean, slug string
 	}{
+		// Canonical # prefix.
+		{"Fix payment bug #payments", "Fix payment bug", "payments"},
+		{"#payments", "", "payments"},
+		{"Fix bug #payments  ", "Fix bug", "payments"}, // trailing space tolerated
+		// Legacy @ prefix (backward compat).
 		{"Fix payment bug @payments", "Fix payment bug", "payments"},
+		{"@payments", "", "payments"},
+		// Non-project tokens must be left untouched.
 		{"ping @alice about it", "ping @alice about it", ""}, // not trailing
 		{"ping @alice", "ping @alice", ""},                   // unknown slug
+		{"ping #unknown", "ping #unknown", ""},               // unknown slug with #
 		{"no tag here", "no tag here", ""},
-		{"@payments", "", "payments"},
-		{"Fix bug @payments  ", "Fix bug", "payments"}, // trailing space tolerated
 	}
 	for _, c := range cases {
 		clean, slug := splitProjectTag(c.text, known)
@@ -130,13 +136,13 @@ func TestStore_AssignAndUnassignTaskProject(t *testing.T) {
 	require.NoError(t, s.AssignTaskProject(tuesday, 0, pid))
 	d, _, err := s.LoadDaily(tuesday)
 	require.NoError(t, err)
-	assert.Equal(t, "task a @payments", d.Plan[0].Text)
+	assert.Equal(t, "task a #payments", d.Plan[0].Text)
 
 	// Reassigning replaces the tag rather than stacking a second one.
 	require.NoError(t, s.AssignTaskProject(tuesday, 0, pid))
 	d, _, err = s.LoadDaily(tuesday)
 	require.NoError(t, err)
-	assert.Equal(t, "task a @payments", d.Plan[0].Text)
+	assert.Equal(t, "task a #payments", d.Plan[0].Text)
 
 	require.NoError(t, s.UnassignTaskProject(tuesday, 0))
 	d, _, err = s.LoadDaily(tuesday)
@@ -157,7 +163,7 @@ func TestStore_AddTaggedTask(t *testing.T) {
 	d, _, err := s.LoadDaily(tuesday)
 	require.NoError(t, err)
 	require.Len(t, d.Plan, 1)
-	assert.Equal(t, "wire refunds @payments", d.Plan[0].Text)
+	assert.Equal(t, "wire refunds #payments", d.Plan[0].Text)
 	assert.Equal(t, 0, d.Plan[0].Depth)
 
 	// Duplicate (already-tagged) text is a no-op, not a second entry.

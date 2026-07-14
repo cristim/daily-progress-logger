@@ -256,18 +256,27 @@ func (s *Store) SetProjectStatus(projectID string, status ItemStatus) error {
 	return s.SaveProjects(projects)
 }
 
-// splitProjectTag separates a trailing "@<slug>" project tag from a task's
-// text. The tag is recognised only when <slug> is a known project ID, so an
-// ordinary trailing "@mention" in the text is left untouched. Only depth-0
-// tasks carry a project tag; callers must not apply this to a subtask's text.
+// splitProjectTag separates a trailing "#<slug>" or legacy "@<slug>" project
+// tag from a task's text. "#" is the canonical prefix; "@" is accepted for
+// backward compatibility with files written before the @->## migration. The
+// tag is recognised only when <slug> is a known project ID, so an ordinary
+// trailing "#hashtag" or "@mention" whose body is not a known ID is left
+// untouched. Only the last token is examined (one trailing ref tag per task).
+// Only depth-0 tasks carry a project tag; callers must not apply this to a
+// subtask's text.
 func splitProjectTag(text string, known map[string]bool) (clean, slug string) {
 	trimmed := strings.TrimRight(text, " \t")
 	space := strings.LastIndexByte(trimmed, ' ')
 	last := trimmed[space+1:] // whole string when there is no space
-	if !strings.HasPrefix(last, "@") {
+	var candidate string
+	switch {
+	case strings.HasPrefix(last, "#"):
+		candidate = last[1:]
+	case strings.HasPrefix(last, "@"):
+		candidate = last[1:]
+	default:
 		return text, ""
 	}
-	candidate := last[1:]
 	if !known[candidate] {
 		return text, ""
 	}
@@ -288,7 +297,7 @@ func (s *Store) AssignTaskProject(date time.Time, index int, projectID string) e
 	if findProject(projects, projectID) < 0 {
 		return fmt.Errorf("project %q not found", projectID)
 	}
-	return s.retagTask(date, index, allIDs(projects), "@"+projectID)
+	return s.retagTask(date, index, allIDs(projects), "#"+projectID)
 }
 
 // UnassignTaskProject removes any project tag from the plan item at index.
@@ -318,7 +327,7 @@ func (s *Store) AddTaggedTask(date time.Time, text, projectID string) error {
 	if err != nil {
 		return err
 	}
-	tagged := text + " @" + projectID
+	tagged := text + " #" + projectID
 	if d.hasPlanItem(tagged) {
 		return nil
 	}

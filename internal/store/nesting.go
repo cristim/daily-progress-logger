@@ -115,7 +115,7 @@ func (s *Store) ReorderTask(date time.Time, srcIndex, refIndex int, below bool) 
 		clean, _ := splitProjectTag(extracted[0].Text, known)
 		_, refTag := splitProjectTag(refItem.Text, known)
 		if refTag != "" {
-			clean = strings.TrimSpace(clean + " @" + refTag)
+			clean = strings.TrimSpace(clean + " #" + refTag)
 		}
 		extracted[0].Text = clean
 	} else {
@@ -168,7 +168,7 @@ func (s *Store) MoveTaskToProject(date time.Time, index int, projectID string) e
 	}
 	clean, _ := splitProjectTag(extracted[0].Text, known)
 	if projectID != "" {
-		clean = strings.TrimSpace(clean + " @" + projectID)
+		clean = strings.TrimSpace(clean + " #" + projectID)
 	}
 	extracted[0].Text = clean
 
