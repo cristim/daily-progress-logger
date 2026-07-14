@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -264,4 +265,90 @@ func TestSync_ResolveKeepRemote(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "vA", readFile(t, dirA, "backlog.md"))
 	assert.Empty(t, conflictCopy(t, dirA))
+}
+
+// toctouDrive wraps a fakeDrive and injects a local file mutation during
+// List(), simulating a concurrent edit that happens between scanLocal and pull.
+type toctouDrive struct {
+	*fakeDrive
+	localDir   string
+	path       string // relative slash path to mutate
+	newContent []byte
+}
+
+func (f *toctouDrive) List(ctx context.Context) ([]drive.File, error) {
+	// Simulate the concurrent local edit after scanLocal but before pull.
+	if f.path != "" && f.newContent != nil {
+		full := filepath.Join(f.localDir, filepath.FromSlash(f.path))
+		_ = os.MkdirAll(filepath.Dir(full), 0o750)
+		_ = os.WriteFile(full, f.newContent, 0o600)
+	}
+	return f.fakeDrive.List(ctx)
+}
+
+// TestSync_LocalChangedAfterScanIsConflict verifies H2a: if a local file
+// changes between scanLocal and the actDownload write, it is reclassified
+// as a conflict (both versions kept) instead of being silently overwritten.
+func TestSync_LocalChangedAfterScanIsConflict(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fd := newFakeDrive()
+	dirA, dirB := t.TempDir(), t.TempDir()
+	a := New(dirA, fd, "laptop")
+
+	// Establish base "v0" on both devices.
+	writeFile(t, dirA, "backlog.md", "v0")
+	_, err := a.Run(ctx)
+	require.NoError(t, err)
+	b := New(dirB, fd, "desktop")
+	_, err = b.Run(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "v0", readFile(t, dirB, "backlog.md"))
+
+	// A pushes "vA"; remote is now vA.
+	writeFile(t, dirA, "backlog.md", "vA")
+	_, err = a.Run(ctx)
+	require.NoError(t, err)
+
+	// B's classifier sees: local="v0" (matches base), remote="vA" → actDownload.
+	// Inject a TOCTOU edit to "vB_local" via List() (after scan, before pull).
+	tfd := &toctouDrive{
+		fakeDrive:  fd,
+		localDir:   dirB,
+		path:       "backlog.md",
+		newContent: []byte("vB_local"),
+	}
+	bRacy := New(dirB, tfd, "desktop")
+	res, err := bRacy.Run(ctx)
+	require.NoError(t, err)
+	require.Len(t, res.Conflicts, 1, "TOCTOU edit must be reclassified as conflict, not overwrite")
+	assert.Equal(t, "vB_local", readFile(t, dirB, "backlog.md"),
+		"local TOCTOU edit must not be overwritten")
+	cc := conflictCopy(t, dirB)
+	require.NotEmpty(t, cc, "remote version must be saved as conflict copy")
+	assert.Equal(t, "vA", readFile(t, dirB, cc))
+}
+
+// TestSync_WriteLocalIsAtomic verifies H2b: writeLocal uses tmp+rename so no
+// partial file is left on disk, and the temp file (dotfile) is invisible to
+// subsequent scanLocal calls.
+func TestSync_WriteLocalIsAtomic(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	e := New(dir, nil, "test")
+
+	require.NoError(t, e.writeLocal("sub/file.md", []byte("hello")))
+	b, err := os.ReadFile(filepath.Join(dir, "sub/file.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "hello", string(b))
+
+	// No .synctmp leftovers.
+	var temps []string
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && strings.HasSuffix(d.Name(), ".synctmp") {
+			temps = append(temps, p)
+		}
+		return nil
+	})
+	assert.Empty(t, temps, "no .synctmp leftovers after writeLocal")
 }

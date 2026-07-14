@@ -126,7 +126,7 @@ func (e *Engine) Run(ctx context.Context) (Result, error) {
 
 	decisions, newState := classify(local, remote, state.Files)
 
-	rs := &runState{e: e, remote: remote, newState: newState}
+	rs := &runState{e: e, remote: remote, newState: newState, local: local}
 	if err := rs.pulls(ctx, decisions); err != nil { // read remote down first
 		return rs.res, err
 	}
@@ -153,6 +153,7 @@ type runState struct {
 	e        *Engine
 	remote   map[string]drive.File
 	newState map[string]fileState
+	local    map[string]string // md5s captured by scanLocal; used for TOCTOU check in pull
 	res      Result
 }
 
@@ -160,6 +161,20 @@ func (r *runState) pulls(ctx context.Context, decisions []decision) error {
 	for _, d := range decisions {
 		switch d.kind {
 		case actDownload:
+			// TOCTOU guard: re-hash the local file immediately before overwriting.
+			// If it changed since scanLocal ran (e.g. the user or an editor saved
+			// it), the classifier's actDownload decision is stale — keep both
+			// versions as a conflict instead of silently clobbering the new edit.
+			if cur, err := r.e.readLocal(d.path); err == nil {
+				if md5hex(cur) != r.local[d.path] {
+					c, cerr := r.e.resolveConflictCopy(ctx, d.path, r.remote[d.path], r.newState)
+					if cerr != nil {
+						return cerr
+					}
+					r.res.Conflicts = append(r.res.Conflicts, c)
+					continue
+				}
+			}
 			if err := r.e.pull(ctx, d.path, r.remote[d.path], r.newState); err != nil {
 				return err
 			}
@@ -384,10 +399,22 @@ func (e *Engine) readLocal(path string) ([]byte, error) {
 
 func (e *Engine) writeLocal(path string, content []byte) error {
 	full := e.abs(path)
-	if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
+	dir := filepath.Dir(full)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
-	return os.WriteFile(full, content, 0o600)
+	// Dot-prefixed temp name: scanLocal already skips dotfiles, so this temp
+	// never appears as a sync candidate, and it never collides with the store's
+	// own *.md.tmp temporaries (H4).
+	tmp := filepath.Join(dir, "."+filepath.Base(full)+".synctmp")
+	if err := os.WriteFile(tmp, content, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, full); err != nil {
+		_ = os.Remove(tmp) // best-effort cleanup on rename failure
+		return err
+	}
+	return nil
 }
 
 func (e *Engine) removeLocal(path string) error {
