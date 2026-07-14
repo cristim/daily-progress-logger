@@ -241,7 +241,7 @@ func (w *mainWindow) taskRow(task store.TreeTask) *qt.QWidget {
 			if checked {
 				state = store.StateDone
 			}
-			w.runTaskAction(date, index, func(d time.Time, idx int) error {
+			w.runTaskAction(date, index, text, func(d time.Time, idx int) error {
 				return w.app.store.SetPlanItemState(d, idx, state)
 			})
 		})
@@ -258,13 +258,13 @@ func (w *mainWindow) taskRow(task store.TreeTask) *qt.QWidget {
 	// Hover-revealed per-row actions (also in the right-click menu / shortcuts).
 	sub := w.textButton("+ Sub", "Add a subtask", func() { w.addSubtask(date, index) })
 	nextDay := w.textButton("Next day", "Postpone to the next day", func() {
-		w.runTaskAction(date, index, w.app.store.PostponeToNextDay)
+		w.runTaskAction(date, index, text, w.app.store.PostponeToNextDay)
 	})
 	nextWeek := w.textButton("Next week", "Postpone to next week", func() {
-		w.runTaskAction(date, index, w.app.store.PostponePlanItem)
+		w.runTaskAction(date, index, text, w.app.store.PostponePlanItem)
 	})
 	backlog := w.textButton("Backlog", "Move to the cross-week backlog", func() {
-		w.runTaskAction(date, index, func(d time.Time, idx int) error {
+		w.runTaskAction(date, index, text, func(d time.Time, idx int) error {
 			if err := w.app.store.MoveToBacklog(d, idx); err != nil {
 				return err
 			}
@@ -273,7 +273,7 @@ func (w *mainWindow) taskRow(task store.TreeTask) *qt.QWidget {
 		})
 	})
 	del := w.textButton("Delete", "Delete (moves to the recycle bin)", func() {
-		w.runTaskAction(date, index, w.app.store.DeleteTask)
+		w.runTaskAction(date, index, text, w.app.store.DeleteTask)
 	})
 	for _, b := range []*qt.QWidget{sub, nextDay, nextWeek, backlog, del} {
 		layout.AddWidget(b)
@@ -525,13 +525,13 @@ func (w *mainWindow) showTaskContextMenu(item *qt.QTreeWidgetItem, key string, g
 	addMenuAction(menu, "Edit…", func() { w.editTask(date, index, text) })
 	addMenuAction(menu, "Add subtask…", func() { w.addSubtask(date, index) })
 	addMenuAction(menu, "Postpone to next day", func() {
-		w.runTaskAction(date, index, w.app.store.PostponeToNextDay)
+		w.runTaskAction(date, index, text, w.app.store.PostponeToNextDay)
 	})
 	addMenuAction(menu, "Postpone to next week", func() {
-		w.runTaskAction(date, index, w.app.store.PostponePlanItem)
+		w.runTaskAction(date, index, text, w.app.store.PostponePlanItem)
 	})
 	addMenuAction(menu, "Move to backlog", func() {
-		w.runTaskAction(date, index, func(d time.Time, idx int) error {
+		w.runTaskAction(date, index, text, func(d time.Time, idx int) error {
 			if err := w.app.store.MoveToBacklog(d, idx); err != nil {
 				return err
 			}
@@ -540,7 +540,7 @@ func (w *mainWindow) showTaskContextMenu(item *qt.QTreeWidgetItem, key string, g
 		})
 	})
 	menu.AddSeparator()
-	addMenuAction(menu, "Delete", func() { w.runTaskAction(date, index, w.app.store.DeleteTask) })
+	addMenuAction(menu, "Delete", func() { w.runTaskAction(date, index, text, w.app.store.DeleteTask) })
 	menu.ExecWithPos(global)
 }
 
@@ -717,6 +717,10 @@ func (w *mainWindow) applyDrop(src, target *qt.QTreeWidgetItem, zone dropZone) {
 	if !ok {
 		return
 	}
+	// Capture the display text now so the stale-index guard in runTaskAction
+	// can confirm the dragged item is still the same task after any concurrent
+	// Drive pull between drag-start and drop (M3).
+	srcText := src.Data(0, taskTextRole).ToString()
 	targetKey := keyOf(target)
 
 	// BETWEEN a task target reorders as its sibling at that position; BETWEEN
@@ -727,7 +731,7 @@ func (w *mainWindow) applyDrop(src, target *qt.QTreeWidgetItem, zone dropZone) {
 		if !ok || !sameDay(date, targetDate) {
 			return // same viewed day only
 		}
-		w.runTaskAction(date, index, func(d time.Time, idx int) error {
+		w.runTaskAction(date, index, srcText, func(d time.Time, idx int) error {
 			return w.app.store.ReorderTask(d, idx, targetIndex, zone == dropBelow)
 		})
 		return
@@ -739,16 +743,16 @@ func (w *mainWindow) applyDrop(src, target *qt.QTreeWidgetItem, zone dropZone) {
 		if !ok || !sameDay(date, targetDate) {
 			return // MakeSubtask is same-day only
 		}
-		w.runTaskAction(date, index, func(d time.Time, idx int) error {
+		w.runTaskAction(date, index, srcText, func(d time.Time, idx int) error {
 			return w.app.store.MakeSubtask(d, idx, targetIndex)
 		})
 	case strings.HasPrefix(targetKey, "p:"):
 		projectID := strings.TrimPrefix(targetKey, "p:")
-		w.runTaskAction(date, index, func(d time.Time, idx int) error {
+		w.runTaskAction(date, index, srcText, func(d time.Time, idx int) error {
 			return w.app.store.MoveTaskToProject(d, idx, projectID)
 		})
 	case targetKey == "u:":
-		w.runTaskAction(date, index, func(d time.Time, idx int) error {
+		w.runTaskAction(date, index, srcText, func(d time.Time, idx int) error {
 			return w.app.store.MoveTaskToProject(d, idx, "")
 		})
 	}

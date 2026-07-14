@@ -284,14 +284,42 @@ func (w *mainWindow) scheduleRefresh() {
 }
 
 // runTaskAction applies action to the plan item at index on date, then
-// refreshes. The tree is rebuilt from scratch on every refresh, so index
-// (captured from the tree row at build time) is always current relative to
-// that day's plan.
-func (w *mainWindow) runTaskAction(date time.Time, index int, action taskFunc) {
+// refreshes. expectedText is the display text captured when the tree row was
+// built; it is verified against the live plan before acting so that a
+// background Drive pull that rewrites the file between tree-build and click
+// results in a safe no-op refresh rather than operating on the wrong task (M3).
+func (w *mainWindow) runTaskAction(date time.Time, index int, expectedText string, action taskFunc) {
+	if !w.taskIndexValid(date, index, expectedText) {
+		w.scheduleRefresh()
+		return
+	}
 	if err := action(date, index); err != nil {
 		w.app.reportError(err)
 	}
 	w.scheduleRefresh()
+}
+
+// taskIndexValid re-reads the live daily plan and confirms that the task at
+// index still carries expectedText. Returns true when it matches (or when the
+// check cannot be performed, to avoid blocking legitimate actions on read
+// errors). Returns false — and the caller should refresh — when the index is
+// out of range or the display text has changed.
+func (w *mainWindow) taskIndexValid(date time.Time, index int, expectedText string) bool {
+	if expectedText == "" {
+		return true // no cached text to verify against; proceed
+	}
+	known, err := w.app.store.KnownProjectIDs()
+	if err != nil {
+		return true // can't verify; allow the action rather than silently blocking
+	}
+	d, exists, err := w.app.store.LoadDaily(date)
+	if err != nil || !exists {
+		return false // daily file gone/unreadable; refresh instead
+	}
+	if index < 0 || index >= len(d.Plan) {
+		return false // index out of range after sync rewrite
+	}
+	return store.DisplayText(d.Plan[index], known) == expectedText
 }
 
 // addItem adds a new task. Text carrying a recurrence tag (@daily/@weekly/…)

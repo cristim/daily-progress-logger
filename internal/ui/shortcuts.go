@@ -53,7 +53,7 @@ func (a *App) applyShortcuts(cfg *config.Config) {
 // no row is selected.
 func (a *App) shortcutHandlers() map[string]func() {
 	// item wraps a store operation so it runs against the selected tree task's
-	// day and plan index.
+	// day and plan index, with a stale-index guard (M3).
 	item := func(action func(date time.Time, idx int) error) func() {
 		return func() {
 			if a.dialogOpen {
@@ -63,7 +63,8 @@ func (a *App) shortcutHandlers() map[string]func() {
 			if !ok {
 				return
 			}
-			a.window.runTaskAction(date, idx, action)
+			text := a.window.currentTaskText()
+			a.window.runTaskAction(date, idx, text, action)
 		}
 	}
 
