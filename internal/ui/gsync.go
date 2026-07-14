@@ -57,9 +57,15 @@ func (a *App) newSyncEngine(ctx context.Context) (*syncengine.Engine, error) {
 }
 
 // signInGoogle runs the interactive Drive sign-in, then a first sync.
-func (a *App) signInGoogle() {
+// done (may be nil) is called on the main thread once sign-in completes,
+// with the error if one occurred, so callers can update UI widgets (L2).
+func (a *App) signInGoogle(done func(err error)) {
 	if a.cfg.GoogleClientID == "" {
-		a.reportError(errors.New("enter your Google client ID in Preferences first"))
+		err := errors.New("enter your Google client ID in Preferences first")
+		a.reportError(err)
+		if done != nil {
+			done(err)
+		}
 		return
 	}
 	go func() {
@@ -69,6 +75,9 @@ func (a *App) signInGoogle() {
 		mainthread.Start(func() {
 			if err != nil {
 				a.reportError(err)
+				if done != nil {
+					done(err)
+				}
 				return
 			}
 			a.cfg.GoogleAccount = email
@@ -77,6 +86,9 @@ func (a *App) signInGoogle() {
 			}
 			a.startSyncTimer()
 			a.runSync()
+			if done != nil {
+				done(nil)
+			}
 		})
 	}()
 }
@@ -258,12 +270,22 @@ func (a *App) driveSection() *qt.QWidget {
 	signBtn.OnClicked(func() {
 		if a.googleSignedIn() {
 			a.signOutGoogle()
+			status.SetText(a.driveStatusText())
+			signBtn.SetText(a.signButtonText())
 		} else {
 			saveClientID()
-			a.signInGoogle()
+			// Show in-progress state immediately so the dialog doesn't look
+			// frozen during the browser OAuth flow (L2).
+			status.SetText("Signing in…")
+			signBtn.SetEnabled(false)
+			signBtn.SetText("Signing in…")
+			a.signInGoogle(func(_ error) {
+				// Runs on the main thread (via mainthread.Start in signInGoogle).
+				signBtn.SetEnabled(true)
+				status.SetText(a.driveStatusText())
+				signBtn.SetText(a.signButtonText())
+			})
 		}
-		status.SetText(a.driveStatusText())
-		signBtn.SetText(a.signButtonText())
 	})
 	syncBtn := qt.NewQPushButton3("Sync now")
 	syncBtn.OnClicked(func() { saveClientID(); a.runSync() })
