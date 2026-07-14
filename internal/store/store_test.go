@@ -190,6 +190,45 @@ func TestStore_EditTaskTextOutOfRange(t *testing.T) {
 	require.ErrorContains(t, s.EditTaskText(day, 99, "x"), "out of range")
 }
 
+// TestStore_EditTaskTextUserSuppliesNewTag verifies M7: if the user types a
+// known #tag into the edit box, it wins over the existing tag, re-homing the
+// task to the new project rather than producing "newtext #newtag #oldtag".
+func TestStore_EditTaskTextUserSuppliesNewTag(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	projA, err := s.AddProject("Alpha")
+	require.NoError(t, err)
+	projB, err := s.AddProject("Beta")
+	require.NoError(t, err)
+	day := time.Date(2026, 7, 12, 12, 0, 0, 0, time.Local)
+	require.NoError(t, s.AddTaggedTask(day, "fix login", projA))
+
+	// User types a new #beta tag in the edit box: the task should move to Beta,
+	// not produce "fix refund #beta #alpha".
+	require.NoError(t, s.EditTaskText(day, 0, "fix refund #"+projB))
+	plan := planOf(t, s, day)
+	require.Len(t, plan, 1)
+	assert.Equal(t, "fix refund #"+projB, plan[0].Text,
+		"user-supplied #tag wins: task re-homed to Beta")
+}
+
+// TestStore_EditTaskTextKeepsOldTagWhenNoNewTagSupplied verifies the baseline
+// M7 behavior: editing without a new tag still re-appends the original tag.
+func TestStore_EditTaskTextKeepsOldTagWhenNoNewTagSupplied(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	proj, err := s.AddProject("Payments")
+	require.NoError(t, err)
+	day := time.Date(2026, 7, 12, 12, 0, 0, 0, time.Local)
+	require.NoError(t, s.AddTaggedTask(day, "refund flow", proj))
+
+	require.NoError(t, s.EditTaskText(day, 0, "process refunds"))
+	plan := planOf(t, s, day)
+	require.Len(t, plan, 1)
+	assert.Equal(t, "process refunds #"+proj, plan[0].Text,
+		"no new tag supplied: old tag preserved")
+}
+
 func TestStore_PostponeAndMoveToBacklog(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)

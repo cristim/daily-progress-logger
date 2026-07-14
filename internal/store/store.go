@@ -502,9 +502,11 @@ func (s *Store) SetPlanItemState(date time.Time, index int, state ItemState) err
 }
 
 // EditTaskText replaces date's plan item at index with newText (trimmed),
-// re-appending its existing @project tag (if any) so an edit never silently
-// drops the task from its project; Depth and State are left untouched. A
-// blank newText is a no-op (no error, plan unchanged).
+// preserving its project assignment: if newText already ends with a known
+// #tag, that tag wins and re-homes the task; otherwise the existing #tag (if
+// any) is re-appended so an edit never silently drops the task from its
+// project. Depth and State are left untouched. A blank newText is a no-op
+// (no error, plan unchanged).
 func (s *Store) EditTaskText(date time.Time, index int, newText string) error {
 	newText = strings.TrimSpace(newText)
 	if newText == "" {
@@ -521,11 +523,19 @@ func (s *Store) EditTaskText(date time.Time, index int, newText string) error {
 	if err != nil {
 		return err
 	}
-	_, tag := splitProjectTag(d.Plan[index].Text, known)
-	if tag != "" {
-		newText = strings.TrimSpace(newText + " #" + tag)
+	// Check whether the user typed a known #tag into newText. If so, that tag
+	// wins (re-homing the task to a different project). Otherwise, re-append
+	// the existing tag so the edit does not silently drop the project.
+	newClean, newTag := splitProjectTag(newText, known)
+	if newTag == "" {
+		// User did not supply a new tag: keep the existing one.
+		_, newTag = splitProjectTag(d.Plan[index].Text, known)
+		newClean = newText // splitProjectTag returned newText unchanged when no tag found
 	}
-	d.Plan[index].Text = newText
+	if newTag != "" {
+		newClean = strings.TrimSpace(newClean + " #" + newTag)
+	}
+	d.Plan[index].Text = newClean
 	return s.SaveDaily(d)
 }
 
