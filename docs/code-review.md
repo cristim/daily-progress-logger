@@ -1,5 +1,30 @@
 # Code Review — post-integration (feat/unified @ f83a8c6)
 
+## Resolution (2026-07-14) — ALL findings addressed
+
+Implemented in two Sonnet clusters, each finding its own commit + regression
+test where testable, all gated on `go test -race` + `golangci-lint`.
+
+- **Cluster A (data-model/migration)**: C1, C2, H1, M6, M7, M9, L1, L4, L7, L11
+  fixed. Both Criticals carry reproducing regression tests.
+- **Cluster B (sync/drive)**: H2, H3, H4, M1, M2, M3, M4, M5, M8, L2, L3, L5, L8
+  fixed. Testable ones covered by fake-drive engine tests; UI-only ones
+  verified by build + reasoning.
+- **Lint**: the two pre-existing gosec items were G703 (data-dir path taint) —
+  excluded with justification alongside the existing G304; the tree is now
+  fully lint-clean.
+- **Not fixed (deliberate)**: L6 (md5 nolint rationale is correct as-is), L9
+  (documented behavior, not a bug), L10 (folded into M4).
+- **Still unverifiable locally** (unchanged from the "Not verified" section
+  below): live Drive sync end-to-end, real Keychain paths, `gomobile bind`,
+  and a live-click UI pass — all require credentials/devices this environment
+  lacks. The sync fixes are covered by the fake-drive engine tests, `-race`,
+  and code reasoning.
+
+Result: 268 tests pass (11 packages, no races), build/vet/lint all clean.
+
+---
+
 Date: 2026-07-14. Scope: full codebase after the four-way integration
 (recurring-tasks base + #-tag/migration ports + Drive sync/gomobile merge).
 Reviewed read-only in `.claude/worktrees/review`. Findings are ordered by
