@@ -196,6 +196,5 @@ func copyFileContents(src, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
 		return fmt.Errorf("creating dir for %s: %w", dst, err)
 	}
-	//nolint:gosec // dst is constructed from s.DataDir (user-configured data dir), not user input.
 	return os.WriteFile(dst, data, 0o600)
 }

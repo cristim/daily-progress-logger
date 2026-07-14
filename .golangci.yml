@@ -48,9 +48,12 @@ linters:
       max-complexity: 15
     gosec:
       excludes:
-        # G304 (file inclusion via variable): reading/writing files under the
-        # user-configured data dir is this app's whole purpose.
+        # G304 (file inclusion via variable) and G703 (path-traversal taint):
+        # reading/writing files under the user-configured data dir is this
+        # app's whole purpose; all such paths are derived from the store's
+        # data dir plus app-controlled names, never from untrusted input.
         - G304
+        - G703
         # G401/G501 (md5): used only to match Google Drive's md5Checksum for
         # sync change-detection, never for security.
         - G401
