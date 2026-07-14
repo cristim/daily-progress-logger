@@ -72,6 +72,25 @@ func (s *Store) BuildProjectTree(date time.Time) (*ProjectTree, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Route tasks tagged to closed or unknown projects into Unfiled so no
+	// task silently disappears from the tree. Open project IDs are consumed by
+	// openProjectTree; anything left in dayByProject belongs to a closed (or
+	// already-deleted) project and falls back to the Unfiled bucket.
+	openIDs := map[string]bool{}
+	for i := range projects {
+		if projects[i].Status != StatusClosed {
+			openIDs[projects[i].ID] = true
+		}
+	}
+	for pid, tasks := range dayByProject {
+		if !openIDs[pid] {
+			dayUnfiled = append(dayUnfiled, tasks...)
+		}
+	}
+	if len(dayUnfiled) > 0 {
+		sortTaskLevel(dayUnfiled)
+	}
+
 	return &ProjectTree{
 		Projects:  openProjectTree(projects, agg, dayByProject),
 		Unfiled:   dayUnfiled,

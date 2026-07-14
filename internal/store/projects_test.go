@@ -266,7 +266,11 @@ func TestStore_BuildProjectTreeExcludesClosed(t *testing.T) {
 	tree, err := s.BuildProjectTree(tuesday)
 	require.NoError(t, err)
 	assert.Empty(t, tree.Projects, "closed project hidden")
+	// The task tagged to the now-closed project must survive in Unfiled.
+	require.Len(t, tree.Unfiled, 1, "task tagged to closed project falls back to Unfiled")
+	assert.Equal(t, "task", tree.Unfiled[0].Text)
 }
+
 
 func TestSlugify(t *testing.T) {
 	t.Parallel()
