@@ -43,6 +43,12 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
+	// MigrateRefTags converts legacy "@<project>" ref tags to canonical "#<project>"
+	// form. A failure here is non-fatal: splitProjectTag (projects.go) still
+	// accepts the old "@" prefix for backward compatibility, so unmigrated files
+	// continue to work. Do not remove the fallback without also removing the "@"
+	// acceptance path in splitProjectTag, or unmigrated data will lose its project
+	// associations.
 	if err := st.MigrateRefTags(); err != nil {
 		slog.Warn("ref tag migration failed; app continues with backward-compat parsing", "error", err)
 	}
