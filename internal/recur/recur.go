@@ -70,7 +70,14 @@ func Parse(text string, defHour, defMinute int, isID func(string) bool) (clean s
 	i := len(fields) - 1
 	for i >= 0 {
 		tok := fields[i]
-		if !strings.HasPrefix(tok, "@") {
+		// Accept both "@<body>" and "#<body>" tag prefixes. "#" is the
+		// canonical ref-tag prefix (written by MigrateRefTags); "@" is the
+		// legacy form still present in recurring.md templates and in files
+		// that have not yet been migrated. Both must be scanned so that a
+		// "#project" tag after a recurrence keyword (e.g. "Water plants
+		// @daily #home", which MigrateRefTags produces) does not stop the
+		// trailing scan before @daily is seen.
+		if !strings.HasPrefix(tok, "@") && !strings.HasPrefix(tok, "#") {
 			break
 		}
 		body := strings.ToLower(tok[1:])

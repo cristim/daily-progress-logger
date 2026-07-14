@@ -109,6 +109,38 @@ func TestParseIDTagOrderIndependent(t *testing.T) {
 	assert.Equal(t, time.Monday, rec.Weekday)
 }
 
+// TestParseHashTagIDOrderIndependent verifies C1: a "#<id>" project tag (the
+// canonical form written by MigrateRefTags) is scanned the same as "@<id>" —
+// it is kept in clean and does not stop the recurrence scan. Both orderings
+// ("@daily #proj" and "#proj @daily") must parse the recurrence correctly and
+// preserve the project tag in the clean text.
+func TestParseHashTagIDOrderIndependent(t *testing.T) {
+	t.Parallel()
+	isID := func(s string) bool { return s == "home" }
+
+	// Canonical post-migration form: recurrence first, then #project.
+	// MigrateRefTags rewrites "@home" -> "#home", so templates become
+	// "Water plants @daily #home". The parser must still find @daily.
+	clean, rec, ok := Parse("Water plants @daily #home", 9, 0, isID)
+	assert.True(t, ok, "recurrence must be recognized when #project follows @daily")
+	assert.Equal(t, "Water plants #home", clean, "#home kept in clean text")
+	assert.Equal(t, Daily, rec.Kind)
+
+	// Reverse order: #project before recurrence keyword.
+	clean, rec, ok = Parse("Water plants #home @daily", 9, 0, isID)
+	assert.True(t, ok, "recurrence must be recognized when #project precedes @daily")
+	assert.Equal(t, "Water plants #home", clean, "#home kept in clean text")
+	assert.Equal(t, Daily, rec.Kind)
+
+	// Mixed: @legacy and #canonical in the same trailing run.
+	isBoth := func(s string) bool { return s == "home" || s == "proj" }
+	clean, rec, ok = Parse("Task @weekly #home @mon", 9, 0, isBoth)
+	assert.True(t, ok)
+	assert.Equal(t, "Task #home", clean)
+	assert.Equal(t, Weekly, rec.Kind)
+	assert.Equal(t, time.Monday, rec.Weekday)
+}
+
 func TestDailyOccurrences(t *testing.T) {
 	t.Parallel()
 	r := Recurrence{Kind: Daily, Hour: 9}
