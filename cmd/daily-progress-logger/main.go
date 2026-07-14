@@ -43,6 +43,9 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
+	if err := st.MigrateRefTags(); err != nil {
+		slog.Warn("ref tag migration failed; app continues with backward-compat parsing", "error", err)
+	}
 	app, err := ui.New(st, cfg, version)
 	if err != nil {
 		fatal(err)
