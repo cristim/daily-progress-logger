@@ -251,6 +251,8 @@ func TestMigrateLineRefTag(t *testing.T) {
 		{"- [ ] Vitamins @daily", "- [ ] Vitamins @daily"},   // @daily is a recurrence keyword
 		{"- [ ] Vitamins @weekly", "- [ ] Vitamins @weekly"}, // @weekly likewise
 		{"- [ ] Task @mon", "- [ ] Task @mon"},               // weekday abbreviation
+		// L7: tab-separated trailing tag must be migrated the same as space-separated.
+		{"- [ ] Task\t@cudly", "- [ ] Task\t#cudly"}, // tab separator
 	}
 	for _, c := range cases {
 		got := migrateLineRefTag(c.in, known)

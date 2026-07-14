@@ -146,7 +146,10 @@ func migrateRefTagFile(path string, known map[string]bool) error {
 // destroy the template's schedule.
 func migrateLineRefTag(line string, known map[string]bool) string {
 	trimmed := strings.TrimRight(line, " \t")
-	sep := strings.LastIndexByte(trimmed, ' ')
+	// Accept space or tab as the separator before the trailing token, matching
+	// the strings.Fields-based parser in the rest of the store (which already
+	// handles tab-delimited task lines written by external editors).
+	sep := strings.LastIndexAny(trimmed, " \t")
 	last := trimmed[sep+1:]
 	if !strings.HasPrefix(last, "@") {
 		return line
