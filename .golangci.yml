@@ -48,11 +48,22 @@ linters:
       max-complexity: 15
     gosec:
       excludes:
-        # G304 (file inclusion via variable) and G703 (path traversal via
-        # taint analysis): reading/writing files under the user-configured
-        # data dir is this app's whole purpose.
+        # G304 (file inclusion via variable): reading/writing files under the
+        # user-configured data dir is this app's whole purpose.
         - G304
-        - G703
+        # G401/G501 (md5): used only to match Google Drive's md5Checksum for
+        # sync change-detection, never for security.
+        - G401
+        - G501
+        # G122 (WalkDir path TOCTOU): the sync walk is over the user's own local
+        # data dir; symlink-race traversal is not a threat here.
+        - G122
+        # G204 (subprocess): the sync sign-in shells out to `open` (browser) and
+        # `security` (Keychain) with fixed commands and app-controlled args.
+        - G204
+        # G117 (marshaled secret): storing the OAuth token in the Keychain
+        # requires marshaling it; that is the intended, secure destination.
+        - G117
   exclusions:
     rules:
       # Repeated literal strings in tests are readable fixtures; hoisting
