@@ -338,42 +338,85 @@ func eveningOutcomeFor(item Item, action EveningAction) eveningOutcome {
 // deleted the item while the dialog was open). Actions take effect as follows:
 // Done/Todo set the item's state in place; NextWeek marks it postponed ('>')
 // and queues it in next week's backlog; NextDay removes it from today's plan
-// and appends it to tomorrow's; Backlog removes it from today's plan and adds
-// it to this week's backlog. extraDone lines are appended to the Done section.
+// and appends it to tomorrow's (carrying the whole subtree, nesting intact);
+// Backlog removes it from today's plan and adds each subtree item to this
+// week's backlog (the backlog is flat, so parent and children are enqueued
+// as separate current items, matching MoveToBacklog's behaviour).
+// extraDone lines are appended to the Done section.
 // The weekly summary is regenerated afterwards.
+//
+// Subtask policy: when a parent's decision is NextDay or Backlog, the whole
+// subtree travels with it — children's own individual decisions (if any) are
+// ignored and the parent decision wins. This matches the invariant maintained
+// by PostponeToNextDay and MoveToBacklog (via extractSubtree), which both
+// already carry the full subtree. Subtask decisions for Done/Todo/NextWeek
+// are still honoured when the parent itself is not being moved (i.e. the
+// parent stays in today's plan).
 func (s *Store) ApplyEvening(today time.Time, decisions []EveningDecision, extraDone []string) error {
 	d, err := s.loadOrNewDaily(today)
 	if err != nil {
 		return err
 	}
 
-	// Decide each item's fate. kept holds items that remain in today's plan;
-	// toNextDay/toBacklog are removed from today and re-homed after saving;
+	// Decide each item's fate. kept holds items that remain in today's plan.
+	// toNextDaySubtrees holds whole re-rooted subtrees to append to tomorrow.
+	// toBacklog holds the flat text list for the Current backlog section.
 	// addNextWeek/dropNextWeek drive the next-week backlog sync.
+	//
+	// Iterate by index rather than range so we can use subtreeSpan to skip
+	// children consumed by a parent's NextDay or Backlog decision. When a
+	// parent is moved as a whole, children in the same subtree are not
+	// examined — the parent decision wins (see Subtask policy above).
 	var kept []Item
-	var toNextDay, toBacklog, addNextWeek, dropNextWeek []string
-	for _, item := range d.Plan {
+	var toNextDaySubtrees [][]Item
+	var toBacklog, addNextWeek, dropNextWeek []string
+
+	plan := d.Plan
+	i := 0
+	for i < len(plan) {
+		item := plan[i]
 		action, ok := findDecisionAction(decisions, item.Text)
 		if !ok {
 			kept = append(kept, item) // untouched: keep current state
+			i++
 			continue
 		}
 		out := eveningOutcomeFor(item, action)
 		if out.keep {
 			kept = append(kept, out.item)
+			if out.addNextWeek {
+				addNextWeek = append(addNextWeek, item.Text)
+			}
+			if out.dropNextWeek {
+				dropNextWeek = append(dropNextWeek, item.Text)
+			}
+			i++
+			continue
 		}
-		if out.toNextDay {
-			toNextDay = append(toNextDay, item.Text)
-		}
-		if out.toBacklog {
-			toBacklog = append(toBacklog, item.Text)
-		}
-		if out.addNextWeek {
-			addNextWeek = append(addNextWeek, item.Text)
+		// NextDay or Backlog: extract the whole subtree so children travel
+		// with the parent (mirrors PostponeToNextDay and MoveToBacklog).
+		_, end := subtreeSpan(plan, i)
+		base := plan[i].Depth
+		sub := make([]Item, end-i)
+		for j, it := range plan[i:end] {
+			it.Depth -= base // re-root at depth 0
+			sub[j] = it
 		}
 		if out.dropNextWeek {
 			dropNextWeek = append(dropNextWeek, item.Text)
 		}
+		if out.toNextDay {
+			sub[0].State = StateTodo // re-plan the parent as a fresh todo
+			toNextDaySubtrees = append(toNextDaySubtrees, sub)
+		}
+		if out.toBacklog {
+			// Backlog is flat: enqueue every subtree item separately so no
+			// children are orphaned on the plan (identical to MoveToBacklog).
+			for _, it := range sub {
+				toBacklog = append(toBacklog, it.Text)
+			}
+		}
+		i = end // skip all children: parent's decision wins
 	}
 	d.Plan = kept
 
@@ -384,8 +427,8 @@ func (s *Store) ApplyEvening(today time.Time, decisions []EveningDecision, extra
 	}
 
 	tomorrow := today.AddDate(0, 0, 1)
-	for _, text := range toNextDay {
-		if err := s.AddPlanItem(tomorrow, text); err != nil {
+	for _, subtree := range toNextDaySubtrees {
+		if err := s.appendSubtree(tomorrow, subtree); err != nil {
 			return err
 		}
 	}

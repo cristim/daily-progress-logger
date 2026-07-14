@@ -170,6 +170,82 @@ func TestReorderTaskOutOfRange(t *testing.T) {
 	require.ErrorContains(t, s.ReorderTask(day, 0, 99, false), "out of range")
 }
 
+// TestEveningNextDayCarriesSubtree verifies C2: an evening NextDay decision
+// on a parent task moves the whole subtree (parent + children) to tomorrow,
+// leaving the rest of today's plan intact and no orphaned children.
+func TestEveningNextDayCarriesSubtree(t *testing.T) {
+	t.Parallel()
+	s, day, projA, projC := seedParentChildDay(t)
+	// day plan: [Alpha #projA (depth 0), Beta (depth 1), Gamma #projC (depth 0)]
+
+	tomorrow := day.AddDate(0, 0, 1)
+	require.NoError(t, s.ApplyEvening(day, []EveningDecision{
+		{Text: "Alpha #" + projA, Action: EveningActionNextDay},
+	}, nil))
+
+	today := planOf(t, s, day)
+	require.Len(t, today, 1, "Beta must not be orphaned on today's plan")
+	assert.Equal(t, "Gamma #"+projC, today[0].Text)
+
+	tmrw := planOf(t, s, tomorrow)
+	require.Len(t, tmrw, 2, "Alpha and its subtask Beta must both move to tomorrow")
+	assert.Equal(t, "Alpha #"+projA, tmrw[0].Text)
+	assert.Equal(t, StateTodo, tmrw[0].State, "parent re-planned as todo")
+	assert.Equal(t, 0, tmrw[0].Depth)
+	assert.Equal(t, "Beta", tmrw[1].Text)
+	assert.Equal(t, 1, tmrw[1].Depth, "child nesting preserved across evening move")
+}
+
+// TestEveningBacklogCarriesSubtree verifies C2: an evening Backlog decision on
+// a parent task moves the whole subtree to the backlog (flat), with no children
+// left on today's plan.
+func TestEveningBacklogCarriesSubtree(t *testing.T) {
+	t.Parallel()
+	s, day, projA, projC := seedParentChildDay(t)
+	// day plan: [Alpha #projA (depth 0), Beta (depth 1), Gamma #projC (depth 0)]
+
+	require.NoError(t, s.ApplyEvening(day, []EveningDecision{
+		{Text: "Alpha #" + projA, Action: EveningActionBacklog},
+	}, nil))
+
+	today := planOf(t, s, day)
+	require.Len(t, today, 1, "Beta must not be orphaned on today's plan")
+	assert.Equal(t, "Gamma #"+projC, today[0].Text)
+
+	backlog, err := s.LoadBacklog()
+	require.NoError(t, err)
+	require.Len(t, backlog.Current, 2, "both Alpha and Beta enqueued in backlog")
+	assert.Equal(t, "Alpha #"+projA, backlog.Current[0])
+	assert.Equal(t, "Beta", backlog.Current[1])
+}
+
+// TestEveningChildDecisionIgnoredWhenParentMoved verifies that when a parent
+// has a NextDay or Backlog evening decision, a child's own decision is silently
+// ignored and the parent's subtree move wins.
+func TestEveningChildDecisionIgnoredWhenParentMoved(t *testing.T) {
+	t.Parallel()
+	s, day, projA, projC := seedParentChildDay(t)
+
+	tomorrow := day.AddDate(0, 0, 1)
+	// Parent (Alpha+Beta) goes NextDay; Beta has its own Done decision that should
+	// be ignored because the parent's move takes precedence.
+	require.NoError(t, s.ApplyEvening(day, []EveningDecision{
+		{Text: "Alpha #" + projA, Action: EveningActionNextDay},
+		{Text: "Beta", Action: EveningActionDone}, // must be ignored
+	}, nil))
+
+	// Only Gamma remains today.
+	today := planOf(t, s, day)
+	require.Len(t, today, 1)
+	assert.Equal(t, "Gamma #"+projC, today[0].Text)
+
+	// Both Alpha and Beta are in tomorrow's plan (Beta as todo, not done).
+	tmrw := planOf(t, s, tomorrow)
+	require.Len(t, tmrw, 2)
+	assert.Equal(t, StateTodo, tmrw[0].State)
+	assert.Equal(t, StateTodo, tmrw[1].State, "Beta's Done decision was overridden by parent's NextDay")
+}
+
 func TestMoveToBacklogRemovesWholeSubtree(t *testing.T) {
 	t.Parallel()
 	s, day, _, projC := seedParentChildDay(t)
