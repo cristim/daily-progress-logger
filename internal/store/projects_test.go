@@ -271,7 +271,6 @@ func TestStore_BuildProjectTreeExcludesClosed(t *testing.T) {
 	assert.Equal(t, "task", tree.Unfiled[0].Text)
 }
 
-
 // TestAddProject_ReservedSlugSuffixed verifies H1: creating a project whose
 // name slugifies to a recurrence keyword yields a non-colliding slug so that
 // the @recurrence token namespace is never hijacked.
