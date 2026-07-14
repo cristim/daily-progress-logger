@@ -105,7 +105,7 @@ func TestStore_MigratesLegacyStoriesToProjects(t *testing.T) {
 // - projects.md is story-free after New()
 // - daily tasks carry "#project" tags after MigrateRefTags
 // - RecurringTasks() count is preserved through both migrations
-// - running both again is a no-op (idempotent)
+// - running both again is a no-op (idempotent).
 func TestStore_BothMigrationsInSequence(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

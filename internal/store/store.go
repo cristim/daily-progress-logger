@@ -395,13 +395,7 @@ func (s *Store) ApplyEvening(today time.Time, decisions []EveningDecision, extra
 		}
 		// NextDay or Backlog: extract the whole subtree so children travel
 		// with the parent (mirrors PostponeToNextDay and MoveToBacklog).
-		_, end := subtreeSpan(plan, i)
-		base := plan[i].Depth
-		sub := make([]Item, end-i)
-		for j, it := range plan[i:end] {
-			it.Depth -= base // re-root at depth 0
-			sub[j] = it
-		}
+		sub, end := reRootSubtree(plan, i)
 		if out.dropNextWeek {
 			dropNextWeek = append(dropNextWeek, item.Text)
 		}
@@ -436,6 +430,20 @@ func (s *Store) ApplyEvening(today time.Time, decisions []EveningDecision, extra
 		return err
 	}
 	return s.RegenerateWeekly(WeekOf(today))
+}
+
+// reRootSubtree returns the subtree rooted at plan[i] with depths re-based so
+// the top item is at depth 0 (relative nesting preserved), plus the end index
+// (exclusive) so the caller can skip the consumed range.
+func reRootSubtree(plan []Item, i int) (sub []Item, end int) {
+	_, end = subtreeSpan(plan, i)
+	base := plan[i].Depth
+	sub = make([]Item, end-i)
+	for j, it := range plan[i:end] {
+		it.Depth -= base
+		sub[j] = it
+	}
+	return sub, end
 }
 
 // syncBacklog applies backlog changes in a single read-modify-write: it first
