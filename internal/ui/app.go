@@ -18,6 +18,7 @@ import (
 	"github.com/cristim/daily-progress-logger/internal/loginitem"
 	"github.com/cristim/daily-progress-logger/internal/schedule"
 	"github.com/cristim/daily-progress-logger/internal/store"
+	syncengine "github.com/cristim/daily-progress-logger/internal/sync"
 	"github.com/cristim/daily-progress-logger/internal/update"
 )
 
@@ -42,6 +43,7 @@ type App struct {
 	timer       *qt.QTimer
 	updateTimer *qt.QTimer
 	syncTimer   *qt.QTimer
+	syncEngine  *syncengine.Engine // long-lived; shared by runSync and Resolve (M4)
 	syncing     bool
 	dialogOpen  bool
 

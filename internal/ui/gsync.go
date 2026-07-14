@@ -89,6 +89,7 @@ func (a *App) signOutGoogle() {
 		slog.Warn("saving config after sign-out", "error", err)
 	}
 	a.stopSyncTimer()
+	a.syncEngine = nil // engine is bound to the outgoing token; discard it (M4)
 }
 
 // runSync performs one user-initiated sync and surfaces errors as a modal dialog.
@@ -121,21 +122,39 @@ func syncErrKey(err error) string {
 // doSync runs one sync cycle. When userInitiated is true, errors surface as a
 // modal; when false (timer-driven) errors are logged and optionally shown as a
 // passive tray message with dedup so repeated offline errors don't flood.
+// doSync reuses a.syncEngine when one is already live (M4) so that Engine.mu
+// serializes all Run and Resolve calls against the same instance.
 func (a *App) doSync(userInitiated bool) {
 	if a.syncing || !a.googleSignedIn() {
 		return
 	}
 	a.syncing = true
+	// Capture the current engine on the main thread; the goroutine may create a
+	// new one if nil and store it back via mainthread.Start.
+	capturedEngine := a.syncEngine
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), syncTimeout)
 		defer cancel()
-		engine, err := a.newSyncEngine(ctx)
+		engine := capturedEngine
+		var buildErr error
+		if engine == nil {
+			engine, buildErr = a.newSyncEngine(ctx)
+		}
 		var res syncengine.Result
+		var runErr error
+		if buildErr == nil {
+			res, runErr = engine.Run(ctx)
+		}
+		err := buildErr
 		if err == nil {
-			res, err = engine.Run(ctx)
+			err = runErr
 		}
 		mainthread.Start(func() {
 			a.syncing = false
+			if buildErr == nil && runErr == nil && engine != nil {
+				// Persist the working engine for future syncs and conflict resolution.
+				a.syncEngine = engine
+			}
 			if err != nil {
 				slog.Warn("sync failed", "error", err, "user_initiated", userInitiated)
 				if userInitiated {

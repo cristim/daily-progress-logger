@@ -17,9 +17,15 @@ func (a *App) openConflictsDialog() {
 }
 
 // buildConflictsDialog lists unresolved conflicts (read locally, so it works
-// offline) with per-file resolution actions.
+// offline) with per-file resolution actions. It reuses the App's long-lived
+// engine when one is available so that Resolve and background Run calls share
+// Engine.mu and cannot race (M4). Falls back to a local-only engine when not
+// signed in.
 func (a *App) buildConflictsDialog() *qt.QDialog {
-	engine := syncengine.NewLocal(a.store.DataDir, a.deviceID())
+	engine := a.syncEngine
+	if engine == nil {
+		engine = syncengine.NewLocal(a.store.DataDir, a.deviceID())
+	}
 	conflicts, err := engine.Conflicts()
 	if err != nil {
 		a.reportError(err)

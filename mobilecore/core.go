@@ -168,6 +168,10 @@ func (c *Core) findByDisplayText(date time.Time, text string) (int, error) {
 }
 
 // engine builds a sync engine authenticated with the given token.
+// Concurrency contract: each call creates a fresh engine; the iOS host must
+// not call SyncNow and ResolveConflict (or ConflictsJSON) concurrently —
+// they would use distinct engine instances whose mutexes don't share state.
+// The typical host pattern (one call at a time from Swift) is safe (M4).
 func (c *Core) engine(tokenJSON string) (*syncengine.Engine, error) {
 	var tok oauth2.Token
 	if err := json.Unmarshal([]byte(tokenJSON), &tok); err != nil {
