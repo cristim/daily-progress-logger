@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"html"
 	"log/slog"
 	"strings"
 	"time"
@@ -225,7 +226,10 @@ func (a *App) stopSyncTimer() {
 func (a *App) driveStatusText() string {
 	if a.googleSignedIn() {
 		if a.cfg.GoogleAccount != "" {
-			return "Connected as <b>" + a.cfg.GoogleAccount + "</b>"
+			// html.EscapeString guards against an account email that contains
+			// HTML-special characters (e.g. a crafted Google account with <, >,
+			// or &) breaking the RichText label (L3).
+			return "Connected as <b>" + html.EscapeString(a.cfg.GoogleAccount) + "</b>"
 		}
 		return "Connected."
 	}
