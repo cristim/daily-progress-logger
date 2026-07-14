@@ -68,21 +68,21 @@ func (a *App) shortcutHandlers() map[string]func() {
 	}
 
 	return map[string]func(){
-		config.ShortcutItemDone: item(func(now time.Time, idx int) error {
-			return a.store.SetPlanItemState(now, idx, store.StateDone)
+		config.ShortcutItemDone: item(func(viewedDate time.Time, idx int) error {
+			return a.store.SetPlanItemState(viewedDate, idx, store.StateDone)
 		}),
-		config.ShortcutItemTodo: item(func(now time.Time, idx int) error {
-			return a.store.SetPlanItemState(now, idx, store.StateTodo)
+		config.ShortcutItemTodo: item(func(viewedDate time.Time, idx int) error {
+			return a.store.SetPlanItemState(viewedDate, idx, store.StateTodo)
 		}),
-		config.ShortcutItemNextDay: item(func(now time.Time, idx int) error {
-			return a.store.PostponeToNextDay(now, idx)
+		config.ShortcutItemNextDay: item(func(viewedDate time.Time, idx int) error {
+			return a.store.PostponeToNextDay(viewedDate, idx)
 		}),
-		config.ShortcutItemNextWeek: item(func(now time.Time, idx int) error {
-			return a.store.PostponePlanItem(now, idx)
+		config.ShortcutItemNextWeek: item(func(viewedDate time.Time, idx int) error {
+			return a.store.PostponePlanItem(viewedDate, idx)
 		}),
-		config.ShortcutItemBacklog: item(func(now time.Time, idx int) error {
+		config.ShortcutItemBacklog: item(func(viewedDate time.Time, idx int) error {
 			text := a.window.currentTaskText()
-			if err := a.store.MoveToBacklog(now, idx); err != nil {
+			if err := a.store.MoveToBacklog(viewedDate, idx); err != nil {
 				return err
 			}
 			a.notifyBacklogMove(text)
