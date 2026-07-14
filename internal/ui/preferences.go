@@ -1,9 +1,12 @@
 package ui
 
 import (
+	"log/slog"
+
 	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/cristim/daily-progress-logger/internal/config"
+	"github.com/cristim/daily-progress-logger/internal/store"
 )
 
 // weekdayChoices lists the weekday names offered for the weekly-summary day,
@@ -158,7 +161,30 @@ func (a *App) savePreferences(dialog *qt.QDialog, in prefInputs) bool {
 		a.showPreferencesError(dialog, err)
 		return false
 	}
-	a.store.DataDir = reloaded.DataDir
+
+	// If the data folder changed, rebuild the store through store.New (which
+	// runs the story→project migration) and then MigrateRefTags. Simply
+	// overwriting DataDir in place skips both migrations and leaves the sync
+	// engine pointing at a directory whose .sync-state.json doesn't match,
+	// causing mass conflict copies on the next run (M5).
+	if reloaded.DataDir != a.store.DataDir {
+		newStore, err := store.New(reloaded.DataDir)
+		if err != nil {
+			a.showPreferencesError(dialog, err)
+			return false
+		}
+		if err := newStore.MigrateRefTags(); err != nil {
+			// Non-fatal: backward-compat @ parsing is still active (see main.go).
+			slog.Warn("MigrateRefTags on new data dir", "error", err)
+		}
+		a.store = newStore
+		// Discard the live sync engine; it is bound to the old DataDir. The next
+		// sync will create a fresh engine rooted at the new directory.
+		a.syncEngine = nil
+		// Re-arm the sync timer with the new data directory.
+		a.stopSyncTimer()
+		a.startSyncTimer()
+	}
 	return true
 }
 
