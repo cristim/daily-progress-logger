@@ -269,8 +269,9 @@ func TestSync_ResolveKeepRemote(t *testing.T) {
 
 // toctouDrive wraps a fakeDrive and injects a local file mutation during
 // List(), simulating a concurrent edit that happens between scanLocal and pull.
+// Uses a named field (not embedding) to avoid embeddedstructfieldcheck on *T.
 type toctouDrive struct {
-	*fakeDrive
+	inner      *fakeDrive
 	localDir   string
 	path       string // relative slash path to mutate
 	newContent []byte
@@ -283,7 +284,19 @@ func (f *toctouDrive) List(ctx context.Context) ([]drive.File, error) {
 		_ = os.MkdirAll(filepath.Dir(full), 0o750)
 		_ = os.WriteFile(full, f.newContent, 0o600)
 	}
-	return f.fakeDrive.List(ctx)
+	return f.inner.List(ctx)
+}
+
+func (f *toctouDrive) Download(ctx context.Context, id string) ([]byte, error) {
+	return f.inner.Download(ctx, id)
+}
+
+func (f *toctouDrive) Upload(ctx context.Context, relPath, id string, content []byte) (string, error) {
+	return f.inner.Upload(ctx, relPath, id, content)
+}
+
+func (f *toctouDrive) Delete(ctx context.Context, id string) error {
+	return f.inner.Delete(ctx, id)
 }
 
 // TestSync_LocalChangedAfterScanIsConflict verifies H2a: if a local file
@@ -313,7 +326,7 @@ func TestSync_LocalChangedAfterScanIsConflict(t *testing.T) {
 	// B's classifier sees: local="v0" (matches base), remote="vA" → actDownload.
 	// Inject a TOCTOU edit to "vB_local" via List() (after scan, before pull).
 	tfd := &toctouDrive{
-		fakeDrive:  fd,
+		inner:      fd,
 		localDir:   dirB,
 		path:       "backlog.md",
 		newContent: []byte("vB_local"),
@@ -336,7 +349,7 @@ func TestSync_ScanLocalIgnoresTmpFiles(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "backlog.md", "content")
 	writeFile(t, dir, "backlog.md.tmp", "in-flight store write") // store's atomic temp
-	writeFile(t, dir, "notes.txt", "non-md file")               // non-.md file
+	writeFile(t, dir, "notes.txt", "non-md file")                // non-.md file
 
 	e := New(dir, nil, "test")
 	local, err := e.scanLocal()

@@ -148,59 +148,75 @@ func (a *App) doSync(userInitiated bool) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), syncTimeout)
 		defer cancel()
-		engine := capturedEngine
-		var buildErr error
-		if engine == nil {
-			engine, buildErr = a.newSyncEngine(ctx)
-		}
-		var res syncengine.Result
-		var runErr error
-		if buildErr == nil {
-			res, runErr = engine.Run(ctx)
-		}
-		err := buildErr
-		if err == nil {
-			err = runErr
-		}
-		mainthread.Start(func() {
-			a.syncing = false
-			if buildErr == nil && runErr == nil && engine != nil {
-				// Persist the working engine for future syncs and conflict resolution.
-				a.syncEngine = engine
-			}
-			if err != nil {
-				slog.Warn("sync failed", "error", err, "user_initiated", userInitiated)
-				if userInitiated {
-					// User explicitly asked to sync: show a modal with full detail.
-					a.reportError(err)
-				} else {
-					// Timer-triggered: show a tray notification but only when the
-					// error category changes or syncInterval has passed (backoff).
-					key := syncErrKey(err)
-					if key != a.lastSyncErrKey || time.Since(a.lastSyncErrTime) >= syncInterval {
-						if a.tray != nil {
-							msg := err.Error()
-							if len(msg) > 120 {
-								msg = msg[:117] + "..."
-							}
-							a.tray.ShowMessage2("Sync error", msg)
-						}
-						a.lastSyncErrKey = key
-						a.lastSyncErrTime = time.Now()
-					}
-				}
-				return
-			}
-			// Reset dedup on success so a future error is surfaced even if it
-			// matches the last shown one.
-			a.lastSyncErrKey = ""
-			a.window.scheduleRefresh()
-			if len(res.Conflicts) > 0 && a.tray != nil {
-				a.tray.ShowMessage2("Sync conflicts",
-					"Some files changed on two devices. Open Preferences → Resolve.")
-			}
-		})
+		engine, res, err := a.runSyncEngine(ctx, capturedEngine)
+		mainthread.Start(func() { a.applySyncResult(engine, res, err, userInitiated) })
 	}()
+}
+
+// runSyncEngine executes one sync cycle in a background goroutine.
+// It returns (engine, result, firstErr): if the caller passed a nil engine a
+// new one is constructed; on success the returned engine is always non-nil and
+// should be stored back for future calls.
+func (a *App) runSyncEngine(ctx context.Context, engine *syncengine.Engine) (
+	*syncengine.Engine, syncengine.Result, error,
+) {
+	if engine == nil {
+		var buildErr error
+		engine, buildErr = a.newSyncEngine(ctx)
+		if buildErr != nil {
+			return nil, syncengine.Result{}, buildErr
+		}
+	}
+	res, runErr := engine.Run(ctx)
+	return engine, res, runErr
+}
+
+// applySyncResult is called on the main thread after runSyncEngine finishes.
+// It updates App state, surfaces errors to the user, and schedules a UI refresh.
+func (a *App) applySyncResult(engine *syncengine.Engine, res syncengine.Result, err error, userInitiated bool) {
+	a.syncing = false
+	if err == nil && engine != nil {
+		// Persist the working engine for future syncs and conflict resolution (M4).
+		a.syncEngine = engine
+	}
+	if err != nil {
+		a.handleSyncError(err, userInitiated)
+		return
+	}
+	// Reset dedup on success so a future error is surfaced even if it
+	// matches the last shown one.
+	a.lastSyncErrKey = ""
+	a.window.scheduleRefresh()
+	if len(res.Conflicts) > 0 && a.tray != nil {
+		a.tray.ShowMessage2("Sync conflicts",
+			"Some files changed on two devices. Open Preferences → Resolve.")
+	}
+}
+
+// handleSyncError surfaces a sync error to the user.
+// For user-initiated syncs it shows a modal; for timer-triggered syncs it uses
+// a passive tray notification with dedup/backoff so repeated offline errors
+// don't interrupt the user.
+func (a *App) handleSyncError(err error, userInitiated bool) {
+	slog.Warn("sync failed", "error", err, "user_initiated", userInitiated)
+	if userInitiated {
+		a.reportError(err)
+		return
+	}
+	// Timer-triggered: deduplicate by error category and elapsed time.
+	key := syncErrKey(err)
+	if key == a.lastSyncErrKey && time.Since(a.lastSyncErrTime) < syncInterval {
+		return
+	}
+	if a.tray != nil {
+		msg := err.Error()
+		if len(msg) > 120 {
+			msg = msg[:117] + "..."
+		}
+		a.tray.ShowMessage2("Sync error", msg)
+	}
+	a.lastSyncErrKey = key
+	a.lastSyncErrTime = time.Now()
 }
 
 // startSyncTimer arms periodic auto-sync when enabled and signed in.
