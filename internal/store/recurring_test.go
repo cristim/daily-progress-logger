@@ -69,19 +69,21 @@ func TestStore_RecurringPreservesProjectTag(t *testing.T) {
 func TestStore_RecurringProjectSlugShapedLikeToken(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)
-	// A project whose slug ("mon") looks like a weekday token: it must not be
-	// consumed as the recurrence weekday, and the project tag must be preserved.
+	// H1: A project named "Mon" now receives a non-reserved slug (suffixed,
+	// e.g. "mon-2") because "mon" is a weekday recurrence token. The recurring
+	// template parser must still handle the suffixed slug correctly as a project
+	// tag and not consume it as a recurrence weekday.
 	pid, err := s.AddProject("Mon")
 	require.NoError(t, err)
-	require.Equal(t, "mon", pid)
+	assert.NotEqual(t, "mon", pid, "reserved slug must be suffixed")
 
 	require.NoError(t, s.AddRecurring("Standup @"+pid+" @weekly @fri @9:00"))
 	tasks, err := s.RecurringTasks()
 	require.NoError(t, err)
 	require.Len(t, tasks, 1)
 	assert.Equal(t, "Standup", tasks[0].Text)
-	assert.Equal(t, "mon", tasks[0].Project)
-	assert.Equal(t, time.Friday, tasks[0].Rec.Weekday) // @mon did not set the weekday
+	assert.Equal(t, pid, tasks[0].Project)
+	assert.Equal(t, time.Friday, tasks[0].Rec.Weekday) // weekday set by @fri, not by pid
 }
 
 func TestStore_AddRecurringRejectsNonRecurring(t *testing.T) {

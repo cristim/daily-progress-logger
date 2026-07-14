@@ -272,6 +272,51 @@ func TestStore_BuildProjectTreeExcludesClosed(t *testing.T) {
 }
 
 
+// TestAddProject_ReservedSlugSuffixed verifies H1: creating a project whose
+// name slugifies to a recurrence keyword yields a non-colliding slug so that
+// the @recurrence token namespace is never hijacked.
+func TestAddProject_ReservedSlugSuffixed(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	// "Daily" -> slug "daily" is reserved; must be suffixed.
+	id, err := s.AddProject("Daily")
+	require.NoError(t, err)
+	assert.NotEqual(t, "daily", id, "slug must not collide with @daily recurrence keyword")
+
+	// A second project with a non-reserved name still gets its normal slug.
+	id2, err := s.AddProject("Payments")
+	require.NoError(t, err)
+	assert.Equal(t, "payments", id2)
+
+	// Weekday names and integers are also reserved.
+	idMon, err := s.AddProject("Mon")
+	require.NoError(t, err)
+	assert.NotEqual(t, "mon", idMon, "slug must not collide with @mon recurrence keyword")
+
+	id15, err := s.AddProject("15")
+	require.NoError(t, err)
+	assert.NotEqual(t, "15", id15, "slug must not collide with month-day token 15")
+}
+
+// TestLoadProjects_HandEditedReservedSlugNormalized verifies H1: a hand-edited
+// id: field in projects.md that collides with a recurrence keyword is
+// normalized (suffixed) by LoadProjects so downstream code never sees it.
+func TestLoadProjects_HandEditedReservedSlugNormalized(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	// Write a projects.md that a user might hand-edit with id: daily.
+	const content = "# Projects\n\n## Water Plants\nid: daily\nstatus: open\n"
+	require.NoError(t, writeFile(s.ProjectsPath(), content))
+
+	projects, err := s.LoadProjects()
+	require.NoError(t, err)
+	require.Len(t, projects, 1)
+	assert.NotEqual(t, "daily", projects[0].ID,
+		"hand-edited id: daily must be normalized to a non-reserved slug")
+}
+
 func TestSlugify(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{

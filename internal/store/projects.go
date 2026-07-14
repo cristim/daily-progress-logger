@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/cristim/daily-progress-logger/internal/recur"
 )
 
 // ItemStatus is the lifecycle state of a Project.
@@ -189,11 +191,31 @@ func assignMissingIDs(projects []Project) error {
 
 // ensureID assigns id a unique slug derived from name when empty, and
 // rejects a non-empty id that collides with one already in seen.
+//
+// Recurrence keyword reservation: slugs that collide with a recurrence token
+// recognised by recur.Parse (daily, weekly, monthly, weekday(s), weekday
+// names/abbreviations, integers 1-31, HH:MM shapes) are treated as already
+// taken so uniqueSlug suffixes them (e.g. "daily" -> "daily-2"). This applies
+// to both auto-derived slugs (empty *id) and hand-edited id: fields in
+// projects.md, preventing a project from silently hijacking @daily/@weekly/…
+// tokens in recurring templates and the MigrateRefTags rewrite path.
 func ensureID(id *string, name string, seen map[string]bool) error {
 	if *id == "" {
-		*id = uniqueSlug(slugify(name), seen)
-	} else if seen[*id] {
-		return fmt.Errorf("duplicate id %q", *id)
+		base := slugify(name)
+		if recur.IsReservedSlug(base) {
+			seen[base] = true // mark as taken so uniqueSlug appends a suffix
+		}
+		*id = uniqueSlug(base, seen)
+	} else {
+		if seen[*id] {
+			return fmt.Errorf("duplicate id %q", *id)
+		}
+		// Normalize a hand-edited id that collides with a recurrence keyword.
+		if recur.IsReservedSlug(*id) {
+			base := *id
+			seen[base] = true
+			*id = uniqueSlug(base, seen)
+		}
 	}
 	seen[*id] = true
 	return nil
@@ -210,6 +232,10 @@ func findProject(projects []Project, id string) int {
 }
 
 // AddProject creates a new open project and returns its stable ID.
+// If the name slugifies to a recurrence keyword (daily, weekly, monthly,
+// weekday names, 1-31, HH:MM), a numeric suffix is appended automatically
+// (e.g. "Daily" -> "daily-2") to prevent the slug from shadowing @recurrence
+// tokens in recur.Parse and in the MigrateRefTags rewrite path.
 func (s *Store) AddProject(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -219,7 +245,12 @@ func (s *Store) AddProject(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	id := uniqueSlug(slugify(name), allIDs(projects))
+	taken := allIDs(projects)
+	base := slugify(name)
+	if recur.IsReservedSlug(base) {
+		taken[base] = true // treat as taken so uniqueSlug appends a suffix
+	}
+	id := uniqueSlug(base, taken)
 	projects = append(projects, Project{ID: id, Name: name, Status: StatusOpen})
 	return id, s.SaveProjects(projects)
 }

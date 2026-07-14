@@ -186,11 +186,58 @@ func TestMigrateRefTags_RecycleAndBacklog(t *testing.T) {
 	assert.NotContains(t, string(bd), "@cudly")
 }
 
+// TestMigrateRefTags_RecurrenceKeywordNeverRewritten verifies H1: even if a
+// project somehow carries a slug that is a recurrence keyword (e.g. a
+// hand-edited projects.md predating the reservation fix), MigrateRefTags must
+// not rewrite "@daily" to "#daily" — that would destroy the recurrence
+// schedule permanently.
+func TestMigrateRefTags_RecurrenceKeywordNeverRewritten(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	// Force a project with slug "daily" by writing projects.md directly,
+	// bypassing the creation guard (simulates a legacy/hand-edited file).
+	const projectsMD = "# Projects\n\n## Daily Vitamins\nid: daily\nstatus: open\n"
+	require.NoError(t, writeFile(s.ProjectsPath(), projectsMD))
+
+	p := writeDailyWithTag(t, s, "- [ ] Take vitamins @daily")
+	require.NoError(t, s.MigrateRefTags())
+
+	data, err := os.ReadFile(p)
+	require.NoError(t, err)
+	// @daily must NOT be rewritten even though "daily" is a known project id,
+	// because it is also a recurrence keyword.
+	assert.Contains(t, string(data), "@daily", "@daily must survive migration even when 'daily' is a known project id")
+	assert.NotContains(t, string(data), "#daily", "@daily must not be blindly rewritten to #daily")
+}
+
+// TestMigrateRefTags_RealProjectTagStillMigrated verifies H1: a real (non-
+// reserved) project tag is still migrated even when a recurrence keyword also
+// appears in the trailing token run.
+func TestMigrateRefTags_RealProjectTagStillMigrated(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	pid, err := s.AddProject("CUDly")
+	require.NoError(t, err)
+	assert.Equal(t, "cudly", pid)
+
+	p := writeDailyWithTag(t, s, "- [ ] Vitamins @daily @cudly")
+	require.NoError(t, s.MigrateRefTags())
+
+	data, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "@daily", "@daily is a recurrence keyword, must not be touched")
+	assert.Contains(t, string(data), "#cudly", "@cudly (known non-reserved project) must migrate to #cudly")
+	assert.NotContains(t, string(data), "@cudly", "@cudly must not survive migration")
+}
+
 // TestMigrateLineRefTag tests the low-level per-line replacement function
 // directly to cover edge cases clearly.
 func TestMigrateLineRefTag(t *testing.T) {
 	t.Parallel()
-	known := map[string]bool{"cudly": true, "marketing": true}
+	// "daily" is both a known project id AND a recurrence keyword; the guard
+	// must refuse to rewrite it. "cudly" and "marketing" are normal project ids.
+	known := map[string]bool{"cudly": true, "marketing": true, "daily": true}
 	cases := []struct{ in, want string }{
 		{"- [ ] Task @cudly", "- [ ] Task #cudly"},
 		{"- [ ] Task @daily @cudly", "- [ ] Task @daily #cudly"}, // only trailing
@@ -199,6 +246,11 @@ func TestMigrateLineRefTag(t *testing.T) {
 		{"@cudly", "#cudly"},                                     // tag-only line (edge case)
 		{"- [ ] Plain task", "- [ ] Plain task"},                 // no tag
 		{"", ""},                                                 // empty line
+		// H1 belt-and-braces: recurrence keywords must not be rewritten even when
+		// they appear in the known-project-id set (hand-edited projects.md).
+		{"- [ ] Vitamins @daily", "- [ ] Vitamins @daily"},   // @daily is a recurrence keyword
+		{"- [ ] Vitamins @weekly", "- [ ] Vitamins @weekly"}, // @weekly likewise
+		{"- [ ] Task @mon", "- [ ] Task @mon"},               // weekday abbreviation
 	}
 	for _, c := range cases {
 		got := migrateLineRefTag(c.in, known)

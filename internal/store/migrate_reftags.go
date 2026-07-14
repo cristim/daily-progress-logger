@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/cristim/daily-progress-logger/internal/recur"
 )
 
 // MigrateRefTags rewrites legacy " @<id>" project ref tags to the canonical
@@ -136,22 +138,28 @@ func migrateRefTagFile(path string, known map[string]bool) error {
 // a single text line. It mirrors the splitProjectTag logic: only the very last
 // token is examined; non-ref tokens (unknown ids, recurrence keywords, times)
 // are left untouched because they are not in the known-id set.
+//
+// Belt-and-braces guard: even if a project happens to carry a slug that
+// collides with a recurrence keyword (possible with hand-edited projects.md
+// predating the H1 fix), that candidate is never rewritten — it is a
+// recurrence token, not a project ref, and rewriting it would permanently
+// destroy the template's schedule.
 func migrateLineRefTag(line string, known map[string]bool) string {
 	trimmed := strings.TrimRight(line, " \t")
-	space := strings.LastIndexByte(trimmed, ' ')
-	last := trimmed[space+1:]
+	sep := strings.LastIndexByte(trimmed, ' ')
+	last := trimmed[sep+1:]
 	if !strings.HasPrefix(last, "@") {
 		return line
 	}
 	candidate := last[1:]
-	if !known[candidate] {
+	if !known[candidate] || recur.IsReservedSlug(candidate) {
 		return line
 	}
 	// Replace the trailing "@<id>" with "#<id>", preserving the rest of the line.
-	if space < 0 {
+	if sep < 0 {
 		return "#" + candidate
 	}
-	return trimmed[:space+1] + "#" + candidate
+	return trimmed[:sep+1] + "#" + candidate
 }
 
 // backupRefTagFiles copies each file in paths (rooted under src) to the

@@ -149,6 +149,22 @@ func parseHM(s string) (hour, minute int, ok bool) {
 	return hi, mi, true
 }
 
+// IsReservedSlug reports whether body (lower-case, no prefix) is a recurrence
+// keyword that recur.Parse may consume as a cadence, weekday, month-day, or
+// time token. A project slug that equals one of these words shadows the
+// corresponding recurrence token, so slug creation must not produce reserved
+// slugs (see projects.go ensureID).
+//
+// Reserved: daily, weekly, monthly, weekday, weekdays, weekday names and
+// three-letter abbreviations (mon..sun), integers 1-31 (month-day tokens),
+// and HH:MM time shapes.
+func IsReservedSlug(body string) bool {
+	body = strings.ToLower(body)
+	dummy := Recurrence{}
+	hasKind := false
+	return consume(body, &dummy, &hasKind)
+}
+
 // Next returns the first occurrence strictly after t.
 func (r Recurrence) Next(t time.Time) time.Time {
 	for day := dayStart(t); ; day = day.AddDate(0, 0, 1) {
