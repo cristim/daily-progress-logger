@@ -2,7 +2,9 @@ package drive
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
+	"sync"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -42,6 +44,7 @@ func HTTPClient(ctx context.Context, cfg *oauth2.Config, store TokenStore) (*htt
 type savingSource struct {
 	store TokenStore
 	src   oauth2.TokenSource
+	mu    sync.Mutex
 	last  string
 }
 
@@ -50,9 +53,20 @@ func (s *savingSource) Token() (*oauth2.Token, error) {
 	if err != nil {
 		return nil, err
 	}
-	if tok.AccessToken != s.last {
-		_ = s.store.Save(tok)
+	s.mu.Lock()
+	changed := tok.AccessToken != s.last
+	if changed {
 		s.last = tok.AccessToken
+	}
+	s.mu.Unlock()
+	if changed {
+		if err := s.store.Save(tok); err != nil {
+			// A Keychain failure (locked keychain, denied prompt) means the
+			// refreshed token is not persisted; the user will be silently
+			// signed out once the old refresh token ages out.  Warn so it
+			// leaves a breadcrumb in the system log (M1).
+			slog.Warn("drive: failed to persist refreshed OAuth token", "error", err)
+		}
 	}
 	return tok, nil
 }
