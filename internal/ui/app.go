@@ -45,6 +45,12 @@ type App struct {
 	syncing     bool
 	dialogOpen  bool
 
+	// H3: tray-notification dedup for timer-triggered sync errors so we don't
+	// flood the user with notifications when offline.  lastSyncErrKey is a
+	// coarse category string; lastSyncErrTime is when we last showed it.
+	lastSyncErrKey  string
+	lastSyncErrTime time.Time
+
 	// shortcuts holds the app-wide QShortcut per action ID (config.Shortcut*),
 	// so applyShortcuts can rebind keys in place when Preferences change rather
 	// than leaking a fresh set. app.quit is bound on the menu action instead.

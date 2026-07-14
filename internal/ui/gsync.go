@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -90,8 +91,37 @@ func (a *App) signOutGoogle() {
 	a.stopSyncTimer()
 }
 
-// runSync performs one background sync and surfaces the outcome.
-func (a *App) runSync() {
+// runSync performs one user-initiated sync and surfaces errors as a modal dialog.
+// Use this for the "Sync now" button and the first sync after sign-in.
+func (a *App) runSync() { a.doSync(true) }
+
+// runSyncOnTimer performs a timer-triggered sync; errors are logged and shown
+// as a passive tray notification with dedup/backoff instead of a modal dialog
+// so the app remains usable while offline.
+func (a *App) runSyncOnTimer() { a.doSync(false) }
+
+// syncErrKey returns a coarse category string for err used to deduplicate
+// passive tray notifications: identical consecutive network errors show only
+// once per syncInterval; auth errors always show (once per distinct message).
+func syncErrKey(err error) string {
+	if err == nil {
+		return ""
+	}
+	s := err.Error()
+	if strings.Contains(s, "oauth2") ||
+		strings.Contains(s, "401") ||
+		strings.Contains(s, "403") ||
+		(strings.Contains(s, "token") && (strings.Contains(s, "expired") ||
+			strings.Contains(s, "invalid") || strings.Contains(s, "revoked"))) {
+		return "auth:" + s // auth errors are each surfaced once
+	}
+	return "net" // all transient network errors share one bucket
+}
+
+// doSync runs one sync cycle. When userInitiated is true, errors surface as a
+// modal; when false (timer-driven) errors are logged and optionally shown as a
+// passive tray message with dedup so repeated offline errors don't flood.
+func (a *App) doSync(userInitiated bool) {
 	if a.syncing || !a.googleSignedIn() {
 		return
 	}
@@ -107,10 +137,31 @@ func (a *App) runSync() {
 		mainthread.Start(func() {
 			a.syncing = false
 			if err != nil {
-				slog.Warn("sync failed", "error", err)
-				a.reportError(err)
+				slog.Warn("sync failed", "error", err, "user_initiated", userInitiated)
+				if userInitiated {
+					// User explicitly asked to sync: show a modal with full detail.
+					a.reportError(err)
+				} else {
+					// Timer-triggered: show a tray notification but only when the
+					// error category changes or syncInterval has passed (backoff).
+					key := syncErrKey(err)
+					if key != a.lastSyncErrKey || time.Since(a.lastSyncErrTime) >= syncInterval {
+						if a.tray != nil {
+							msg := err.Error()
+							if len(msg) > 120 {
+								msg = msg[:117] + "..."
+							}
+							a.tray.ShowMessage2("Sync error", msg)
+						}
+						a.lastSyncErrKey = key
+						a.lastSyncErrTime = time.Now()
+					}
+				}
 				return
 			}
+			// Reset dedup on success so a future error is surfaced even if it
+			// matches the last shown one.
+			a.lastSyncErrKey = ""
 			a.window.scheduleRefresh()
 			if len(res.Conflicts) > 0 && a.tray != nil {
 				a.tray.ShowMessage2("Sync conflicts",
@@ -127,10 +178,10 @@ func (a *App) startSyncTimer() {
 	}
 	if a.syncTimer == nil {
 		a.syncTimer = qt.NewQTimer2(a.window.win.QObject)
-		a.syncTimer.OnTimeout(a.runSync)
+		a.syncTimer.OnTimeout(a.runSyncOnTimer)
 	}
 	a.syncTimer.Start(int(syncInterval.Milliseconds()))
-	a.runSync() // sync once on start
+	a.runSync() // first run after start is user-visible; show errors as modal
 }
 
 // stopSyncTimer disables periodic auto-sync.
