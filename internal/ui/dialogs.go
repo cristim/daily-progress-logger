@@ -481,7 +481,11 @@ func (a *App) buildWeeklySummaryDialog(week store.WeekID, markOnAccept bool) (*d
 	weeklyPath := a.store.WeeklyPath(week)
 	openBtn.OnClicked(func() {
 		// Regenerate so the file exists even if this is an early-week view.
-		_ = a.store.RegenerateWeekly(week)
+		// Surface the error before trying to open the (missing) file (L8).
+		if err := a.store.RegenerateWeekly(week); err != nil {
+			a.reportError(fmt.Errorf("regenerate weekly file: %w", err))
+			return
+		}
 		qt.QDesktopServices_OpenUrl(qt.QUrl_FromLocalFile(weeklyPath))
 	})
 	layout.AddWidget(openBtn.QWidget)
