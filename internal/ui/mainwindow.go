@@ -12,7 +12,7 @@ import (
 	"github.com/cristim/daily-progress-logger/internal/store"
 )
 
-// mainWindow is the resident window showing the Projects → Stories → tasks tree.
+// mainWindow is the resident window showing the Projects → tasks tree.
 type mainWindow struct {
 	app          *App
 	win          *qt.QMainWindow
