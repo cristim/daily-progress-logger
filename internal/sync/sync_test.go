@@ -329,6 +329,23 @@ func TestSync_LocalChangedAfterScanIsConflict(t *testing.T) {
 	assert.Equal(t, "vA", readFile(t, dirB, cc))
 }
 
+// TestSync_ScanLocalIgnoresTmpFiles verifies H4: scanLocal skips *.tmp files
+// (store atomics) and non-.md files so they are never uploaded.
+func TestSync_ScanLocalIgnoresTmpFiles(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeFile(t, dir, "backlog.md", "content")
+	writeFile(t, dir, "backlog.md.tmp", "in-flight store write") // store's atomic temp
+	writeFile(t, dir, "notes.txt", "non-md file")               // non-.md file
+
+	e := New(dir, nil, "test")
+	local, err := e.scanLocal()
+	require.NoError(t, err)
+	assert.Contains(t, local, "backlog.md", "real .md file is included")
+	assert.NotContains(t, local, "backlog.md.tmp", "store temp is excluded")
+	assert.NotContains(t, local, "notes.txt", "non-.md file is excluded")
+}
+
 // TestSync_WriteLocalIsAtomic verifies H2b: writeLocal uses tmp+rename so no
 // partial file is left on disk, and the temp file (dotfile) is invisible to
 // subsequent scanLocal calls.

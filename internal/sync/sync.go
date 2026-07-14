@@ -369,8 +369,16 @@ func (e *Engine) scanLocal() (map[string]string, error) {
 			}
 			return nil
 		}
-		if strings.HasPrefix(d.Name(), ".") {
-			return nil // skip .sync-state.json etc.
+		name := d.Name()
+		// Skip dot-files (.sync-state.json, .synctmp engine temps, etc.).
+		if strings.HasPrefix(name, ".") {
+			return nil
+		}
+		// Allowlist: only sync .md files. This excludes the store's transient
+		// *.md.tmp atomic-write temps and any other non-markdown debris, preventing
+		// spurious uploads and "file vanished" read errors (H4).
+		if !strings.HasSuffix(name, ".md") {
+			return nil
 		}
 		content, err := os.ReadFile(p)
 		if err != nil {
