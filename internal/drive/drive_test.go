@@ -28,6 +28,18 @@ func TestRelPath(t *testing.T) {
 	assert.False(t, ok, "file whose parent chain never reaches root is skipped")
 }
 
+func TestDriveQueryString(t *testing.T) {
+	t.Parallel()
+	// Plain value: single-quoted with no escaping.
+	assert.Equal(t, "'hello'", driveQueryString("hello"))
+	// Single-quote inside the value must be backslash-escaped (L5).
+	assert.Equal(t, `'it\'s'`, driveQueryString("it's"))
+	// Backslash inside the value must be doubled (L5).
+	assert.Equal(t, `'a\\b'`, driveQueryString(`a\b`))
+	// Both special characters together.
+	assert.Equal(t, `'a\\b\'c'`, driveQueryString(`a\b'c`))
+}
+
 func TestConflictName(t *testing.T) {
 	t.Parallel()
 	ts := time.Date(2026, 7, 10, 9, 30, 0, 0, time.UTC)

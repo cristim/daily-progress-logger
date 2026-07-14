@@ -150,12 +150,25 @@ func (c *Client) listAll(ctx context.Context) (map[string]folderNode, []*drivev3
 	return folders, all, nil
 }
 
+// driveQueryString single-quotes s for use in a Drive API query, escaping
+// backslash and single-quote per the Drive query language spec (L5).
+// Go's %q uses double-quote Go string escaping which is not the same as
+// Drive's single-quoted escaping, so a segment containing ' or \ would
+// produce an invalid/incorrect query.
+func driveQueryString(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `'`, `\'`)
+	return "'" + s + "'"
+}
+
 // ensureFolder finds (or creates) a folder by name under parentID. An empty
 // parentID means the user's My Drive root.
 func (c *Client) ensureFolder(ctx context.Context, name, parentID string) (string, error) {
-	q := fmt.Sprintf("name = %q and mimeType = %q and trashed = false", name, folderMIME)
+	q := "name = " + driveQueryString(name) +
+		" and mimeType = " + driveQueryString(folderMIME) +
+		" and trashed = false"
 	if parentID != "" {
-		q += fmt.Sprintf(" and %q in parents", parentID)
+		q += " and " + driveQueryString(parentID) + " in parents"
 	}
 	list, err := c.svc.Files.List().Q(q).Fields("files(id)").PageSize(1).Context(ctx).Do()
 	if err != nil {
