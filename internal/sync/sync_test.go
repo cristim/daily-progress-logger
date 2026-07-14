@@ -346,6 +346,31 @@ func TestSync_ScanLocalIgnoresTmpFiles(t *testing.T) {
 	assert.NotContains(t, local, "notes.txt", "non-.md file is excluded")
 }
 
+// TestSync_CorruptStateIsQuarantined verifies M8: a truncated/corrupt
+// .sync-state.json is quarantined (renamed to .bad) and sync recovers by
+// starting fresh rather than hard-failing on every subsequent run.
+func TestSync_CorruptStateIsQuarantined(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fd := newFakeDrive()
+	dir := t.TempDir()
+	e := New(dir, fd, "test")
+
+	// Establish state with a real file.
+	writeFile(t, dir, "notes.md", "v1")
+	_, err := e.Run(ctx)
+	require.NoError(t, err)
+
+	// Corrupt the state file (simulate a truncated mid-write crash).
+	stateFilePath := filepath.Join(dir, stateFile)
+	require.NoError(t, os.WriteFile(stateFilePath, []byte(`{"files":{`), 0o600))
+
+	// Run must not error; it should quarantine the bad file and start fresh.
+	_, err = e.Run(ctx)
+	require.NoError(t, err, "sync must recover from a corrupt state file")
+	assert.FileExists(t, stateFilePath+".bad", ".sync-state.json.bad quarantine file must be created")
+}
+
 // TestSync_WriteLocalIsAtomic verifies H2b: writeLocal uses tmp+rename so no
 // partial file is left on disk, and the temp file (dotfile) is invisible to
 // subsequent scanLocal calls.

@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -407,22 +408,10 @@ func (e *Engine) readLocal(path string) ([]byte, error) {
 
 func (e *Engine) writeLocal(path string, content []byte) error {
 	full := e.abs(path)
-	dir := filepath.Dir(full)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return err
-	}
-	// Dot-prefixed temp name: scanLocal already skips dotfiles, so this temp
-	// never appears as a sync candidate, and it never collides with the store's
-	// own *.md.tmp temporaries (H4).
-	tmp := filepath.Join(dir, "."+filepath.Base(full)+".synctmp")
-	if err := os.WriteFile(tmp, content, 0o600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, full); err != nil {
-		_ = os.Remove(tmp) // best-effort cleanup on rename failure
-		return err
-	}
-	return nil
+	// writeFileAtomic uses a dot-prefixed ".name.synctmp" temp that is
+	// invisible to scanLocal (which skips dotfiles) and distinct from the
+	// store's own "*.md.tmp" atomics (H4).
+	return writeFileAtomic(full, content)
 }
 
 func (e *Engine) removeLocal(path string) error {
@@ -436,7 +425,8 @@ func (e *Engine) removeLocal(path string) error {
 // --- state / conflicts persistence ---
 
 func (e *Engine) loadState() (persistedState, error) {
-	content, err := os.ReadFile(filepath.Join(e.dir, stateFile))
+	p := filepath.Join(e.dir, stateFile)
+	content, err := os.ReadFile(p)
 	if os.IsNotExist(err) {
 		return persistedState{Files: map[string]fileState{}}, nil
 	}
@@ -445,7 +435,14 @@ func (e *Engine) loadState() (persistedState, error) {
 	}
 	var st persistedState
 	if err := json.Unmarshal(content, &st); err != nil {
-		return persistedState{}, fmt.Errorf("parsing sync state: %w", err)
+		// Quarantine the corrupt file so the next run starts fresh rather than
+		// hard-failing on every subsequent sync (M8). The classifier converges
+		// without state: already-equal files are re-discovered as such on the
+		// next successful run.
+		bad := p + ".bad"
+		_ = os.Rename(p, bad)
+		slog.Warn("sync: corrupt state file quarantined; starting fresh", "bad", bad, "error", err)
+		return persistedState{Files: map[string]fileState{}}, nil
 	}
 	if st.Files == nil {
 		st.Files = map[string]fileState{}
@@ -458,7 +455,7 @@ func (e *Engine) saveState(st persistedState) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(e.dir, stateFile), content, 0o600)
+	return writeFileAtomic(filepath.Join(e.dir, stateFile), content)
 }
 
 // ResolveChoice is how the user settles a conflict.
@@ -552,7 +549,7 @@ func (e *Engine) saveConflicts(cs []Conflict) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(e.dir, conflictsFile), content, 0o600)
+	return writeFileAtomic(filepath.Join(e.dir, conflictsFile), content)
 }
 
 func (e *Engine) removeLocalRaw(name string) error {
@@ -561,6 +558,24 @@ func (e *Engine) removeLocalRaw(name string) error {
 		return nil
 	}
 	return err
+}
+
+// writeFileAtomic writes content to path via a dot-prefixed temp and os.Rename
+// so a crash mid-write never leaves a truncated file (M8).
+func writeFileAtomic(path string, content []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return err
+	}
+	tmp := filepath.Join(dir, "."+filepath.Base(path)+".synctmp")
+	if err := os.WriteFile(tmp, content, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 func md5hex(b []byte) string {
