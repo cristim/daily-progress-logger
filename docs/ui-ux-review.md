@@ -741,6 +741,24 @@ project were named "daily" the two would be indistinguishable.
   affected files to `.pre-hashtag-backup/` once; idempotent.
 **Status:** implemented (2026-07-13, branch feat/hash-tag-syntax)
 
+## Branch integration (feat/unified, 2026-07-14)
+
+### 47. Task-row action buttons: hover-revealed text captions (unified design)
+**Severity:** n/a (design decision)
+**Context:** Three branches diverged on the task-row action UI:
+- `feat/defer-targets-and-shortcuts` added text-caption buttons (Next day,
+  Next week, Backlog, Delete) that were always visible.
+- `feat/recurring-tasks` moved all actions into a right-click context menu
+  to unclutter the row, then (in commit b961f10) re-added them as
+  hover-revealed text-caption buttons alongside the hover-revealed drag grip.
+**Decision:** `feat/recurring-tasks`' unified row is the canonical design.
+Each task row shows `[grip cell] [checkbox] [label]` at rest, and on mouse-over
+reveals `[grip glyph] [+ Sub] [Next day] [Next week] [Backlog] [Delete]`.
+The done state is the checkbox (not a caption button). The right-click context
+menu is retained as a redundant convenience (Edit is accessible only there).
+**Status:** implemented in feat/unified (hover machinery from 6a99c73/b961f10,
+carried forward without change).
+
 ## Other notes
 
 - **[wontfix] Dock icon visibility:** hiding the Dock icon (LSUIElement) is
