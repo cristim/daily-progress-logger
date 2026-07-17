@@ -29,6 +29,14 @@ sealed class CoreError(val raw: String) : Exception(raw) {
     /** Unknown: error message did not carry a recognised code. */
     class Unknown(raw: String) : CoreError(raw)
 
+    /**
+     * ContractViolation: the app received a valid response from Core but could not
+     * deserialise it into the expected DTO. Indicates contract drift between the app
+     * and the Core version it was compiled against. Distinct from [Unknown], which
+     * is a Core-returned error with an unrecognised code prefix.
+     */
+    class ContractViolation(raw: String) : CoreError(raw)
+
     companion object {
         private const val CAS_MISMATCH_PREFIX = "CAS_MISMATCH"
         private const val NOT_FOUND_PREFIX = "NOT_FOUND"

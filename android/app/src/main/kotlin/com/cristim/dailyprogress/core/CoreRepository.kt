@@ -21,6 +21,7 @@ import com.cristim.dailyprogress.model.WeeklySummaryDto
 import com.cristim.dailyprogress.model.WeekReviewCandidatesDto
 import com.cristim.dailyprogress.model.wireString
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -57,6 +58,10 @@ class CoreRepository(private val client: CoreClient) {
                 block(client.openCore())
             } catch (e: CoreError) {
                 throw e // already typed
+            } catch (e: SerializationException) {
+                // JSON decode failure: Core returned valid bytes but the DTO shape
+                // has drifted. Classify distinctly from Core-side errors.
+                throw CoreError.ContractViolation("CONTRACT_VIOLATION: ${e.message.orEmpty()}")
             } catch (e: Exception) {
                 throw CoreError.parse(e)
             }

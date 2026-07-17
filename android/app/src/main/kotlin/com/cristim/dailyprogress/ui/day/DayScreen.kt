@@ -223,8 +223,11 @@ private fun DayScreenContent(
                                 },
                             )
                         }
+                        // Flatten the full subtree (pre-order) so depth >= 2 nodes
+                        // (subtasks-of-subtasks synced from desktop) are visible and actionable.
+                        val allProjectTasks = project.tasks.flatMap { it.flattenPreOrder() }
                         items(
-                            items = project.tasks,
+                            items = allProjectTasks,
                             key = { task -> "proj-${project.id}-task-${task.index}" },
                         ) { task ->
                             TaskRow(
@@ -232,17 +235,6 @@ private fun DayScreenContent(
                                 onToggleDone = { onToggleDone(task.index, task.text, date, task.state) },
                                 onLongPress = { selectedTask = task },
                             )
-                            if (task.children.isNotEmpty()) {
-                                task.children.forEach { child ->
-                                    TaskRow(
-                                        task = child,
-                                        onToggleDone = {
-                                            onToggleDone(child.index, child.text, date, child.state)
-                                        },
-                                        onLongPress = { selectedTask = child },
-                                    )
-                                }
-                            }
                         }
                     }
 
@@ -251,8 +243,10 @@ private fun DayScreenContent(
                         item(key = "unfiled-header") {
                             SectionHeader("Unfiled")
                         }
+                        // Flatten the full subtree (pre-order) so depth >= 2 nodes are visible.
+                        val allUnfiled = tree.unfiled.flatMap { it.flattenPreOrder() }
                         items(
-                            items = tree.unfiled,
+                            items = allUnfiled,
                             key = { task -> "unfiled-task-${task.index}" },
                         ) { task ->
                             TaskRow(
@@ -260,15 +254,6 @@ private fun DayScreenContent(
                                 onToggleDone = { onToggleDone(task.index, task.text, date, task.state) },
                                 onLongPress = { selectedTask = task },
                             )
-                            task.children.forEach { child ->
-                                TaskRow(
-                                    task = child,
-                                    onToggleDone = {
-                                        onToggleDone(child.index, child.text, date, child.state)
-                                    },
-                                    onLongPress = { selectedTask = child },
-                                )
-                            }
                         }
                     }
 
@@ -368,6 +353,20 @@ private fun DayScreenContent(
             onDismiss = { editDialogTask = null },
         )
     }
+}
+
+// ---------------------------------------------------------------------------
+// Tree helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns this task and all of its descendants in pre-order (task first, then
+ * each child's full subtree). Handles arbitrary nesting depth — depth >= 2
+ * subtasks synced from desktop are included.
+ */
+private fun TreeTaskDto.flattenPreOrder(): List<TreeTaskDto> = buildList {
+    add(this@flattenPreOrder)
+    children.forEach { child -> addAll(child.flattenPreOrder()) }
 }
 
 // ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@ import com.cristim.dailyprogress.model.TaskState
 import com.cristim.dailyprogress.model.TreeDto
 import com.cristim.dailyprogress.model.TreeProjectDto
 import com.cristim.dailyprogress.model.TreeTaskDto
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -364,6 +365,21 @@ class DtoDecodingTest {
         assertEquals(TaskState.TODO, stateFrom("todo"))
         assertEquals(TaskState.DONE, stateFrom("done"))
         assertEquals(TaskState.POSTPONED, stateFrom("postponed"))
+    }
+
+    @Test
+    fun `unknown TaskState value fails loud on decode`() {
+        // Contract rule: unknown enum values must throw, never silently default.
+        // iOS carries an equivalent test; this ensures Android matches the same guarantee.
+        val bogusJson = """
+            {"index":0,"depth":0,"text":"t","state":"bogus","date":"2026-07-17","done":false,"children":[]}
+        """.trimIndent()
+        try {
+            json.decodeFromString<TreeTaskDto>(bogusJson)
+            org.junit.Assert.fail("Expected SerializationException for unknown TaskState value but none was thrown")
+        } catch (_: SerializationException) {
+            // expected: kotlinx.serialization rejects unknown enum variants by default
+        }
     }
 
     // -----------------------------------------------------------------------
