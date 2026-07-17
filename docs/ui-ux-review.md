@@ -759,6 +759,30 @@ menu is retained as a redundant convenience (Edit is accessible only there).
 **Status:** implemented in feat/unified (hover machinery from 6a99c73/b961f10,
 carried forward without change).
 
+## Notification-first prompts (feat/notify-checkins, 2026-07-17)
+
+Scheduled check-in prompts (morning, evening, week review, weekly plan, weekly
+summary) now arrive as macOS notification banners instead of focus-stealing
+modal dialogs. Clicking the banner opens the dialog; the click handler wires
+`QSystemTrayIcon::OnMessageClicked` to `runPrompt(pendingNotifyPrompt, false)`.
+Non-notification paths (tray menu items, keyboard shortcuts, `-checkin` flag)
+are unchanged and open the dialog immediately.
+
+A "Check-in delivery" checkbox in Preferences (the `notify_checkins` config
+field, `*bool`, default nil = enabled) lets the user switch back to the
+immediate-dialog mode. The field is absent from old config files, where
+`NotifyCheckinsEnabled()` returns true (nil = enabled). One-shot mode
+(`-prompt-due`, launchd) always falls back to the dialog because a short-lived
+process cannot host a notification click.
+
+Non-check-in tray messages (recurring reminders, backlog/adopt confirmations)
+route through a new `showTrayMessage` helper that resets `pendingNotifyPrompt`
+so clicking a recurring reminder cannot accidentally open a stale check-in
+dialog.
+
+Click-through behavior and Notification Center attribution require a real
+logged-in session and cannot be verified offscreen; see known-issues.md.
+
 ## Other notes
 
 - **[wontfix] Dock icon visibility:** hiding the Dock icon (LSUIElement) is

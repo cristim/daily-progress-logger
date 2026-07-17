@@ -32,6 +32,12 @@ see [Building](#building).
   buttons — *Done*, *Not done*, *Postpone to next day*, *Postpone to next week*,
   and *Move to backlog* — plus anything else you accomplished. Regenerates the
   weekly summary afterwards.
+- When a scheduled check-in becomes due, the app posts a **macOS notification
+  banner** ("Morning Check-in — What are you planning to work on today?")
+  instead of immediately popping a dialog. Click the notification to open the
+  dialog; the tray menu items and keyboard shortcuts always open the dialog
+  directly. To switch back to the old focus-stealing behavior, uncheck
+  **Check-in delivery** in Preferences.
 - Every check-in offers **Remind me in 1h** (snooze: it re-appears an hour
   later) and **Skip Today** (it stays quiet until tomorrow).
 - **Week review** (first launch in a new ISO week): lists the previous week's
@@ -114,6 +120,7 @@ keyboard shortcuts. Edit it directly, or use *Preferences…* (⌘,):
   "evening_time": "17:30",
   "summary_day": "Friday",
   "summary_time": "17:00",
+  "notify_checkins": true,
   "shortcuts": {
     "item.next_day": "Ctrl+Shift+D",
     "item.next_week": "Ctrl+Shift+W",
@@ -121,6 +128,8 @@ keyboard shortcuts. Edit it directly, or use *Preferences…* (⌘,):
   }
 }
 ```
+
+Set `notify_checkins` to `false` (or uncheck **Check-in delivery** in Preferences) to revert to the old focus-stealing dialog behavior. When the field is absent the app defaults to `true`.
 
 Shortcuts use Qt key-sequence strings (`Ctrl` renders as ⌘ on macOS); any
 omitted action falls back to its default, and each must be unique.

@@ -36,9 +36,11 @@ effort is a rough t-shirt size.
 - **Workweek awareness** (S): configurable workdays; no prompts on weekends
   or holidays.
 - **Vacation mode** (S): pause prompts for a date range from the tray menu.
-- **Notification-first prompts** (M): a macOS notification ("Evening
-  check-in ready") that opens the dialog on click, instead of a dialog
-  stealing focus.
+- **Notification-first prompts** (M): shipped -- scheduled check-ins
+  (morning, evening, week review, weekly plan, weekly summary) arrive as
+  macOS notification banners; clicking the banner opens the dialog. Toggle
+  in Preferences. Manual paths (tray menu, shortcuts, -checkin flag) still
+  open the dialog immediately.
 
 ## UI
 
