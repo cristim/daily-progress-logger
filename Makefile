@@ -16,11 +16,15 @@ MACDEPLOYQT   := /opt/homebrew/opt/qt/bin/macdeployqt
 
 export CGO_CXXFLAGS := -std=c++20
 
-.PHONY: build test lint run screenshot app dmg release install-agent uninstall-agent \
+.PHONY: build cli test lint run screenshot app dmg release install-agent uninstall-agent \
 	install-checkin-agent uninstall-checkin-agent clean
 
 build:
 	go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY) ./cmd/$(BINARY)
+
+# Build the pure-Go CLI companion (no CGO, no Qt dependency).
+cli:
+	CGO_ENABLED=0 go build -o $(BUILD_DIR)/dpl ./cmd/dpl
 
 test:
 	go test -race -cover ./...

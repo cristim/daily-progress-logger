@@ -165,7 +165,70 @@ Qt headers require C++17+; the Makefile exports `CGO_CXXFLAGS=-std=c++20`
 for every Go invocation — set it yourself when calling `go build`/`go test`
 directly.
 
-## CLI flags
+## CLI (`dpl`)
+
+A pure-Go command-line companion that reads and writes the same data files as
+the GUI.  No Qt, no CGO, no dependencies beyond the standard library.
+
+### Install / build
+
+```sh
+make cli                          # builds build/dpl
+CGO_ENABLED=0 go build ./cmd/dpl # or directly
+```
+
+The binary is fully static — place it anywhere on your `PATH`.
+
+### Shared data directory
+
+`dpl` uses the same `data_dir` as the GUI (read from
+`~/Library/Application Support/DailyProgressLogger/config.json`).  Both
+processes can run concurrently: all writes are atomic, so there are no races.
+Override the path with `--data-dir /custom/path`.
+
+### Commands
+
+```sh
+# List today's plan (1-based numbered)
+dpl list
+dpl list --json   # machine-readable output
+
+# Add tasks
+dpl add Buy milk
+dpl add --project myproj Implement the feature
+dpl add --parent 2 Write unit tests   # subtask of item 2
+
+# Change state
+dpl done 1        # mark item 1 done   [x]
+dpl undone 1      # revert to to-do    [ ]
+
+# Edit / remove
+dpl edit 3 Revised task text
+dpl rm 3          # moves to recycle bin (recoverable in GUI)
+
+# Postpone
+dpl postpone 2             # move to tomorrow's plan
+dpl postpone 2 --week      # mark [>] and queue in next week's backlog
+
+# Backlog
+dpl backlog 1              # move item 1 to current backlog
+dpl backlog list           # show Current + Next week sections
+
+# Projects
+dpl projects               # list all projects (id, name, status)
+dpl project add My Project # create a project, prints its id
+
+# Recurring templates
+dpl recur list
+
+# Use a different date
+dpl --date 2025-06-09 list
+
+# Help
+dpl help
+```
+
+## GUI flags
 
 ```
 -checkin morning|evening|review   show the named check-in, then exit
