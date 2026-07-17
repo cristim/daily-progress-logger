@@ -28,6 +28,10 @@ const checkInterval = 60 * time.Second
 // updateCheckInterval is how often the app re-checks for a new release.
 const updateCheckInterval = 24 * time.Hour
 
+// noPrompt is a sentinel value for pendingNotifyPrompt meaning no check-in
+// notification is currently waiting to be clicked.
+const noPrompt schedule.Prompt = -1
+
 // App owns the Qt widgets and drives the check-in prompts.
 type App struct {
 	store      *store.Store
@@ -71,6 +75,15 @@ type App struct {
 	forced map[schedule.Prompt]bool
 	// oneshot mode (cron/launchd): quit once nothing is pending.
 	oneshot bool
+
+	// notifiedOn records the date (DateOnly) on which a scheduled prompt was
+	// surfaced as a macOS notification banner, so the 60s timer does not
+	// re-notify the same prompt within the same calendar day.
+	notifiedOn map[schedule.Prompt]string
+	// pendingNotifyPrompt is the prompt for which the last check-in
+	// notification was posted. OnMessageClicked opens its dialog. noPrompt
+	// means no check-in notification is currently outstanding.
+	pendingNotifyPrompt schedule.Prompt
 }
 
 // New builds the application UI. The Qt application object must already
@@ -78,12 +91,14 @@ type App struct {
 // "dev") and is used by the auto-updater.
 func New(st *store.Store, cfg *config.Config, appVersion string) (*App, error) {
 	app := &App{
-		store:       st,
-		cfg:         cfg,
-		version:     appVersion,
-		snoozeUntil: map[schedule.Prompt]time.Time{},
-		skippedOn:   map[schedule.Prompt]string{},
-		forced:      map[schedule.Prompt]bool{},
+		store:               st,
+		cfg:                 cfg,
+		version:             appVersion,
+		snoozeUntil:         map[schedule.Prompt]time.Time{},
+		skippedOn:           map[schedule.Prompt]string{},
+		forced:              map[schedule.Prompt]bool{},
+		notifiedOn:          map[schedule.Prompt]string{},
+		pendingNotifyPrompt: noPrompt,
 	}
 	app.window = newMainWindow(app)
 	app.setUpTray()
@@ -249,6 +264,19 @@ func (a *App) setUpTray() {
 	a.tray.SetContextMenu(menu)
 	a.tray.SetToolTip("Daily Progress Logger")
 	a.tray.Show()
+
+	// When the user clicks a check-in notification banner, open the dialog for
+	// the prompt that triggered it. pendingNotifyPrompt is reset to noPrompt
+	// after opening so a subsequent non-check-in notification (recurring
+	// reminder, backlog move) does not accidentally reopen a stale dialog.
+	a.tray.OnMessageClicked(func() {
+		if a.pendingNotifyPrompt == noPrompt {
+			return
+		}
+		p := a.pendingNotifyPrompt
+		a.pendingNotifyPrompt = noPrompt
+		a.runPrompt(p, false)
+	})
 }
 
 // SetOneshot puts the app in cron mode: it quits as soon as no check-in is
@@ -295,8 +323,21 @@ func (a *App) CheckPrompts() {
 		return
 	}
 	show, _ := schedule.Filter(due, now, a.snoozeUntil, a.skippedOn)
-	for _, prompt := range show {
-		a.runPrompt(prompt, false)
+	if a.canNotify() {
+		today := now.Format(time.DateOnly)
+		for _, p := range show {
+			if a.notifiedOn[p] == today {
+				continue // already notified this prompt today; let the user click or use the menu
+			}
+			a.notifiedOn[p] = today
+			a.pendingNotifyPrompt = p
+			title, body := promptNotificationText(p)
+			a.tray.ShowMessage5(title, body, qt.QSystemTrayIcon__NoIcon, 5000)
+		}
+	} else {
+		for _, prompt := range show {
+			a.runPrompt(prompt, false)
+		}
 	}
 	a.maybeQuitOneshot()
 }
@@ -720,10 +761,7 @@ func (a *App) reportError(err error) {
 // notifyBacklogMove shows a tray balloon confirming that an item was moved
 // to the cross-week backlog. It is a no-op when the tray is unavailable.
 func (a *App) notifyBacklogMove(itemText string) {
-	if a.tray == nil {
-		return
-	}
-	a.tray.ShowMessage2("Moved to backlog", itemText)
+	a.showTrayMessage("Moved to backlog", itemText)
 }
 
 // fireRecurring shows a tray reminder for each recurring task whose occurrence
@@ -742,9 +780,7 @@ func (a *App) fireRecurring(now time.Time) {
 		due = nil
 	}
 	for _, t := range due {
-		if a.tray != nil {
-			a.tray.ShowMessage2("Reminder", t.Text)
-		}
+		a.showTrayMessage("Reminder", t.Text)
 	}
 
 	added, err := a.store.MaterializeRecurring(now)
@@ -760,10 +796,49 @@ func (a *App) fireRecurring(now time.Time) {
 // notifyAdopt shows a tray balloon confirming that a backlog item was added
 // (or re-planned) into today's plan. It is a no-op when the tray is unavailable.
 func (a *App) notifyAdopt(itemText string) {
+	a.showTrayMessage("Planned for today", itemText)
+}
+
+// showTrayMessage posts a non-check-in tray balloon (backlog, recurring, etc.)
+// and resets pendingNotifyPrompt so a subsequent click on this banner does not
+// accidentally open a stale check-in dialog.
+func (a *App) showTrayMessage(title, msg string) {
 	if a.tray == nil {
 		return
 	}
-	a.tray.ShowMessage2("Planned for today", itemText)
+	a.pendingNotifyPrompt = noPrompt
+	a.tray.ShowMessage2(title, msg)
+}
+
+// canNotify reports whether due check-ins should be surfaced as macOS
+// notification banners rather than immediate modal dialogs. It is false in
+// oneshot mode (the short-lived -prompt-due process must show a dialog so the
+// check-in is not lost when the process exits), when the system tray is
+// unavailable, or when the user has turned off notifications in Preferences.
+func (a *App) canNotify() bool {
+	return !a.oneshot &&
+		a.cfg.NotifyCheckinsEnabled() &&
+		a.tray != nil &&
+		qt.QSystemTrayIcon_SupportsMessages()
+}
+
+// promptNotificationText returns the banner title and body for a scheduled
+// check-in prompt notification.
+func promptNotificationText(p schedule.Prompt) (title, body string) {
+	switch p {
+	case schedule.PromptMorning:
+		return "Morning Check-in", "What are you planning to work on today?"
+	case schedule.PromptEvening:
+		return "Evening Check-in", "How did today go?"
+	case schedule.PromptWeekReview:
+		return "Week Review", "Review last week's open items."
+	case schedule.PromptWeeklyPlan:
+		return "Weekly Plan", "What are the big things for this week?"
+	case schedule.PromptWeeklySummary:
+		return "Weekly Summary", "Review this week's accomplishments."
+	default:
+		return "Check-in", "A check-in is due."
+	}
 }
 
 // checkForUpdatesBackground runs an update check in a goroutine and, when a

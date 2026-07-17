@@ -74,6 +74,10 @@ func (a *App) buildPreferencesDialog() *qt.QDialog {
 	}
 	summaryDay.SetCurrentText(a.cfg.SummaryDay)
 	form.AddRow3("Weekly summary day:", summaryDay.QWidget)
+
+	notifyCheckins := qt.NewQCheckBox3("Show scheduled check-ins as notifications (click notification to open)")
+	notifyCheckins.SetChecked(a.cfg.NotifyCheckinsEnabled())
+	form.AddRow3("Check-in delivery:", notifyCheckins.QWidget)
 	layout.AddLayout(form.QLayout)
 
 	// Keyboard shortcuts, grouped by category in a scroll area.
@@ -104,12 +108,13 @@ func (a *App) buildPreferencesDialog() *qt.QDialog {
 	buttons.OnRejected(dialog.Reject)
 	buttons.OnAccepted(func() {
 		if a.savePreferences(dialog, prefInputs{
-			dataDir:     dataDir,
-			morning:     morning,
-			evening:     evening,
-			summaryTime: summaryTime,
-			summaryDay:  summaryDay,
-			edits:       edits,
+			dataDir:        dataDir,
+			morning:        morning,
+			evening:        evening,
+			summaryTime:    summaryTime,
+			summaryDay:     summaryDay,
+			notifyCheckins: notifyCheckins,
+			edits:          edits,
 		}) {
 			dialog.Accept()
 		}
@@ -121,12 +126,13 @@ func (a *App) buildPreferencesDialog() *qt.QDialog {
 // prefInputs bundles the Preferences dialog's editable widgets so savePreferences
 // can read them without a long parameter list.
 type prefInputs struct {
-	dataDir     *qt.QLineEdit
-	morning     *qt.QLineEdit
-	evening     *qt.QLineEdit
-	summaryTime *qt.QLineEdit
-	summaryDay  *qt.QComboBox
-	edits       map[string]*qt.QKeySequenceEdit
+	dataDir        *qt.QLineEdit
+	morning        *qt.QLineEdit
+	evening        *qt.QLineEdit
+	summaryTime    *qt.QLineEdit
+	summaryDay     *qt.QComboBox
+	notifyCheckins *qt.QCheckBox
+	edits          map[string]*qt.QKeySequenceEdit
 }
 
 // savePreferences reads the widgets into a copy of the config, saves it (which
@@ -140,6 +146,8 @@ func (a *App) savePreferences(dialog *qt.QDialog, in prefInputs) bool {
 	next.EveningTime = trimmed(in.evening.Text())
 	next.SummaryTime = trimmed(in.summaryTime.Text())
 	next.SummaryDay = in.summaryDay.CurrentText()
+	b := in.notifyCheckins.IsChecked()
+	next.NotifyCheckins = new(b)
 	next.Shortcuts = make(map[string]string, len(in.edits))
 	for id, edit := range in.edits {
 		next.Shortcuts[id] = edit.KeySequence().ToString()
