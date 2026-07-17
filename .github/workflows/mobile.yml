@@ -76,12 +76,21 @@ jobs:
           path: ios/Frameworks/Core.xcframework
           if-no-files-found: error
 
-      # --- iOS app build (added once the SwiftUI app project exists) ---
-      # - name: Build iOS app
-      #   run: |
-      #     xcodebuild -project ios/DailyProgress.xcodeproj \
-      #       -scheme DailyProgress -destination 'generic/platform=iOS Simulator' \
-      #       build
+      # Build the SwiftUI app against the freshly-built xcframework. The
+      # checked-in .xcodeproj links ios/Frameworks/Core.xcframework produced
+      # above. Build for the simulator SDK (no code signing) so no provisioning
+      # profile or Apple account is needed on the runner.
+      - name: Build iOS app
+        run: |
+          xcodebuild -project ios/DailyProgress.xcodeproj \
+            -scheme DailyProgress \
+            -sdk iphonesimulator -arch arm64 \
+            CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=NO ARCHS=arm64 \
+            build
+        # NOTE: XCTest run is intentionally not wired here - it requires a
+        # booted simulator with a pinned device name (flaky on runners). The
+        # build above proves the app compiles and links against the core;
+        # unit tests run locally via xcodebuild ... test.
 
   android:
     name: Android binding (Core.aar)
@@ -133,6 +142,8 @@ jobs:
           path: android/core/core.aar
           if-no-files-found: error
 
-      # --- Android app build (added once the Compose app project exists) ---
-      # - name: Build Android app
-      #   run: ./android/gradlew -p android assembleDebug
+      # Build and unit-test the Compose app against the AAR produced above
+      # (gomobile wrote it to android/core/core.aar, which the Gradle build
+      # consumes as a flatDir dependency).
+      - name: Build Android app + run unit tests
+        run: ./android/gradlew -p android assembleDebug testDebugUnitTest --no-daemon
