@@ -4,8 +4,14 @@ import com.cristim.dailyprogress.core.CoreError
 import com.cristim.dailyprogress.model.BacklogDto
 import com.cristim.dailyprogress.model.ConflictDto
 import com.cristim.dailyprogress.model.DuePromptsDto
+import com.cristim.dailyprogress.model.EveningAction
+import com.cristim.dailyprogress.model.EveningDecisionDto
+import com.cristim.dailyprogress.model.EveningDecisionsDto
+import com.cristim.dailyprogress.model.MorningCandidateDto
+import com.cristim.dailyprogress.model.MorningDecisionsDto
 import com.cristim.dailyprogress.model.ProjectDto
 import com.cristim.dailyprogress.model.ProjectStatus
+import com.cristim.dailyprogress.model.PromptId
 import com.cristim.dailyprogress.model.RecurringTemplateDto
 import com.cristim.dailyprogress.model.SyncResultDto
 import com.cristim.dailyprogress.model.TaskState
@@ -13,6 +19,7 @@ import com.cristim.dailyprogress.model.TreeDto
 import com.cristim.dailyprogress.model.TreeProjectDto
 import com.cristim.dailyprogress.model.TreeTaskDto
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -427,5 +434,124 @@ class DtoDecodingTest {
         val msg = "CAS_MISMATCH: tree is stale, please refresh"
         val err = CoreError.parse(msg)
         assertEquals(msg, err.raw)
+    }
+
+    // -----------------------------------------------------------------------
+    // Morning check-in DTOs
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun `morning candidate bare array decodes with text and from_backlog`() {
+        val fixture = """
+            [
+              {"text": "Write tests", "from_backlog": false},
+              {"text": "Old backlog item", "from_backlog": true}
+            ]
+        """.trimIndent()
+        val list = json.decodeFromString<List<MorningCandidateDto>>(fixture)
+        assertEquals(2, list.size)
+        assertEquals("Write tests", list[0].text)
+        assertFalse(list[0].fromBacklog)
+        assertEquals("Old backlog item", list[1].text)
+        assertTrue(list[1].fromBacklog)
+    }
+
+    @Test
+    fun `MorningDecisionsDto encodes to exact snake_case JSON`() {
+        val dto = MorningDecisionsDto(
+            newItems = listOf("Write tests", "Fix bug"),
+            adopted = listOf(
+                MorningCandidateDto(text = "Review PR", fromBacklog = false),
+            ),
+        )
+        val encoded = json.encodeToString(dto)
+        // Verify required snake_case keys are present
+        assertTrue("new_items key must be present", encoded.contains("\"new_items\""))
+        assertTrue("from_backlog key must be present", encoded.contains("\"from_backlog\""))
+        assertTrue("adopted key must be present", encoded.contains("\"adopted\""))
+        // Verify values
+        assertTrue(encoded.contains("\"Write tests\""))
+        assertTrue(encoded.contains("\"Fix bug\""))
+        assertTrue(encoded.contains("\"Review PR\""))
+    }
+
+    @Test
+    fun `MorningDecisionsDto with empty lists encodes correctly`() {
+        val dto = MorningDecisionsDto(newItems = emptyList(), adopted = emptyList())
+        val encoded = json.encodeToString(dto)
+        assertTrue(encoded.contains("\"new_items\":[]"))
+        assertTrue(encoded.contains("\"adopted\":[]"))
+    }
+
+    // -----------------------------------------------------------------------
+    // Evening check-in DTOs
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun `EveningDecisionsDto encodes decisions with int actions and extra_done`() {
+        val dto = EveningDecisionsDto(
+            decisions = listOf(
+                EveningDecisionDto(text = "Write tests", action = 1),   // done
+                EveningDecisionDto(text = "Fix bug", action = 3),        // next_week
+            ),
+            extraDone = listOf("Bonus task"),
+        )
+        val encoded = json.encodeToString(dto)
+        assertTrue("decisions key required", encoded.contains("\"decisions\""))
+        assertTrue("extra_done key required", encoded.contains("\"extra_done\""))
+        assertTrue("action must be int 1", encoded.contains("\"action\":1"))
+        assertTrue("action must be int 3", encoded.contains("\"action\":3"))
+        assertTrue("extra_done contains bonus", encoded.contains("\"Bonus task\""))
+    }
+
+    @Test
+    fun `EveningDecisionsDto with all action values encodes correctly`() {
+        val dto = EveningDecisionsDto(
+            decisions = EveningAction.entries.map { action ->
+                EveningDecisionDto(text = "task ${action.wire}", action = action.wire)
+            },
+            extraDone = emptyList(),
+        )
+        val encoded = json.encodeToString(dto)
+        // All five wire values 0-4 must appear
+        for (n in 0..4) {
+            assertTrue("wire value $n must appear", encoded.contains("\"action\":$n"))
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // EveningAction enum
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun `EveningAction fromWire maps all valid wire values`() {
+        assertEquals(EveningAction.TODO, EveningAction.fromWire(0))
+        assertEquals(EveningAction.DONE, EveningAction.fromWire(1))
+        assertEquals(EveningAction.NEXT_DAY, EveningAction.fromWire(2))
+        assertEquals(EveningAction.NEXT_WEEK, EveningAction.fromWire(3))
+        assertEquals(EveningAction.BACKLOG, EveningAction.fromWire(4))
+    }
+
+    @Test(expected = SerializationException::class)
+    fun `EveningAction fromWire throws on unknown value`() {
+        EveningAction.fromWire(9)
+    }
+
+    // -----------------------------------------------------------------------
+    // PromptId enum
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun `PromptId fromWire maps all valid wire values`() {
+        assertEquals(PromptId.WEEK_REVIEW, PromptId.fromWire(0))
+        assertEquals(PromptId.WEEKLY_PLAN, PromptId.fromWire(1))
+        assertEquals(PromptId.MORNING, PromptId.fromWire(2))
+        assertEquals(PromptId.EVENING, PromptId.fromWire(3))
+        assertEquals(PromptId.WEEKLY_SUMMARY, PromptId.fromWire(4))
+    }
+
+    @Test(expected = SerializationException::class)
+    fun `PromptId fromWire throws on unknown value`() {
+        PromptId.fromWire(9)
     }
 }

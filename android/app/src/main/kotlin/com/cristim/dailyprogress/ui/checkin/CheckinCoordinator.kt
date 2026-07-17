@@ -61,7 +61,12 @@ class SharedPrefsSnoozeSkipStorage(private val prefs: SharedPreferences) : Snooz
  * ignored here — they route to phase-B sheets once those land.
  */
 class CheckinCoordinator(
-    private val repository: CoreRepository,
+    /**
+     * Production callers always provide a real [CoreRepository]; tests that
+     * only exercise [snooze]/[skipToday] pass null (those methods do not touch
+     * the repository so the null is never dereferenced).
+     */
+    private val repository: CoreRepository?,
     private val storage: SnoozeSkipStorage,
 ) {
     /**
@@ -72,8 +77,9 @@ class CheckinCoordinator(
      * Unknown prompt IDs are logged and skipped — never crash the coordinator.
      */
     suspend fun nextPresentable(): DuePromptDto? {
+        val repo = repository ?: return null
         val prompts = try {
-            repository.duePrompts(nowRfc3339Local())
+            repo.duePrompts(nowRfc3339Local())
         } catch (e: Exception) {
             Log.w(TAG, "Failed to fetch due prompts: ${e.message}")
             return null
