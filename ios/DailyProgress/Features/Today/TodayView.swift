@@ -4,13 +4,18 @@ import SwiftUI
 
 struct TodayView: View {
     let appState: AppState
+    let coordinator: CheckinCoordinator
     @State private var store: TodayStore
 
     @State private var showAddTask = false
     @State private var showDatePicker = false
 
-    init(appState: AppState) {
+    @Environment(\.showMorningCheckin) private var showMorningCheckin
+    @Environment(\.showEveningCheckin) private var showEveningCheckin
+
+    init(appState: AppState, coordinator: CheckinCoordinator) {
         self.appState = appState
+        self.coordinator = coordinator
         let core = appState.core!
         _store = State(initialValue: TodayStore(core: core))
     }
@@ -44,10 +49,28 @@ struct TodayView: View {
                     dateNavigation
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showAddTask = true
-                    } label: {
-                        Image(systemName: "plus")
+                    HStack {
+                        // Check-in menu (manual triggers)
+                        Menu {
+                            Button {
+                                showMorningCheckin()
+                            } label: {
+                                Label("Morning Check-in...", systemImage: "sun.rise")
+                            }
+                            Button {
+                                showEveningCheckin()
+                            } label: {
+                                Label("Evening Check-in...", systemImage: "moon.stars")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+
+                        Button {
+                            showAddTask = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
                     }
                 }
             }

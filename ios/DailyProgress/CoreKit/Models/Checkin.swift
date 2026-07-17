@@ -50,10 +50,22 @@ struct EveningItemDecision: Codable {
 }
 
 /// Evening triage action (int-coded on the wire).
+/// Unknown int values throw at decode time — fail-loud to catch contract drift.
 enum EveningAction: Int, Codable {
     case todo = 0
     case done = 1
     case nextDay = 2
     case nextWeek = 3
     case backlog = 4
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(Int.self)
+        guard let value = EveningAction(rawValue: raw) else {
+            throw DecodingError.dataCorruptedError(
+                in: try decoder.singleValueContainer(),
+                debugDescription: "Unknown EveningAction \(raw); expected 0-4"
+            )
+        }
+        self = value
+    }
 }
