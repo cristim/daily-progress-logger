@@ -185,10 +185,6 @@ final class TodayStore {
     }
 
     private func decode<T: Decodable>(_ type: T.Type, from json: String) throws -> T {
-        do {
-            return try JSONDecoder().decode(type, from: Data(json.utf8))
-        } catch {
-            throw CoreError.contractViolation(error.localizedDescription)
-        }
+        try CoreDecoding.decode(type, from: json)
     }
 }

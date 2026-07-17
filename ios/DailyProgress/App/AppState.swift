@@ -47,14 +47,16 @@ final class AppState {
     }
 
     /// Evaluates which prompts are due right now and updates duePrompts.
+    /// Uses CoreDecoding so decode failures surface as contractViolation (not swallowed).
+    /// Non-fatal: a DuePromptsJSON error is advisory and should not block the UI.
     func refreshDuePrompts() async {
         guard let core else { return }
         do {
             let json = try await core.duePromptsJSON(nowRFC3339: Date().rfc3339)
-            let result = try JSONDecoder().decode(DuePrompts.self, from: Data(json.utf8))
+            let result = try CoreDecoding.decode(DuePrompts.self, from: json)
             duePrompts = result.due
         } catch {
-            // Non-fatal: prompts are advisory.
+            // Non-fatal: prompts are advisory; log but do not surface to the user.
         }
     }
 

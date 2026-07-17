@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		0057FF2AB8A5FBBC7D58D77C /* WeekView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D9E84A4318ED0AFA85CDF1A /* WeekView.swift */; };
+		FD058D6BF0B645C99CBBAE3A /* CoreDecoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF523528795E424EB2B8040B /* CoreDecoding.swift */; };
+		AB0FF64E19714B40B8ED072A /* ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70FE43F488E64992874E4C53 /* ToastView.swift */; };
 		06135A28468901843B108B42 /* Recycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247ED49891BD9B86DBF5B70B /* Recycle.swift */; };
 		0CCE6AEE29A4F6A985133C40 /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42AE6A3F51D9BD9E0B595257 /* RootTabView.swift */; };
 		0F9565AFB4A37E8529979A3D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FE5A5BC346E4BB73C838BAA0 /* Assets.xcassets */; };
@@ -82,6 +84,8 @@
 
 /* Begin PBXFileReference section */
 		03A785B5271E98D136C48AEF /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
+		DF523528795E424EB2B8040B /* CoreDecoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreDecoding.swift; sourceTree = "<group>"; };
+		70FE43F488E64992874E4C53 /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
 		0EE4FAAF75B74340B10C8B56 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		1CCE4A5C5FD6C1C05B17F298 /* Project.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Project.swift; sourceTree = "<group>"; };
 		247ED49891BD9B86DBF5B70B /* Recycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recycle.swift; sourceTree = "<group>"; };
@@ -211,6 +215,7 @@
 			children = (
 				042A152F5E43D8350AB0D664 /* Models */,
 				440775B6D9B5FE56C5F401EE /* CoreClient.swift */,
+				DF523528795E424EB2B8040B /* CoreDecoding.swift */,
 				2B65F50B9EBDFAD5BBE3F23E /* CoreError.swift */,
 			);
 			path = CoreKit;
@@ -307,6 +312,7 @@
 			children = (
 				D041431D080FD52D0C9ED097 /* DateFormatting.swift */,
 				5A01A020966E2ACCDEB1566B /* Notifications.swift */,
+				70FE43F488E64992874E4C53 /* ToastView.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -479,6 +485,7 @@
 				3F620D953E9AEEE534BF66ED /* CheckinStore.swift in Sources */,
 				27883589482B7F535AE791AA /* Config.swift in Sources */,
 				6084A13525AF01A53E5F650F /* CoreClient.swift in Sources */,
+				FD058D6BF0B645C99CBBAE3A /* CoreDecoding.swift in Sources */,
 				C3098D1EEA632271492603EC /* CoreError.swift in Sources */,
 				395436957947A41E492F83A0 /* DailyProgressApp.swift in Sources */,
 				401F0EE609DF80523F177081 /* DateFormatting.swift in Sources */,
@@ -489,6 +496,7 @@
 				DA3833FEF1272079BFEEAD25 /* MoreView.swift in Sources */,
 				3A40092AE1E9F19A10A287F2 /* MorningCheckinSheet.swift in Sources */,
 				F4F0929E4DC3BDD1ED250651 /* Notifications.swift in Sources */,
+				AB0FF64E19714B40B8ED072A /* ToastView.swift in Sources */,
 				5A961AEDC12DA71CF47F9778 /* Project.swift in Sources */,
 				DC15C54F018756468FB80654 /* ProjectsStore.swift in Sources */,
 				7D537A65A25D9724C9E13FC9 /* ProjectsView.swift in Sources */,
