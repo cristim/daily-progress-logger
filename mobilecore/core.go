@@ -2,11 +2,28 @@
 // Android) apps. It wraps the same internal/store model and internal/sync engine
 // the desktop uses, exposing a small API of string/JSON in, string/JSON out so
 // it binds cleanly through gomobile.
+//
+// Design constraints (gomobile):
+//   - All exported method parameters and return types must be gomobile-safe:
+//     string, int, int64, float64, bool, []byte, error, or named struct pointers
+//     whose fields are also gomobile-safe.
+//   - No maps, []SomeStruct, time.Time, or interface values on exported methods.
+//   - Complex data uses JSON strings (JSON in / JSON out pattern).
+//
+// Concurrency contract: each Core method is synchronous; the host must not call
+// methods concurrently (one call at a time). SyncNow creates a fresh engine per
+// call, so calling SyncNow while ResolveConflict is in flight is a misuse.
+//
+// Token contract: the host owns secure token storage (iOS Keychain /
+// Android EncryptedSharedPrefs) and supplies the OAuth JSON token on every
+// call that needs sync. The core never stores credentials to disk unless the
+// host explicitly uses FileTokenStore.
 package mobilecore
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -21,8 +38,14 @@ import (
 
 const dateLayout = "2006-01-02"
 
-// Core is the app core over a data directory. Bound to Swift as an opaque
-// handle; all interaction is through its methods.
+// ErrCASMismatch is returned when the task at the given index no longer carries
+// the expected display text (e.g. because a background Drive sync rewrote the
+// file between the host's tree snapshot and the action). The host should call
+// TreeJSON again and re-present the action to the user with the refreshed index.
+var ErrCASMismatch = errors.New("task text mismatch: tree is stale, please refresh")
+
+// Core is the app core over a data directory. Bound to Swift/Kotlin as an
+// opaque handle; all interaction is through its methods.
 type Core struct {
 	store    *store.Store
 	dir      string
@@ -44,134 +67,33 @@ func Open(dataDir, clientID, deviceID string) (*Core, error) {
 	return &Core{store: st, dir: dataDir, clientID: clientID, device: deviceID}, nil
 }
 
-// TreeJSON returns the Projects/tasks tree for date ("YYYY-MM-DD") as JSON
-// (see store.ProjectTree).
-func (c *Core) TreeJSON(date string) (string, error) {
-	d, err := parseDate(date)
-	if err != nil {
-		return "", err
+// verifyIndex confirms that date's plan item at index still carries the expected
+// display text (project tag stripped). Returns ErrCASMismatch when out of range
+// or text changed. When expectedText is empty the check is skipped (no guard).
+// On a read error the action is allowed through rather than silently blocked,
+// matching Qt's taskIndexValid contract.
+func (c *Core) verifyIndex(date time.Time, index int, expectedText string) error {
+	if strings.TrimSpace(expectedText) == "" {
+		return nil
 	}
-	tree, err := c.store.BuildProjectTree(d)
-	if err != nil {
-		return "", err
-	}
-	return toJSON(tree)
-}
-
-// AddTask adds a task to date's plan. When projectID is non-empty the task is
-// tagged to that project.
-func (c *Core) AddTask(date, text, projectID string) error {
-	d, err := parseDate(date)
-	if err != nil {
-		return err
-	}
-	if projectID == "" {
-		return c.store.AddPlanItem(d, text)
-	}
-	return c.store.AddTaggedTask(d, text, projectID)
-}
-
-// SetTaskState sets a task's state ("todo", "done", or "postponed") by its
-// display text on date.
-func (c *Core) SetTaskState(date, text, state string) error {
-	d, err := parseDate(date)
-	if err != nil {
-		return err
-	}
-	st, err := parseState(state)
-	if err != nil {
-		return err
-	}
-	idx, err := c.findByDisplayText(d, text)
-	if err != nil {
-		return err
-	}
-	return c.store.SetPlanItemState(d, idx, st)
-}
-
-// DeleteTask deletes a task (by display text on date) to the recycle bin.
-func (c *Core) DeleteTask(date, text string) error {
-	d, err := parseDate(date)
-	if err != nil {
-		return err
-	}
-	idx, err := c.findByDisplayText(d, text)
-	if err != nil {
-		return err
-	}
-	return c.store.DeleteTask(d, idx)
-}
-
-// AddProject creates a project and returns its ID.
-func (c *Core) AddProject(name string) (string, error) {
-	return c.store.AddProject(name)
-}
-
-// SyncNow runs a Drive sync using the OAuth token JSON (from Google Sign-In on
-// device) and returns the run's conflicts as JSON.
-func (c *Core) SyncNow(tokenJSON string) (string, error) {
-	engine, err := c.engine(tokenJSON)
-	if err != nil {
-		return "", err
-	}
-	res, err := engine.Run(context.Background())
-	if err != nil {
-		return "", err
-	}
-	return toJSON(res.Conflicts)
-}
-
-// ConflictsJSON returns unresolved conflicts recorded locally, as JSON.
-func (c *Core) ConflictsJSON(tokenJSON string) (string, error) {
-	engine, err := c.engine(tokenJSON)
-	if err != nil {
-		return "", err
-	}
-	conflicts, err := engine.Conflicts()
-	if err != nil {
-		return "", err
-	}
-	return toJSON(conflicts)
-}
-
-// ResolveConflict settles the conflict for path ("keep_local"/"keep_remote"/
-// "keep_both").
-func (c *Core) ResolveConflict(tokenJSON, path, choice string) error {
-	engine, err := c.engine(tokenJSON)
-	if err != nil {
-		return err
-	}
-	return engine.Resolve(path, syncengine.ResolveChoice(choice))
-}
-
-// findByDisplayText returns the plan-item index whose display text (project tag
-// stripped) matches text on date, or an error when the task is not found.
-func (c *Core) findByDisplayText(date time.Time, text string) (int, error) {
 	known, err := c.store.KnownProjectIDs()
 	if err != nil {
-		return -1, err
+		return nil // can't verify: allow action
 	}
 	d, exists, err := c.store.LoadDaily(date)
-	if err != nil {
-		return -1, err
+	if err != nil || !exists {
+		return ErrCASMismatch
 	}
-	if !exists {
-		return -1, fmt.Errorf("task %q not found on %s: no daily file", text, date.Format(dateLayout))
+	if index < 0 || index >= len(d.Plan) {
+		return ErrCASMismatch
 	}
-	needle := strings.TrimSpace(text)
-	for i, item := range d.Plan {
-		if store.DisplayText(item, known) == needle {
-			return i, nil
-		}
+	if store.DisplayText(d.Plan[index], known) != strings.TrimSpace(expectedText) {
+		return ErrCASMismatch
 	}
-	return -1, fmt.Errorf("task %q not found on %s", text, date.Format(dateLayout))
+	return nil
 }
 
-// engine builds a sync engine authenticated with the given token.
-// Concurrency contract: each call creates a fresh engine; the iOS host must
-// not call SyncNow and ResolveConflict (or ConflictsJSON) concurrently —
-// they would use distinct engine instances whose mutexes don't share state.
-// The typical host pattern (one call at a time from Swift) is safe (M4).
+// engine builds a sync engine authenticated with the given token JSON.
 func (c *Core) engine(tokenJSON string) (*syncengine.Engine, error) {
 	var tok oauth2.Token
 	if err := json.Unmarshal([]byte(tokenJSON), &tok); err != nil {
@@ -189,17 +111,29 @@ func (c *Core) engine(tokenJSON string) (*syncengine.Engine, error) {
 	return syncengine.New(c.dir, dc, c.device), nil
 }
 
-// memTokenStore is a non-persistent TokenStore; the mobile app owns token
-// persistence (iOS Keychain) and re-supplies the token each launch.
+// memTokenStore is a non-persistent TokenStore; the mobile host supplies the
+// token on each call so it can keep it in the platform secure store
+// (iOS Keychain / Android EncryptedSharedPrefs).
 type memTokenStore struct{ tok *oauth2.Token }
 
 func (m memTokenStore) Load() (*oauth2.Token, error) { return m.tok, nil }
 func (m memTokenStore) Save(_ *oauth2.Token) error   { return nil }
 
+// parseDate parses "YYYY-MM-DD" in local time.
 func parseDate(s string) (time.Time, error) {
 	return time.ParseInLocation(dateLayout, s, time.Local)
 }
 
+// weekFromDate parses a date string and returns its ISO week.
+func weekFromDate(s string) (store.WeekID, error) {
+	d, err := parseDate(s)
+	if err != nil {
+		return store.WeekID{}, err
+	}
+	return store.WeekOf(d), nil
+}
+
+// parseState maps the string state ("todo"/"done"/"postponed") to ItemState.
 func parseState(s string) (store.ItemState, error) {
 	switch s {
 	case "todo":
@@ -209,9 +143,22 @@ func parseState(s string) (store.ItemState, error) {
 	case "postponed":
 		return store.StatePostponed, nil
 	}
-	return store.StateTodo, fmt.Errorf("unknown state %q", s)
+	return store.StateTodo, fmt.Errorf("unknown state %q (want todo/done/postponed)", s)
 }
 
+// stateString maps ItemState back to its wire string.
+func stateString(st store.ItemState) string {
+	switch st {
+	case store.StateDone:
+		return "done"
+	case store.StatePostponed:
+		return "postponed"
+	default:
+		return "todo"
+	}
+}
+
+// toJSON marshals v to a compact JSON string.
 func toJSON(v any) (string, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
