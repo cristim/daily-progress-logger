@@ -2,6 +2,8 @@ package mobilecore
 
 // BacklogJSON returns the backlog as JSON with "current" and "next_week" arrays.
 func (c *Core) BacklogJSON() (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	b, err := c.store.LoadBacklog()
 	if err != nil {
 		return "", err
@@ -30,11 +32,15 @@ func (c *Core) AdoptFromBacklog(date, text string) error {
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.store.AdoptFromBacklog(d, text)
 }
 
 // MoveBacklogItem moves text between backlog sections.
 // toNextWeek=true moves from Current to Next week; false moves back.
 func (c *Core) MoveBacklogItem(text string, toNextWeek bool) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.store.MoveBacklogItem(text, toNextWeek)
 }

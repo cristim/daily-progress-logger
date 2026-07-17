@@ -1,5 +1,7 @@
 package mobilecore
 
+import "fmt"
+
 // AddTask adds a task to date's plan. When projectID is non-empty the task is
 // tagged to that project.
 func (c *Core) AddTask(date, text, projectID string) error {
@@ -7,6 +9,8 @@ func (c *Core) AddTask(date, text, projectID string) error {
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if projectID == "" {
 		return c.store.AddPlanItem(d, text)
 	}
@@ -17,11 +21,17 @@ func (c *Core) AddTask(date, text, projectID string) error {
 // index in the day's plan. expectedText is the display text (project tag
 // stripped) captured when the caller last fetched TreeJSON; the core verifies
 // it matches before acting. Returns ErrCASMismatch when the tree is stale.
+//
+// This operation is non-destructive (changes state only, does not remove the
+// item) so the index guard fails open when the projects file cannot be read —
+// matching Qt's taskIndexValid contract.
 func (c *Core) SetTaskState(date string, index int, expectedText, state string) error {
 	d, err := parseDate(date)
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if err := c.verifyIndex(d, index, expectedText); err != nil {
 		return err
 	}
@@ -34,12 +44,17 @@ func (c *Core) SetTaskState(date string, index int, expectedText, state string) 
 
 // DeleteTask moves the plan item at index to the recycle bin. expectedText
 // guards against acting on the wrong item when the tree is stale.
+//
+// Destructive op: uses the strict (fail-closed) index guard so a corrupt
+// projects file never causes the wrong item to be deleted.
 func (c *Core) DeleteTask(date string, index int, expectedText string) error {
 	d, err := parseDate(date)
 	if err != nil {
 		return err
 	}
-	if err := c.verifyIndex(d, index, expectedText); err != nil {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.verifyIndexStrict(d, index, expectedText); err != nil {
 		return err
 	}
 	return c.store.DeleteTask(d, index)
@@ -52,32 +67,41 @@ func (c *Core) EditTaskText(date string, index int, expectedText, newText string
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if err := c.verifyIndex(d, index, expectedText); err != nil {
 		return err
 	}
 	return c.store.EditTaskText(d, index, newText)
 }
 
-// PostponeToNextDay moves the task at index to tomorrow's plan.
-// expectedText guards against stale-tree mutations.
+// PostponeToNextDay moves the task at index to tomorrow's plan, removing it
+// from today. expectedText guards against stale-tree mutations.
+//
+// Destructive op: uses the strict (fail-closed) index guard.
 func (c *Core) PostponeToNextDay(date string, index int, expectedText string) error {
 	d, err := parseDate(date)
 	if err != nil {
 		return err
 	}
-	if err := c.verifyIndex(d, index, expectedText); err != nil {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.verifyIndexStrict(d, index, expectedText); err != nil {
 		return err
 	}
 	return c.store.PostponeToNextDay(d, index)
 }
 
 // PostponeToNextWeek marks the task at index postponed ("[>]") and queues it
-// in the next-week backlog. expectedText guards against stale-tree mutations.
+// in the next-week backlog. The item stays in today's plan.
+// expectedText guards against stale-tree mutations.
 func (c *Core) PostponeToNextWeek(date string, index int, expectedText string) error {
 	d, err := parseDate(date)
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if err := c.verifyIndex(d, index, expectedText); err != nil {
 		return err
 	}
@@ -86,12 +110,16 @@ func (c *Core) PostponeToNextWeek(date string, index int, expectedText string) e
 
 // MoveTaskToBacklog removes the task at index from the day and adds it to the
 // backlog's Current list. expectedText guards against stale-tree mutations.
+//
+// Destructive op: uses the strict (fail-closed) index guard.
 func (c *Core) MoveTaskToBacklog(date string, index int, expectedText string) error {
 	d, err := parseDate(date)
 	if err != nil {
 		return err
 	}
-	if err := c.verifyIndex(d, index, expectedText); err != nil {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.verifyIndexStrict(d, index, expectedText); err != nil {
 		return err
 	}
 	return c.store.MoveToBacklog(d, index)
@@ -100,17 +128,50 @@ func (c *Core) MoveTaskToBacklog(date string, index int, expectedText string) er
 // ReorderTask moves the task at srcIndex to sit immediately before (below=false)
 // or after (below=true) the task at refIndex. expectedSrcText guards the source
 // task; expectedRefText guards the reference task.
+//
+// Returns a BAD_INPUT error when the reorder would create a cycle (refIndex is
+// srcIndex itself or a descendant of srcIndex).
 func (c *Core) ReorderTask(date string, srcIndex int, expectedSrcText string, refIndex int, expectedRefText string, below bool) error {
 	d, err := parseDate(date)
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if err := c.verifyIndex(d, srcIndex, expectedSrcText); err != nil {
 		return err
 	}
 	if err := c.verifyIndex(d, refIndex, expectedRefText); err != nil {
 		return err
 	}
+
+	// Cycle guard: moving src relative to itself or one of its own descendants
+	// is a programming error on the host side, not a stale-tree issue.
+	// The store silently ignores it; we surface it as an explicit error so
+	// touch-drag UIs get a reliable signal instead of an unexplained ghost revert.
+	daily, exists, loaderr := c.store.LoadDaily(d)
+	if loaderr != nil || !exists {
+		// Cannot load plan — defer cycle check to the store (which will no-op).
+		return c.store.ReorderTask(d, srcIndex, refIndex, below)
+	}
+	plan := daily.Plan
+	if srcIndex == refIndex {
+		return fmt.Errorf("%s: cannot reorder a task relative to itself", ErrCodeBadInput)
+	}
+	if srcIndex >= 0 && srcIndex < len(plan) {
+		srcDepth := plan[srcIndex].Depth
+		for i := srcIndex + 1; i < len(plan); i++ {
+			if plan[i].Depth <= srcDepth {
+				break // left srcIndex's subtree
+			}
+			if i == refIndex {
+				return fmt.Errorf("%s: cannot reorder a task relative to its own"+
+					" descendant (would create a cycle)", ErrCodeBadInput)
+			}
+		}
+	}
+
 	return c.store.ReorderTask(d, srcIndex, refIndex, below)
 }
 
@@ -122,6 +183,8 @@ func (c *Core) MoveTaskToProject(date string, index int, expectedText, projectID
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if err := c.verifyIndex(d, index, expectedText); err != nil {
 		return err
 	}
@@ -131,13 +194,31 @@ func (c *Core) MoveTaskToProject(date string, index int, expectedText, projectID
 // AssignTaskProject is a convenience alias for MoveTaskToProject with a
 // non-empty projectID.
 func (c *Core) AssignTaskProject(date string, index int, expectedText, projectID string) error {
-	return c.MoveTaskToProject(date, index, expectedText, projectID)
+	d, err := parseDate(date)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.verifyIndex(d, index, expectedText); err != nil {
+		return err
+	}
+	return c.store.MoveTaskToProject(d, index, projectID)
 }
 
 // UnassignTaskProject removes the project tag from the task at index, moving
 // it to Unfiled.
 func (c *Core) UnassignTaskProject(date string, index int, expectedText string) error {
-	return c.MoveTaskToProject(date, index, expectedText, "")
+	d, err := parseDate(date)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.verifyIndex(d, index, expectedText); err != nil {
+		return err
+	}
+	return c.store.MoveTaskToProject(d, index, "")
 }
 
 // AddSubtask inserts a new todo as the last child of the task at parentIndex.
@@ -147,6 +228,8 @@ func (c *Core) AddSubtask(date string, parentIndex int, expectedParentText, text
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if err := c.verifyIndex(d, parentIndex, expectedParentText); err != nil {
 		return err
 	}
@@ -160,6 +243,8 @@ func (c *Core) MakeSubtask(date string, childIndex int, expectedChildText string
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if err := c.verifyIndex(d, childIndex, expectedChildText); err != nil {
 		return err
 	}

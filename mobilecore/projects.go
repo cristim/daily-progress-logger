@@ -11,12 +11,16 @@ type projectJSON struct {
 
 // AddProject creates a project and returns its ID.
 func (c *Core) AddProject(name string) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.store.AddProject(name)
 }
 
 // ProjectsJSON returns all projects (open and closed) as a JSON array.
 // Each element has id, name, and status ("open" or "closed").
 func (c *Core) ProjectsJSON() (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	projects, err := c.store.LoadProjects()
 	if err != nil {
 		return "", err
@@ -34,15 +38,21 @@ func (c *Core) ProjectsJSON() (string, error) {
 
 // RenameProject changes the display name of the project with the given ID.
 func (c *Core) RenameProject(id, newName string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.store.RenameProject(id, newName)
 }
 
 // CloseProject archives the project with the given ID.
 func (c *Core) CloseProject(id string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.store.SetProjectStatus(id, store.StatusClosed)
 }
 
 // ReopenProject re-opens an archived project.
 func (c *Core) ReopenProject(id string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.store.SetProjectStatus(id, store.StatusOpen)
 }

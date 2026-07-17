@@ -12,12 +12,18 @@ import (
 //
 //	[{"text":"...", "from_backlog": false}, ...]
 //
+// NOTE: text may include the raw project tag (e.g. "#work") — this matches the
+// Qt desktop behaviour and is intentional.  If the host strips tags for display,
+// it should use the same tag-stripping logic as the tree view.
+//
 // Pass the adopted subset back to ApplyMorning.
 func (c *Core) MorningCandidatesJSON(date string) (string, error) {
 	d, err := parseDate(date)
 	if err != nil {
 		return "", err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	candidates, err := c.store.MorningCandidates(d)
 	if err != nil {
 		return "", err
@@ -54,6 +60,8 @@ func (c *Core) ApplyMorning(date, decisionsJSON string) error {
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	var input morningDecisionInput
 	if decisionsJSON != "" && decisionsJSON != "{}" {
 		if err := json.Unmarshal([]byte(decisionsJSON), &input); err != nil {
@@ -92,6 +100,8 @@ func (c *Core) ApplyEvening(date, decisionsJSON string) error {
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	var input eveningDecisionInput
 	if decisionsJSON != "" && decisionsJSON != "{}" {
 		if err := json.Unmarshal([]byte(decisionsJSON), &input); err != nil {

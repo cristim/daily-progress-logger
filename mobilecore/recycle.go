@@ -2,8 +2,8 @@ package mobilecore
 
 import "github.com/cristim/daily-progress-logger/internal/store"
 
-// recycleEntryJSON is the wire form of one recycle-bin entry.
-type recycleEntryJSON struct {
+// recycleEntryDTO is the wire form of one recycle-bin entry.
+type recycleEntryDTO struct {
 	Date  string `json:"date"`  // YYYY-MM-DD of the day the item was deleted from
 	Text  string `json:"text"`  // display text (project tag stripped)
 	State string `json:"state"` // "todo", "done", or "postponed"
@@ -12,6 +12,8 @@ type recycleEntryJSON struct {
 // RecycleJSON returns all recycle-bin entries as JSON.
 // Use the date + text fields to call RestoreTask or PurgeRecycled.
 func (c *Core) RecycleJSON() (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	known, err := c.store.KnownProjectIDs()
 	if err != nil {
 		return "", err
@@ -20,9 +22,9 @@ func (c *Core) RecycleJSON() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out := make([]recycleEntryJSON, 0, len(bin))
+	out := make([]recycleEntryDTO, 0, len(bin))
 	for _, e := range bin {
-		out = append(out, recycleEntryJSON{
+		out = append(out, recycleEntryDTO{
 			Date:  e.Date.Format(dateLayout),
 			Text:  store.DisplayText(e.Item, known),
 			State: stateString(e.Item.State),
@@ -38,6 +40,8 @@ func (c *Core) RestoreTask(date, displayText string) error {
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.store.RestoreTask(d, displayText)
 }
 
@@ -48,5 +52,7 @@ func (c *Core) PurgeRecycled(date, displayText string) error {
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.store.PurgeRecycled(d, displayText)
 }
