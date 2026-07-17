@@ -30,7 +30,20 @@ extension Date {
     var coreDate: String { DateFormatting.string(from: self) }
 
     /// RFC 3339 timestamp suitable for DuePromptsJSON.
+    /// Carries the device-local UTC offset (e.g. "2026-07-17T09:35:00+02:00"), never "Z".
+    /// The Go core reads this offset directly for hour/minute comparisons, so emitting
+    /// UTC would break morning/evening prompt timing for any non-UTC user.
     var rfc3339: String {
-        ISO8601DateFormatter().string(from: self)
+        Date.rfc3339Formatter.string(from: self)
     }
+
+    /// Shared, pre-built formatter. Setting timeZone = .current replaces the default
+    /// "Z" suffix with the signed local offset ("+HH:MM" or "-HH:MM"), which is what
+    /// time.Parse(time.RFC3339, …) expects and what schedule.go uses for comparisons.
+    private static let rfc3339Formatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withColonSeparatorInTimeZone]
+        f.timeZone = .current
+        return f
+    }()
 }

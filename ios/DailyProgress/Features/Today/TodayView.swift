@@ -65,6 +65,18 @@ struct TodayView: View {
                         .animation(.easeInOut, value: store.toast != nil)
                 }
             }
+            // Show mutation/refresh errors as an alert when the tree is already
+            // loaded; when tree == nil the error is rendered inline by the Group above.
+            .alert("Error", isPresented: Binding(
+                get: { store.tree != nil && store.errorMessage != nil },
+                set: { if !$0 { store.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { store.errorMessage = nil }
+            } message: {
+                if let msg = store.errorMessage {
+                    Text(msg)
+                }
+            }
         }
         .task(id: appState.viewedDate) {
             await store.refresh(date: appState.viewedDate)
@@ -118,9 +130,11 @@ struct TodayView: View {
                                     .frame(width: 20)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(template.text)
-                                    Text(template.describe)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                    if let desc = template.describe {
+                                        Text(desc)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
                             }
                         }

@@ -14,14 +14,9 @@ struct MorningCandidate: Codable, Identifiable {
     }
 }
 
-/// Root of MorningCandidatesJSON response.
-struct MorningCandidates: Codable {
-    var candidates: [MorningCandidate]
-
-    enum CodingKeys: String, CodingKey {
-        case candidates
-    }
-}
+// MorningCandidatesJSON returns a BARE array (see checkin.go MorningCandidatesJSON):
+//   [{"text":"…","from_backlog":false}, …]
+// Decode as [MorningCandidate] directly — there is no wrapping object.
 
 /// Payload sent to ApplyMorning.
 struct MorningDecisions: Codable {

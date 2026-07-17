@@ -25,11 +25,17 @@ final class AppState {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let dataDir = docs.appendingPathComponent("DailyProgress", isDirectory: true).path
 
+        // TODO(step 8): clientID should come from persisted config, not UserDefaults
         let clientID = loadClientID()
         let deviceID = loadDeviceID()
 
         do {
-            core = try CoreClient.open(dataDir: dataDir, clientID: clientID, deviceID: deviceID)
+            // CoreClient.open does file I/O and a migration pass; run it on a
+            // background thread so the main thread is never blocked at launch.
+            let client = try await Task.detached(priority: .userInitiated) {
+                try CoreClient.open(dataDir: dataDir, clientID: clientID, deviceID: deviceID)
+            }.value
+            core = client
         } catch {
             launchError = error.localizedDescription
         }
