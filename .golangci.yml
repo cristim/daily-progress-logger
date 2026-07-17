@@ -70,10 +70,13 @@ linters:
   exclusions:
     rules:
       # Repeated literal strings in tests are readable fixtures; hoisting
-      # them into constants obscures what each assertion checks.
+      # them into constants obscures what each assertion checks. And type
+      # assertions on known-shape decoded JSON in tests are fine — a wrong
+      # shape panics, which is an acceptable, obvious test failure.
       - path: _test\.go
         linters:
           - goconst
+          - forcetypeassert
 
 formatters:
   enable:

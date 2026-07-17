@@ -78,7 +78,9 @@ func (c *Core) verifyIndex(date time.Time, index int, expectedText string) error
 	}
 	known, err := c.store.KnownProjectIDs()
 	if err != nil {
-		return nil // can't verify: allow action
+		//nolint:nilerr // documented fail-open contract (matches Qt taskIndexValid):
+		// if the guard cannot read state it allows the action, and the store op re-checks.
+		return nil
 	}
 	d, exists, err := c.store.LoadDaily(date)
 	if err != nil || !exists {
@@ -133,14 +135,21 @@ func weekFromDate(s string) (store.WeekID, error) {
 	return store.WeekOf(d), nil
 }
 
+// Wire strings for ItemState, shared by parseState and stateString.
+const (
+	stateTodoStr      = "todo"
+	stateDoneStr      = "done"
+	statePostponedStr = "postponed"
+)
+
 // parseState maps the string state ("todo"/"done"/"postponed") to ItemState.
 func parseState(s string) (store.ItemState, error) {
 	switch s {
-	case "todo":
+	case stateTodoStr:
 		return store.StateTodo, nil
-	case "done":
+	case stateDoneStr:
 		return store.StateDone, nil
-	case "postponed":
+	case statePostponedStr:
 		return store.StatePostponed, nil
 	}
 	return store.StateTodo, fmt.Errorf("unknown state %q (want todo/done/postponed)", s)
@@ -150,11 +159,13 @@ func parseState(s string) (store.ItemState, error) {
 func stateString(st store.ItemState) string {
 	switch st {
 	case store.StateDone:
-		return "done"
+		return stateDoneStr
 	case store.StatePostponed:
-		return "postponed"
+		return statePostponedStr
+	case store.StateTodo:
+		return stateTodoStr
 	default:
-		return "todo"
+		return stateTodoStr
 	}
 }
 

@@ -44,7 +44,7 @@ func (c *Core) WeeklyPlanJSON(date string) (string, error) {
 
 // SetWeeklyPlan sets the weekly plan for the week containing date.
 // goalsJSON is a JSON array of {"text":"...","done":false} objects.
-// Example: [{"text":"ship mobile core"},{"text":"write tests","done":false}]
+// Example: [{"text":"ship mobile core"},{"text":"write tests","done":false}].
 func (c *Core) SetWeeklyPlan(date, goalsJSON string) error {
 	week, err := weekFromDate(date)
 	if err != nil {

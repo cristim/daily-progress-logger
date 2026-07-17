@@ -2,7 +2,6 @@ package mobilecore
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -51,8 +50,8 @@ func TestTreeJSON_MaterializeRecurring(t *testing.T) {
 	// (either under a project or in Unfiled).
 	unfiled, _ := tree["Unfiled"].([]any)
 	found := false
-	for _, t := range unfiled {
-		task := t.(map[string]any)
+	for _, node := range unfiled {
+		task, _ := node.(map[string]any)
 		if task["Text"] == "Standup" {
 			found = true
 			break
@@ -72,11 +71,11 @@ func TestTreeJSON_IndexPresent(t *testing.T) {
 
 	var tree map[string]any
 	require.NoError(t, json.Unmarshal([]byte(raw), &tree))
-	unfiled := tree["Unfiled"].([]any)
+	unfiled, _ := tree["Unfiled"].([]any)
 	require.Len(t, unfiled, 2)
 	// Both tasks must carry an Index field.
 	for _, item := range unfiled {
-		task := item.(map[string]any)
+		task, _ := item.(map[string]any)
 		_, hasIndex := task["Index"]
 		assert.True(t, hasIndex, "TreeJSON task must include Index field")
 	}
@@ -96,7 +95,7 @@ func TestSetTaskState_CASMismatch(t *testing.T) {
 	// Wrong text: should return ErrCASMismatch.
 	require.NoError(t, c.AddTask(today(), "another task", ""))
 	err = c.SetTaskState(today(), 1, "wrong text", "done")
-	assert.True(t, errors.Is(err, ErrCASMismatch), "expected ErrCASMismatch, got %v", err)
+	assert.ErrorIs(t, err, ErrCASMismatch, "expected ErrCASMismatch, got %v", err)
 }
 
 func TestDeleteTask_CASMismatch(t *testing.T) {
@@ -105,7 +104,7 @@ func TestDeleteTask_CASMismatch(t *testing.T) {
 	require.NoError(t, c.AddTask(today(), "delete me", ""))
 
 	err := c.DeleteTask(today(), 0, "wrong text")
-	assert.True(t, errors.Is(err, ErrCASMismatch))
+	require.ErrorIs(t, err, ErrCASMismatch)
 
 	// Correct text should succeed.
 	err = c.DeleteTask(today(), 0, "delete me")
@@ -172,9 +171,9 @@ func TestPostponeToNextWeek(t *testing.T) {
 
 	var bl map[string]any
 	require.NoError(t, json.Unmarshal([]byte(backlogRaw), &bl))
-	nw := bl["next_week"].([]any)
+	nw, _ := bl["next_week"].([]any)
 	require.Len(t, nw, 1)
-	assert.Equal(t, "next week task", nw[0].(string))
+	assert.Equal(t, "next week task", nw[0])
 }
 
 func TestMoveTaskToBacklog(t *testing.T) {
@@ -195,9 +194,9 @@ func TestMoveTaskToBacklog(t *testing.T) {
 	require.NoError(t, err)
 	var bl map[string]any
 	require.NoError(t, json.Unmarshal([]byte(backlogRaw), &bl))
-	curr := bl["current"].([]any)
+	curr, _ := bl["current"].([]any)
 	require.Len(t, curr, 1)
-	assert.Equal(t, "backlog item", curr[0].(string))
+	assert.Equal(t, "backlog item", curr[0])
 }
 
 func TestAddSubtask(t *testing.T) {
@@ -210,10 +209,10 @@ func TestAddSubtask(t *testing.T) {
 	require.NoError(t, err)
 	var tree map[string]any
 	require.NoError(t, json.Unmarshal([]byte(raw), &tree))
-	unfiled := tree["Unfiled"].([]any)
+	unfiled, _ := tree["Unfiled"].([]any)
 	require.Len(t, unfiled, 1)
-	parent := unfiled[0].(map[string]any)
-	children := parent["Children"].([]any)
+	parent, _ := unfiled[0].(map[string]any)
+	children, _ := parent["Children"].([]any)
 	require.Len(t, children, 1)
 	assert.Equal(t, "child", children[0].(map[string]any)["Text"])
 }
@@ -278,8 +277,8 @@ func TestBacklogJSON(t *testing.T) {
 	require.NoError(t, err)
 	var bl map[string]any
 	require.NoError(t, json.Unmarshal([]byte(raw), &bl))
-	curr := bl["current"].([]any)
-	nw := bl["next_week"].([]any)
+	curr, _ := bl["current"].([]any)
+	nw, _ := bl["next_week"].([]any)
 	assert.Equal(t, "item A", curr[0].(string))
 	assert.Equal(t, "item B", nw[0].(string))
 }
@@ -313,7 +312,7 @@ func TestMoveBacklogItem(t *testing.T) {
 	var bl map[string]any
 	require.NoError(t, json.Unmarshal([]byte(raw), &bl))
 	assert.Empty(t, bl["current"].([]any))
-	nw := bl["next_week"].([]any)
+	nw, _ := bl["next_week"].([]any)
 	assert.Equal(t, "shuttle", nw[0].(string))
 }
 
@@ -342,7 +341,7 @@ func TestRemoveRecurring(t *testing.T) {
 	require.NoError(t, err)
 	var templates []map[string]any
 	require.NoError(t, json.Unmarshal([]byte(raw), &templates))
-	rawLine := templates[0]["raw"].(string)
+	rawLine, _ := templates[0]["raw"].(string)
 
 	require.NoError(t, c.RemoveRecurring(rawLine))
 
@@ -399,8 +398,8 @@ func TestMorningCandidatesJSON(t *testing.T) {
 	c := openTestCore(t)
 	// Use Tuesday as "today" so Monday (same week, earlier day) is a candidate source.
 	// today() = Monday 2026-07-20; Tuesday = 2026-07-22.
-	tuesday := todayPlus(2)  // Wednesday is today+2, so Tuesday is today+1
-	monday := today()        // Monday of the same week
+	tuesday := todayPlus(2) // Wednesday is today+2, so Tuesday is today+1
+	monday := today()       // Monday of the same week
 	require.NoError(t, c.AddTask(monday, "carry me forward", ""))
 
 	raw, err := c.MorningCandidatesJSON(tuesday)
@@ -454,7 +453,7 @@ func TestWeeklyPlanJSON_SetWeeklyPlan(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal([]byte(raw), &plan))
 	assert.Equal(t, true, plan["planned"])
-	goals := plan["goals"].([]any)
+	goals, _ := plan["goals"].([]any)
 	require.Len(t, goals, 1)
 	assert.Equal(t, "big thing", goals[0].(map[string]any)["text"])
 }
@@ -468,7 +467,7 @@ func TestWeekReviewCandidatesJSON(t *testing.T) {
 	require.NoError(t, err)
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal([]byte(raw), &resp))
-	candidates := resp["candidates"].([]any)
+	candidates, _ := resp["candidates"].([]any)
 	require.Len(t, candidates, 1)
 	assert.Equal(t, "open item", candidates[0].(string))
 }
@@ -498,7 +497,7 @@ func TestWeeklySummaryJSON(t *testing.T) {
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal([]byte(raw), &summary))
 	assert.NotEmpty(t, summary["week"])
-	goals := summary["goals"].([]any)
+	goals, _ := summary["goals"].([]any)
 	assert.Len(t, goals, 1)
 	// done_by_day may be empty since done tracking requires a daily file with
 	// done state; that's captured through the plan items.
@@ -550,7 +549,7 @@ func TestDuePromptsJSON(t *testing.T) {
 	require.NoError(t, err)
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal([]byte(raw), &resp))
-	due := resp["due"].([]any)
+	due, _ := resp["due"].([]any)
 	// At least morning should be due (weekly plan too, depending on defaults).
 	assert.NotEmpty(t, due)
 
@@ -578,7 +577,7 @@ func TestFileTokenStore_SaveLoad(t *testing.T) {
 
 	// Load when no file exists: error wrapping os.ErrNotExist.
 	_, err := store.Load()
-	assert.True(t, errors.Is(err, os.ErrNotExist))
+	require.ErrorIs(t, err, os.ErrNotExist)
 
 	// Save and reload.
 	tok := &oauthTokenForTest{AccessToken: "abc123", TokenType: "Bearer"}
@@ -606,7 +605,8 @@ func TestFileTokenStore_AtomicWrite(t *testing.T) {
 
 	// Should create parent dir automatically.
 	tok := &tokenForSave{AccessToken: "xyz"}
-	data, _ := json.Marshal(tok)
+	data, err := json.Marshal(tok)
+	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
 	require.NoError(t, os.WriteFile(path, data, 0o600))
 
@@ -639,7 +639,7 @@ func TestErrCASMismatch_Is(t *testing.T) {
 	c := openTestCore(t)
 	require.NoError(t, c.AddTask(today(), "x", ""))
 	err := c.DeleteTask(today(), 0, "wrong")
-	assert.True(t, errors.Is(err, ErrCASMismatch))
+	assert.ErrorIs(t, err, ErrCASMismatch)
 }
 
 // ---- ReorderTask + MoveTaskToProject ----------------------------------------
@@ -694,10 +694,10 @@ func TestMakeSubtask(t *testing.T) {
 	require.NoError(t, err)
 	var tree map[string]any
 	require.NoError(t, json.Unmarshal([]byte(raw), &tree))
-	unfiled := tree["Unfiled"].([]any)
+	unfiled, _ := tree["Unfiled"].([]any)
 	require.Len(t, unfiled, 1)
-	parent := unfiled[0].(map[string]any)
-	children := parent["Children"].([]any)
+	parent, _ := unfiled[0].(map[string]any)
+	children, _ := parent["Children"].([]any)
 	require.Len(t, children, 1)
 	assert.Equal(t, "future child", children[0].(map[string]any)["Text"])
 }

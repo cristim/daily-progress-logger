@@ -89,4 +89,3 @@ func TestScheduleState_WeekReviewPending(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, st.WeekReviewPending)
 }
-
