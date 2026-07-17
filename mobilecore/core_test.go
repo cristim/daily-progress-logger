@@ -794,6 +794,21 @@ func TestClassifyError(t *testing.T) {
 	}
 }
 
+// TestParseDate_BadInput verifies that passing a malformed date to any Core
+// method surfaces a ClassifyError-detectable BAD_INPUT code.
+func TestParseDate_BadInput(t *testing.T) {
+	t.Parallel()
+	c := openTestCore(t)
+	// AddTask is representative: it is the first method that calls parseDate.
+	err := c.AddTask("not-a-date", "task", "")
+	require.Error(t, err)
+	assert.True(t,
+		strings.HasPrefix(err.Error(), ErrCodeBadInput+": "),
+		"bad date must produce a BAD_INPUT-prefixed error; got %q", err.Error())
+	assert.Equal(t, ErrCodeBadInput, ClassifyError(err.Error()),
+		"ClassifyError must return ErrCodeBadInput for a bad date error")
+}
+
 // TestBadInputState verifies parseState returns a BAD_INPUT coded error.
 func TestBadInputState(t *testing.T) {
 	t.Parallel()

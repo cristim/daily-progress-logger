@@ -251,8 +251,14 @@ func (c *Core) engineWithStore(tokenJSON string) (*syncengine.Engine, *memTokenS
 }
 
 // parseDate parses "YYYY-MM-DD" in local time.
+// A parse failure is wrapped as a BAD_INPUT coded error so every date-taking
+// Core method surfaces a ClassifyError-detectable code to the host.
 func parseDate(s string) (time.Time, error) {
-	return time.ParseInLocation(dateLayout, s, time.Local)
+	t, err := time.ParseInLocation(dateLayout, s, time.Local)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%s: invalid date %q (want YYYY-MM-DD): %w", ErrCodeBadInput, s, err)
+	}
+	return t, nil
 }
 
 // weekFromDate parses a date string and returns its ISO week.
