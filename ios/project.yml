@@ -7,6 +7,24 @@ options:
   createIntermediateGroups: true
   groupSortPosition: top
 
+schemes:
+  DailyProgress:
+    build:
+      targets:
+        DailyProgress: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - DailyProgressTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+
 settings:
   base:
     SWIFT_VERSION: "5.9"
