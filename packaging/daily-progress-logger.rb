@@ -1,13 +1,13 @@
 cask "daily-progress-logger" do
   version "0.1.0"
-  # Fill in the real sha256 after the first `make release`:
-  #   sha256 "$(shasum -a 256 build/DailyProgressLogger-0.1.0.dmg | awk '{print $1}')"
   sha256 :no_check
 
   url "https://github.com/cristim/daily-progress-logger/releases/download/v#{version}/DailyProgressLogger-#{version}.dmg"
   name "Daily Progress Logger"
-  desc "macOS menu-bar app that prompts for daily plans and progress notes"
+  desc "Menu-bar app that prompts for daily plans and progress notes"
   homepage "https://github.com/cristim/daily-progress-logger"
+
+  depends_on :macos
 
   app "DailyProgressLogger.app"
 
@@ -22,8 +22,8 @@ cask "daily-progress-logger" do
 
   zap trash: [
     "~/Library/Application Support/DailyProgressLogger",
-    "~/Library/LaunchAgents/com.cristim.daily-progress-logger.plist",
     "~/Library/LaunchAgents/com.cristim.daily-progress-logger.checkins.plist",
+    "~/Library/LaunchAgents/com.cristim.daily-progress-logger.plist",
   ]
 
   caveats <<~CAVEATS
