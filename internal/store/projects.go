@@ -267,7 +267,7 @@ func (s *Store) RenameProject(projectID, newName string) error {
 	}
 	pi := findProject(projects, projectID)
 	if pi < 0 {
-		return fmt.Errorf("project %q not found", projectID)
+		return fmt.Errorf("project %q: %w", projectID, ErrProjectNotFound)
 	}
 	projects[pi].Name = newName
 	return s.SaveProjects(projects)
@@ -281,7 +281,7 @@ func (s *Store) SetProjectStatus(projectID string, status ItemStatus) error {
 	}
 	pi := findProject(projects, projectID)
 	if pi < 0 {
-		return fmt.Errorf("project %q not found", projectID)
+		return fmt.Errorf("project %q: %w", projectID, ErrProjectNotFound)
 	}
 	projects[pi].Status = status
 	return s.SaveProjects(projects)
@@ -326,7 +326,7 @@ func (s *Store) AssignTaskProject(date time.Time, index int, projectID string) e
 		return err
 	}
 	if findProject(projects, projectID) < 0 {
-		return fmt.Errorf("project %q not found", projectID)
+		return fmt.Errorf("project %q: %w", projectID, ErrProjectNotFound)
 	}
 	return s.retagTask(date, index, allIDs(projects), "#"+projectID)
 }

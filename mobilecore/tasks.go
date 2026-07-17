@@ -14,7 +14,7 @@ func (c *Core) AddTask(date, text, projectID string) error {
 	if projectID == "" {
 		return c.store.AddPlanItem(d, text)
 	}
-	return c.store.AddTaggedTask(d, text, projectID)
+	return codeStoreErr(c.store.AddTaggedTask(d, text, projectID))
 }
 
 // SetTaskState sets a task's state ("todo", "done", or "postponed") by its
@@ -188,7 +188,7 @@ func (c *Core) MoveTaskToProject(date string, index int, expectedText, projectID
 	if err := c.verifyIndex(d, index, expectedText); err != nil {
 		return err
 	}
-	return c.store.MoveTaskToProject(d, index, projectID)
+	return codeStoreErr(c.store.MoveTaskToProject(d, index, projectID))
 }
 
 // AssignTaskProject is a convenience alias for MoveTaskToProject with a
@@ -203,7 +203,7 @@ func (c *Core) AssignTaskProject(date string, index int, expectedText, projectID
 	if err := c.verifyIndex(d, index, expectedText); err != nil {
 		return err
 	}
-	return c.store.MoveTaskToProject(d, index, projectID)
+	return codeStoreErr(c.store.MoveTaskToProject(d, index, projectID))
 }
 
 // UnassignTaskProject removes the project tag from the task at index, moving

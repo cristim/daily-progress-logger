@@ -940,6 +940,66 @@ func TestMakeSubtask(t *testing.T) {
 	assert.Equal(t, "future child", children[0].(map[string]any)["text"]) // snake_case
 }
 
+// ---- NOT_FOUND error code tests ---------------------------------------------
+
+// assertNotFound verifies err carries the NOT_FOUND code prefix and ClassifyError.
+func assertNotFound(t *testing.T, err error, context string) {
+	t.Helper()
+	require.Error(t, err, "%s: expected an error", context)
+	assert.True(t,
+		strings.HasPrefix(err.Error(), ErrCodeNotFound+": "),
+		"%s: error must start with %q; got %q", context, ErrCodeNotFound+": ", err.Error())
+	assert.Equal(t, ErrCodeNotFound, ClassifyError(err.Error()),
+		"%s: ClassifyError must return ErrCodeNotFound", context)
+}
+
+// TestRenameProject_NotFound verifies that renaming an unknown project ID
+// surfaces as a NOT_FOUND coded error.
+func TestRenameProject_NotFound(t *testing.T) {
+	t.Parallel()
+	c := openTestCore(t)
+	assertNotFound(t, c.RenameProject("no-such-id", "New Name"), "RenameProject")
+}
+
+// TestCloseProject_NotFound verifies NOT_FOUND for an unknown project ID.
+func TestCloseProject_NotFound(t *testing.T) {
+	t.Parallel()
+	c := openTestCore(t)
+	assertNotFound(t, c.CloseProject("no-such-id"), "CloseProject")
+}
+
+// TestReopenProject_NotFound verifies NOT_FOUND for an unknown project ID.
+func TestReopenProject_NotFound(t *testing.T) {
+	t.Parallel()
+	c := openTestCore(t)
+	assertNotFound(t, c.ReopenProject("no-such-id"), "ReopenProject")
+}
+
+// TestAddTask_NotFoundProject verifies that tagging a task to an unknown
+// project ID surfaces as NOT_FOUND (not a raw error).
+func TestAddTask_NotFoundProject(t *testing.T) {
+	t.Parallel()
+	c := openTestCore(t)
+	assertNotFound(t, c.AddTask(today(), "task", "no-such-project"), "AddTask with unknown projectID")
+}
+
+// TestMoveTaskToProject_NotFound verifies NOT_FOUND when projectID is unknown.
+func TestMoveTaskToProject_NotFound(t *testing.T) {
+	t.Parallel()
+	c := openTestCore(t)
+	require.NoError(t, c.AddTask(today(), "free task", ""))
+	assertNotFound(t, c.MoveTaskToProject(today(), 0, "free task", "ghost-project"), "MoveTaskToProject")
+}
+
+// TestMoveBacklogItem_NotFound verifies that moving an item not in the backlog
+// surfaces as NOT_FOUND via codeStoreErr.
+func TestMoveBacklogItem_NotFound(t *testing.T) {
+	t.Parallel()
+	c := openTestCore(t)
+	// "ghost text" does not exist in either backlog section.
+	assertNotFound(t, c.MoveBacklogItem("ghost text", true), "MoveBacklogItem")
+}
+
 // ---- ResolveConflict validation ---------------------------------------------
 
 // TestResolveConflict_UnknownChoice verifies H2: an unknown choice string

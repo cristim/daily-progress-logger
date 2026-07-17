@@ -157,7 +157,7 @@ func (s *Store) MoveTaskToProject(date time.Time, index int, projectID string) e
 		return err
 	}
 	if projectID != "" && !known[projectID] {
-		return fmt.Errorf("project %q not found", projectID)
+		return fmt.Errorf("project %q: %w", projectID, ErrProjectNotFound)
 	}
 
 	start, end := subtreeSpan(d.Plan, index)

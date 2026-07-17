@@ -42,5 +42,5 @@ func (c *Core) AdoptFromBacklog(date, text string) error {
 func (c *Core) MoveBacklogItem(text string, toNextWeek bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.store.MoveBacklogItem(text, toNextWeek)
+	return codeStoreErr(c.store.MoveBacklogItem(text, toNextWeek))
 }

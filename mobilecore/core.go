@@ -307,6 +307,21 @@ func stateString(st store.ItemState) string {
 	}
 }
 
+// codeStoreErr maps store sentinel not-found errors to a NOT_FOUND coded
+// error so hosts can branch on ClassifyError across the gomobile boundary.
+// Errors wrapping store.ErrProjectNotFound or store.ErrBacklogItemNotFound
+// are wrapped with the ErrCodeNotFound prefix; all other errors pass through
+// unchanged.
+func codeStoreErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, store.ErrProjectNotFound) || errors.Is(err, store.ErrBacklogItemNotFound) {
+		return fmt.Errorf("%s: %w", ErrCodeNotFound, err)
+	}
+	return err
+}
+
 // toJSON marshals v to a compact JSON string.
 func toJSON(v any) (string, error) {
 	b, err := json.Marshal(v)

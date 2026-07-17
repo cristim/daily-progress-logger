@@ -40,19 +40,19 @@ func (c *Core) ProjectsJSON() (string, error) {
 func (c *Core) RenameProject(id, newName string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.store.RenameProject(id, newName)
+	return codeStoreErr(c.store.RenameProject(id, newName))
 }
 
 // CloseProject archives the project with the given ID.
 func (c *Core) CloseProject(id string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.store.SetProjectStatus(id, store.StatusClosed)
+	return codeStoreErr(c.store.SetProjectStatus(id, store.StatusClosed))
 }
 
 // ReopenProject re-opens an archived project.
 func (c *Core) ReopenProject(id string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.store.SetProjectStatus(id, store.StatusOpen)
+	return codeStoreErr(c.store.SetProjectStatus(id, store.StatusOpen))
 }
