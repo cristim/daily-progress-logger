@@ -9,9 +9,6 @@ cask "daily-progress-logger" do
   desc "macOS menu-bar app that prompts for daily plans and progress notes"
   homepage "https://github.com/cristim/daily-progress-logger"
 
-  # NOTE: the upstream repo is currently private. This cask can only fetch the
-  # DMG once the repo is public or the release asset is made available publicly.
-
   app "DailyProgressLogger.app"
 
   # Ad-hoc signed, not notarised — strip the quarantine xattr so

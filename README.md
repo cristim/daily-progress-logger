@@ -6,6 +6,16 @@ system: it prompts every morning for what you plan to work on, every evening
 for what you actually did, and keeps everything as plain, human-editable
 markdown files you can grep, sync, or feed to an LLM at review time.
 
+## Install
+
+```sh
+brew install --cask cristim/tap/daily-progress-logger
+```
+
+The app is ad-hoc signed (not notarized); the cask strips the quarantine
+attribute so Gatekeeper allows first launch. To build from source instead,
+see [Building](#building).
+
 ## How it works
 
 - **Weekly plan** (Monday morning): asks *"What are the big things you want to
@@ -194,9 +204,6 @@ After that, users can install with:
 brew install --cask cristim/tap/daily-progress-logger
 ```
 
-Note: the repo must be public (or the release asset publicly accessible) before
-`brew install` can fetch the DMG.
-
 ### CI / automated releases
 
 Pushing a `v*` tag (e.g. `v1.2.0`) triggers `.github/workflows/release.yml`,
@@ -220,5 +227,17 @@ First-run caveat: the miqt Qt bindings require a full cgo compile on a cold
 runner (~15 min). Subsequent runs restore `~/Library/Caches/go-build` from
 the Actions cache and finish in a few minutes.
 
-Note: the cask remains uninstallable via `brew install` while the repository
-(or its release assets) is private.
+## Google Drive sync (optional)
+
+Sync is off by default and needs no account. To sync your `~/DailyProgress`
+folder across machines via Google Drive, open **Preferences → Google Drive**
+and paste your own OAuth **client ID** (`xxxxx.apps.googleusercontent.com`).
+Create one in the [Google Cloud console](https://console.cloud.google.com/)
+as an *OAuth client ID → Desktop app*; the app uses the loopback + PKCE flow
+(no client secret) and requests only the least-privilege `drive.file` scope,
+so it can touch only the files it creates. The token is stored in your macOS
+Keychain. Nothing is uploaded until you sign in.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
