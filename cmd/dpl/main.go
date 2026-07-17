@@ -65,6 +65,10 @@ Subcommands:
         Create a new project and print its generated id.
   recur list
         List recurring task templates.
+  tui (or: ui)
+        Launch the full-screen interactive TUI (requires a real terminal).
+        Arrow keys navigate; Space toggles done; a/e/d/p add, edit, delete,
+        postpone; [/] prev/next day; t today; r reload; q quit.
   help
         Show this help text.
 
@@ -206,6 +210,8 @@ var subcommands = map[string]subHandler{
 	"recur": func(st *store.Store, _ time.Time, args []string, w io.Writer) error {
 		return cmdRecur(st, args, w)
 	},
+	"tui": cmdTUI,
+	"ui":  cmdTUI,
 }
 
 func main() {
@@ -295,17 +301,24 @@ func loadPlan(st *store.Store, date time.Time) ([]store.Item, error) {
 	return d.Plan, nil
 }
 
+// Checkbox display glyphs shared with tui.go.
+const (
+	glyphTodo      = "[ ]"
+	glyphDone      = "[x]"
+	glyphPostponed = "[>]"
+)
+
 // stateGlyph maps an item state to its checkbox display string.
 func stateGlyph(s store.ItemState) string {
 	switch s {
 	case store.StateTodo:
-		return "[ ]"
+		return glyphTodo
 	case store.StateDone:
-		return "[x]"
+		return glyphDone
 	case store.StatePostponed:
-		return "[>]"
+		return glyphPostponed
 	}
-	return "[ ]"
+	return glyphTodo
 }
 
 // stateName returns the JSON-friendly name of an item state.
