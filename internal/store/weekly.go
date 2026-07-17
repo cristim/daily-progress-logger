@@ -121,6 +121,18 @@ func parseWeeklyMeta(content string) (weeklyMeta, error) {
 	return meta, nil
 }
 
+// WeekFlags returns the reviewed and summarized flags for week directly from
+// the weekly file's frontmatter. Both flags are false when the file does not
+// yet exist. This is a lightweight alternative to WeekSummaryPending /
+// UnreviewedWeek when the caller knows which week to query.
+func (s *Store) WeekFlags(week WeekID) (reviewed, summarized bool, err error) {
+	meta, _, err := s.loadWeeklyMeta(week)
+	if err != nil {
+		return false, false, err
+	}
+	return meta.Reviewed, meta.Summarized, nil
+}
+
 // renderWeekly produces the weekly summary markdown from the week's daily
 // files plus the carried-over meta.
 func renderWeekly(week WeekID, dailies []*Daily, meta weeklyMeta) string {
