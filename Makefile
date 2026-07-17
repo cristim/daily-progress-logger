@@ -24,7 +24,7 @@ build:
 
 # Build the pure-Go CLI companion (no CGO, no Qt dependency).
 cli:
-	CGO_ENABLED=0 go build -o $(BUILD_DIR)/dpl ./cmd/dpl
+	CGO_ENABLED=0 go build -o $(BUILD_DIR)/dpr ./cmd/dpr
 
 test:
 	go test -race -cover ./...

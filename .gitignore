@@ -1,7 +1,7 @@
 # Build artifacts
 /build/
 /daily-progress-logger
-/dpl
+/dpr
 
 # gomobile-generated iOS framework (built via `make ios-core`)
 /ios/Frameworks/

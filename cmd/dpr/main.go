@@ -1,9 +1,9 @@
-// Package main provides dpl, a command-line companion for the Daily Progress
+// Package main provides dpr, a command-line companion for the Daily Progress
 // Logger. It reads and writes the same markdown files as the GUI app, using
 // the pure-Go internal/store package (no Qt, no cgo).
 //
-// Build:  CGO_ENABLED=0 go build ./cmd/dpl
-// Usage:  dpl help
+// Build:  CGO_ENABLED=0 go build ./cmd/dpr
+// Usage:  dpr help
 package main
 
 import (
@@ -26,12 +26,12 @@ import (
 const (
 	dateFormat = "2006-01-02"
 
-	usageText = `dpl — Daily Progress Logger CLI
+	usageText = `dpr — Daily Progress Logger CLI
 
-Usage: dpl [--data-dir PATH] [--date YYYY-MM-DD] <subcommand> [flags] [args]
+Usage: dpr [--data-dir PATH] [--date YYYY-MM-DD] <subcommand> [flags] [args]
 
-Run "dpl" with no subcommand in a terminal to launch the interactive tree UI
-(same as "dpl tui"); when output is piped or redirected it prints this usage
+Run "dpr" with no subcommand in a terminal to launch the interactive tree UI
+(same as "dpr tui"); when output is piped or redirected it prints this usage
 instead, so scripts keep working.
 
 The CLI and GUI share the same data directory and files.  All file writes are
@@ -79,11 +79,11 @@ Subcommands:
         Show this help text.
 
 Index notes:
-  Item numbers are 1-based, matching the output of 'dpl list'.  Numbers shift
+  Item numbers are 1-based, matching the output of 'dpr list'.  Numbers shift
   after add/rm, so re-check the list before chaining commands.
 
 Build note:
-  CGO_ENABLED=0 go build ./cmd/dpl   (pure Go, no Qt dependency)
+  CGO_ENABLED=0 go build ./cmd/dpr   (pure Go, no Qt dependency)
 `
 )
 
@@ -235,11 +235,11 @@ func main() {
 		var ec *exitError
 		if errors.As(err, &ec) {
 			if ec.msg != "" {
-				fmt.Fprintln(os.Stderr, "dpl:", ec.msg)
+				fmt.Fprintln(os.Stderr, "dpr:", ec.msg)
 			}
 			os.Exit(ec.code)
 		}
-		fmt.Fprintln(os.Stderr, "dpl:", err)
+		fmt.Fprintln(os.Stderr, "dpr:", err)
 		os.Exit(1)
 	}
 }
@@ -283,7 +283,7 @@ func run(args []string, w, errW io.Writer, defaultCmd string) error {
 
 	handler, ok := subcommands[subcommand]
 	if !ok {
-		_, _ = fmt.Fprintf(errW, "dpl: unknown subcommand %q\n\n%s", subcommand, usageText)
+		_, _ = fmt.Fprintf(errW, "dpr: unknown subcommand %q\n\n%s", subcommand, usageText)
 		return &exitError{code: 2}
 	}
 
@@ -452,9 +452,9 @@ func printPlanJSON(w io.Writer, items []store.Item, st *store.Store) error {
 	return enc.Encode(out)
 }
 
-// cmdList implements: dpl list [--json].
+// cmdList implements: dpr list [--json].
 func cmdList(st *store.Store, date time.Time, args []string, w io.Writer) error {
-	fs := flag.NewFlagSet("dpl list", flag.ContinueOnError)
+	fs := flag.NewFlagSet("dpr list", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	jsonOut := fs.Bool("json", false, "output as a JSON array")
 	if err := fs.Parse(args); err != nil {
@@ -479,7 +479,7 @@ func cmdList(st *store.Store, date time.Time, args []string, w io.Writer) error 
 	return nil
 }
 
-// cmdAdd implements: dpl add [--project SLUG] [--parent N] <text...>.
+// cmdAdd implements: dpr add [--project SLUG] [--parent N] <text...>.
 //
 // --parent N and --project SLUG cannot be combined: subtasks always inherit
 // their depth-0 ancestor's project tag and do not carry one themselves.
@@ -538,7 +538,7 @@ func doAdd(st *store.Store, date time.Time, parentN int, projectSlug, text strin
 			return fmt.Errorf("loading projects: %w", err)
 		}
 		if !known[projectSlug] {
-			return fmt.Errorf("project %q not found (run 'dpl projects' to list known ids)", projectSlug)
+			return fmt.Errorf("project %q not found (run 'dpr projects' to list known ids)", projectSlug)
 		}
 		if err := st.AddTaggedTask(date, text, projectSlug); err != nil {
 			return fmt.Errorf("adding tagged task: %w", err)
@@ -571,7 +571,7 @@ func setItemState(st *store.Store, date time.Time, nStr string, state store.Item
 	return afterMutation(st, date, w)
 }
 
-// cmdDone implements: dpl done <n>.
+// cmdDone implements: dpr done <n>.
 func cmdDone(st *store.Store, date time.Time, args []string, w io.Writer) error {
 	if len(args) != 1 {
 		return usageErr("done: requires exactly one argument <n>")
@@ -579,7 +579,7 @@ func cmdDone(st *store.Store, date time.Time, args []string, w io.Writer) error 
 	return setItemState(st, date, args[0], store.StateDone, w)
 }
 
-// cmdUndone implements: dpl undone <n>.
+// cmdUndone implements: dpr undone <n>.
 func cmdUndone(st *store.Store, date time.Time, args []string, w io.Writer) error {
 	if len(args) != 1 {
 		return usageErr("undone: requires exactly one argument <n>")
@@ -587,7 +587,7 @@ func cmdUndone(st *store.Store, date time.Time, args []string, w io.Writer) erro
 	return setItemState(st, date, args[0], store.StateTodo, w)
 }
 
-// cmdEdit implements: dpl edit <n> <text...>.
+// cmdEdit implements: dpr edit <n> <text...>.
 func cmdEdit(st *store.Store, date time.Time, args []string, w io.Writer) error {
 	if len(args) < 2 {
 		return usageErr("edit: requires <n> and <text...>")
@@ -612,7 +612,7 @@ func cmdEdit(st *store.Store, date time.Time, args []string, w io.Writer) error 
 	return afterMutation(st, date, w)
 }
 
-// cmdRm implements: dpl rm <n>.
+// cmdRm implements: dpr rm <n>.
 func cmdRm(st *store.Store, date time.Time, args []string, w io.Writer) error {
 	if len(args) != 1 {
 		return usageErr("rm: requires exactly one argument <n>")
@@ -637,7 +637,7 @@ func cmdRm(st *store.Store, date time.Time, args []string, w io.Writer) error {
 	return afterMutation(st, date, w)
 }
 
-// cmdPostpone implements: dpl postpone <n> [--week].
+// cmdPostpone implements: dpr postpone <n> [--week].
 //
 // --week may appear before or after <n> since flags are parsed positionally.
 func cmdPostpone(st *store.Store, date time.Time, args []string, w io.Writer) error {
@@ -681,7 +681,7 @@ func cmdPostpone(st *store.Store, date time.Time, args []string, w io.Writer) er
 	return afterMutation(st, date, w)
 }
 
-// cmdBacklog implements: dpl backlog <n>  AND  dpl backlog list.
+// cmdBacklog implements: dpr backlog <n>  AND  dpr backlog list.
 func cmdBacklog(st *store.Store, date time.Time, args []string, w io.Writer) error {
 	if len(args) == 0 {
 		return usageErr("backlog: requires 'list' or <n>")
@@ -730,7 +730,7 @@ func cmdBacklogList(st *store.Store, w io.Writer) error {
 	return nil
 }
 
-// cmdProjects implements: dpl projects.
+// cmdProjects implements: dpr projects.
 func cmdProjects(st *store.Store, w io.Writer) error {
 	projects, err := st.LoadProjects()
 	if err != nil {
@@ -759,7 +759,7 @@ func cmdProject(st *store.Store, args []string, w io.Writer) error {
 	}
 }
 
-// cmdProjectAdd implements: dpl project add <name...>.
+// cmdProjectAdd implements: dpr project add <name...>.
 func cmdProjectAdd(st *store.Store, args []string, w io.Writer) error {
 	if len(args) == 0 {
 		return usageErr("project add: requires <name...>")
@@ -786,7 +786,7 @@ func cmdRecur(st *store.Store, args []string, w io.Writer) error {
 	}
 }
 
-// cmdRecurList implements: dpl recur list.
+// cmdRecurList implements: dpr recur list.
 func cmdRecurList(st *store.Store, w io.Writer) error {
 	tasks, err := st.RecurringTasks()
 	if err != nil {

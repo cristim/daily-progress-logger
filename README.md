@@ -165,7 +165,7 @@ Qt headers require C++17+; the Makefile exports `CGO_CXXFLAGS=-std=c++20`
 for every Go invocation — set it yourself when calling `go build`/`go test`
 directly.
 
-## CLI (`dpl`)
+## CLI (`dpr`)
 
 A pure-Go command-line companion that reads and writes the same data files as
 the GUI.  No Qt, no CGO, no dependencies beyond the standard library.
@@ -173,15 +173,15 @@ the GUI.  No Qt, no CGO, no dependencies beyond the standard library.
 ### Install / build
 
 ```sh
-make cli                          # builds build/dpl
-CGO_ENABLED=0 go build ./cmd/dpl # or directly
+make cli                          # builds build/dpr
+CGO_ENABLED=0 go build ./cmd/dpr # or directly
 ```
 
 The binary is fully static — place it anywhere on your `PATH`.
 
 ### Shared data directory
 
-`dpl` uses the same `data_dir` as the GUI (read from
+`dpr` uses the same `data_dir` as the GUI (read from
 `~/Library/Application Support/DailyProgressLogger/config.json`).  Both
 processes can run concurrently: all writes are atomic, so there are no races.
 Override the path with `--data-dir /custom/path`.
@@ -190,62 +190,62 @@ Override the path with `--data-dir /custom/path`.
 
 ```sh
 # List today's plan (1-based numbered)
-dpl list
-dpl list --json   # machine-readable output
+dpr list
+dpr list --json   # machine-readable output
 
 # Add tasks
-dpl add Buy milk
-dpl add --project myproj Implement the feature
-dpl add --parent 2 Write unit tests   # subtask of item 2
+dpr add Buy milk
+dpr add --project myproj Implement the feature
+dpr add --parent 2 Write unit tests   # subtask of item 2
 
 # Change state
-dpl done 1        # mark item 1 done   [x]
-dpl undone 1      # revert to to-do    [ ]
+dpr done 1        # mark item 1 done   [x]
+dpr undone 1      # revert to to-do    [ ]
 
 # Edit / remove
-dpl edit 3 Revised task text
-dpl rm 3          # moves to recycle bin (recoverable in GUI)
+dpr edit 3 Revised task text
+dpr rm 3          # moves to recycle bin (recoverable in GUI)
 
 # Postpone
-dpl postpone 2             # move to tomorrow's plan
-dpl postpone 2 --week      # mark [>] and queue in next week's backlog
+dpr postpone 2             # move to tomorrow's plan
+dpr postpone 2 --week      # mark [>] and queue in next week's backlog
 
 # Backlog
-dpl backlog 1              # move item 1 to current backlog
-dpl backlog list           # show Current + Next week sections
+dpr backlog 1              # move item 1 to current backlog
+dpr backlog list           # show Current + Next week sections
 
 # Projects
-dpl projects               # list all projects (id, name, status)
-dpl project add My Project # create a project, prints its id
+dpr projects               # list all projects (id, name, status)
+dpr project add My Project # create a project, prints its id
 
 # Recurring templates
-dpl recur list
+dpr recur list
 
 # Full-screen interactive TUI
-dpl tui       # also: dpl ui
+dpr tui       # also: dpr ui
 
 # Use a different date
-dpl --date 2025-06-09 list
+dpr --date 2025-06-09 list
 
 # Help
-dpl help
+dpr help
 ```
 
-### Interactive TUI (`dpl tui`)
+### Interactive TUI (`dpr tui`)
 
 A full-screen interactive tree view of the day's task list, implemented with
 [tview](https://github.com/rivo/tview) and [tcell](https://github.com/gdamore/tcell)
 — pure Go, no ncurses, no CGO. Reads and writes the same data files as the GUI
-and all other `dpl` commands; both can run concurrently.
+and all other `dpr` commands; both can run concurrently.
 
 ```sh
-dpl              # in a terminal, bare `dpl` launches the TUI by default
-dpl tui          # launch TUI for today (explicit)
-dpl tui --date 2026-07-14   # any date
+dpr              # in a terminal, bare `dpr` launches the TUI by default
+dpr tui          # launch TUI for today (explicit)
+dpr tui --date 2026-07-14   # any date
 ```
 
-Running `dpl` with no subcommand launches the TUI when attached to a real
-terminal; when its output is piped or redirected (scripts, `dpl list | ...`)
+Running `dpr` with no subcommand launches the TUI when attached to a real
+terminal; when its output is piped or redirected (scripts, `dpr list | ...`)
 it prints usage instead, so the command-based workflow stays scriptable.
 
 The tree mirrors the GUI's main window: open projects (expandable) with their

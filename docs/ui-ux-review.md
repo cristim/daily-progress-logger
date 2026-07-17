@@ -139,9 +139,9 @@ before refreshing so the correct viewport geometry is used for screenshots.
 ## Review round 2 — Fable (2026-07-07)
 
 Fresh-eyes adversarial pass. Evidence screenshots live under
-`/tmp/claude/dpl-review-shots/` (subdirs: `seeded`, `empty`, `stress`,
+`/tmp/claude/dpr-review-shots/` (subdirs: `seeded`, `empty`, `stress`,
 `longone`, `manyshort`), rendered offscreen against seeded homes under
-`/tmp/claude/dpl-home*`. The `stress` home has 25 plan items (incl. 200+
+`/tmp/claude/dpr-home*`. The `stress` home has 25 plan items (incl. 200+
 char, emoji, Cyrillic, Hebrew, Arabic, and HTML-like texts), 15 backlog
 items and 23 week-review leftovers; `longone` isolates a single long item;
 `manyshort` has 25 short items; `empty` is a brand-new home with no data.
@@ -417,9 +417,9 @@ skipped (not trivially easy with the current menu API).
 
 Fresh-eyes adversarial pass over everything shipped through round 2, with
 extra weight on the new Backlog dialog and the manual/scheduled prompt
-split. Evidence screenshots live under `/tmp/claude/dpl-r3-shots/`
+split. Evidence screenshots live under `/tmp/claude/dpr-r3-shots/`
 (subdirs: `backlog30`, `nextonly`), rendered offscreen against homes under
-`/tmp/claude/dpl-r3-home-*`. The `backlog30` home has 30 backlog items
+`/tmp/claude/dpr-r3-home-*`. The `backlog30` home has 30 backlog items
 (incl. a 200+ char item, `<`/`&` texts, emoji, Cyrillic, Hebrew, Arabic)
 plus a 3-item plan where one item is postponed and also present in the
 backlog; `nextonly` has an empty Current section and 3 Next-week items.

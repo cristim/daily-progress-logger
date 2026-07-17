@@ -457,11 +457,11 @@ func TestRunDefaultCmdDispatch(t *testing.T) {
 
 	var usage bytes.Buffer
 	require.NoError(t, run([]string{"--data-dir", dir}, &usage, &bytes.Buffer{}, ""))
-	assert.Contains(t, usage.String(), "Usage: dpl", "empty defaultCmd should print usage")
+	assert.Contains(t, usage.String(), "Usage: dpr", "empty defaultCmd should print usage")
 
 	// A non-empty defaultCmd dispatches to that subcommand (use "list", which
 	// is safe and needs no TTY, as a stand-in for the interactive "tui").
 	var listed bytes.Buffer
 	require.NoError(t, run([]string{"--data-dir", dir}, &listed, &bytes.Buffer{}, "list"))
-	assert.NotContains(t, listed.String(), "Usage: dpl", "defaultCmd should dispatch, not print usage")
+	assert.NotContains(t, listed.String(), "Usage: dpr", "defaultCmd should dispatch, not print usage")
 }

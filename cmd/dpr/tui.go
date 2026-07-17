@@ -1,7 +1,7 @@
 package main
 
-// tui.go — full-screen interactive TUI for dpl, launched via `dpl tui` or
-// `dpl ui`. Implemented with tview+tcell (pure Go, CGO_ENABLED=0).
+// tui.go — full-screen interactive TUI for dpr, launched via `dpr tui` or
+// `dpr ui`. Implemented with tview+tcell (pure Go, CGO_ENABLED=0).
 //
 // Architecture note: all functions that convert store data into display
 // structures (buildNodeModel, nodeLabel, stateCheckGlyph, …) are pure and
@@ -775,7 +775,7 @@ func (a *tuiApp) buildFlex() *tview.Flex {
 		AddItem(a.footer, 2, 0, false)
 }
 
-// cmdTUI is the subcommand handler for `dpl tui` and `dpl ui`.
+// cmdTUI is the subcommand handler for `dpr tui` and `dpr ui`.
 func cmdTUI(st *store.Store, date time.Time, _ []string, _ io.Writer) error {
 	return runTUI(st, date)
 }
