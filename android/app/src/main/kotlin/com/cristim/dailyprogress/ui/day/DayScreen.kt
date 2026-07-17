@@ -61,6 +61,7 @@ import com.cristim.dailyprogress.core.CoreRepository
 import com.cristim.dailyprogress.model.TaskState
 import com.cristim.dailyprogress.model.TreeProjectDto
 import com.cristim.dailyprogress.model.TreeTaskDto
+import com.cristim.dailyprogress.util.flattenPreOrder
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -389,20 +390,6 @@ private fun DayScreenContent(
             onDismiss = { editDialogTask = null },
         )
     }
-}
-
-// ---------------------------------------------------------------------------
-// Tree helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Returns this task and all of its descendants in pre-order (task first, then
- * each child's full subtree). Handles arbitrary nesting depth — depth >= 2
- * subtasks synced from desktop are included.
- */
-private fun TreeTaskDto.flattenPreOrder(): List<TreeTaskDto> = buildList {
-    add(this@flattenPreOrder)
-    children.forEach { child -> addAll(child.flattenPreOrder()) }
 }
 
 // ---------------------------------------------------------------------------
