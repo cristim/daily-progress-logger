@@ -73,9 +73,12 @@ func ClassifyError(msg string) string {
 //	  "state":    "todo",      // string — "todo" | "done" | "postponed"
 //	  "date":     "2026-07-20",// string — YYYY-MM-DD of the day this task belongs to
 //	  "done":     false,       // bool  — rollup done state (true when all children done)
-//	  "project":  "",          // string — project display name; non-empty only for recycled entries
+//	  "project":  "Work",      // string — project display name; OMITTED (not "") when empty
 //	  "children": []           // []taskDTO — direct children; always [], never null
 //	}
+//
+// Note: "project" carries omitempty — the key is absent from the JSON object
+// when there is no project, rather than present as "". Treat it as optional.
 type taskDTO struct {
 	Index    int       `json:"index"`
 	Depth    int       `json:"depth"`
@@ -176,11 +179,16 @@ type conflictDTO struct {
 //	{
 //	  "conflicts": [],   // []conflictDTO — new conflicts detected; [] when none
 //	  "token":     "…"  // string        — updated OAuth JSON when the access token was
-//	                    //                  refreshed mid-run, or "" when unchanged.
-//	                    //                  IMPORTANT: the host must persist this back to
-//	                    //                  Keychain / EncryptedSharedPrefs immediately so
-//	                    //                  the next sync starts with a valid token.
+//	                    //                  refreshed mid-run; OMITTED (not "") when
+//	                    //                  the token was not refreshed.
+//	                    //                  IMPORTANT: when present, the host must persist
+//	                    //                  this back to Keychain / EncryptedSharedPrefs
+//	                    //                  immediately so the next sync starts with a
+//	                    //                  valid token.
 //	}
+//
+// Note: "token" carries omitempty — the key is absent when the token was not
+// refreshed.  Hosts must treat it as optional, not as a fixed empty string.
 type syncResultDTO struct {
 	Conflicts []conflictDTO `json:"conflicts"`
 	Token     string        `json:"token,omitempty"`
