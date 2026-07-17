@@ -1,6 +1,7 @@
 package com.cristim.dailyprogress.model
 
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 
 // ---------------------------------------------------------------------------
@@ -96,7 +97,35 @@ data class MorningDecisionsDto(
     val adopted: List<MorningCandidateDto>,
 )
 
-/** 0=todo 1=done 2=next_day 3=next_week 4=backlog (mobilecore/checkin.go). */
+/**
+ * Typed representation of the evening action integer (mobilecore/checkin.go).
+ * The [wire] value is what is sent to ApplyEvening; never use bare magic ints
+ * in ViewModel or UI code — always go through this enum.
+ *
+ * Initial selection per state (EveningActionForState, matches Qt statebuttons.go):
+ *   DONE state  → DONE
+ *   POSTPONED   → NEXT_WEEK
+ *   TODO        → TODO
+ */
+enum class EveningAction(val wire: Int) {
+    TODO(0),
+    DONE(1),
+    NEXT_DAY(2),
+    NEXT_WEEK(3),
+    BACKLOG(4);
+
+    companion object {
+        /**
+         * Converts a wire integer to [EveningAction].
+         * Throws [SerializationException] on unknown values — fail loud, no silent default.
+         */
+        fun fromWire(n: Int): EveningAction =
+            entries.firstOrNull { it.wire == n }
+                ?: throw SerializationException("Unknown EveningAction wire value: $n (expected 0-4)")
+    }
+}
+
+/** Wire DTO for one evening decision (serialized as-is to JSON). */
 @Serializable
 data class EveningDecisionDto(val text: String, val action: Int)
 
@@ -212,6 +241,33 @@ enum class ConflictChoice {
 // ---------------------------------------------------------------------------
 // Schedule / DuePrompts
 // ---------------------------------------------------------------------------
+
+/**
+ * Typed representation of prompt IDs (mobilecore/schedule.go).
+ * The [wire] value matches the `id` field in [DuePromptDto].
+ * Use [fromWire] to convert; unknown values throw — fail loud, no silent default.
+ *
+ * Phase B routing: WEEK_REVIEW, WEEKLY_PLAN, WEEKLY_SUMMARY are ignored
+ * by CheckinCoordinator until phase B lands (explicit arm, not a silent default).
+ */
+enum class PromptId(val wire: Int) {
+    WEEK_REVIEW(0),
+    WEEKLY_PLAN(1),
+    MORNING(2),
+    EVENING(3),
+    WEEKLY_SUMMARY(4);
+
+    companion object {
+        /**
+         * Converts a wire integer to [PromptId].
+         * Throws [SerializationException] on unknown values — advisory callers
+         * catch and log; never let an unknown id crash the coordinator.
+         */
+        fun fromWire(n: Int): PromptId =
+            entries.firstOrNull { it.wire == n }
+                ?: throw SerializationException("Unknown PromptId wire value: $n (expected 0-4)")
+    }
+}
 
 /**
  * 0=week review 1=weekly plan 2=morning 3=evening 4=weekly summary
