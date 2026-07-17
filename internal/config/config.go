@@ -55,6 +55,11 @@ type Config struct {
 	// string such as "Ctrl+Shift+D". Missing or empty entries are filled from
 	// the defaults on Load; unknown IDs are dropped.
 	Shortcuts map[string]string `json:"shortcuts"`
+	// NotifyCheckins controls whether scheduled check-in prompts arrive as
+	// macOS notification banners (true, the default) rather than immediate
+	// modal dialogs. When absent from the config file the field is nil, which
+	// NotifyCheckinsEnabled() treats as enabled.
+	NotifyCheckins *bool `json:"notify_checkins,omitempty"`
 }
 
 // Action IDs for the configurable keyboard shortcuts. Kept as typed constants
@@ -290,6 +295,13 @@ func (c *Config) Save() error {
 		return err
 	}
 	return write(path, c)
+}
+
+// NotifyCheckinsEnabled reports whether scheduled check-in prompts should
+// arrive as macOS notification banners (true, the default when the config
+// field is absent/nil) rather than immediate modal dialogs.
+func (c *Config) NotifyCheckinsEnabled() bool {
+	return c.NotifyCheckins == nil || *c.NotifyCheckins
 }
 
 // ParseTimeOfDay parses "HH:MM" into hour and minute.

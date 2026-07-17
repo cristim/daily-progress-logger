@@ -157,6 +157,56 @@ func TestConfigSave(t *testing.T) {
 	assert.True(t, cfg2.LoginItemOffered)
 }
 
+func TestNotifyCheckinsDefault(t *testing.T) {
+	// A fresh config (no notify_checkins field) must default to enabled.
+	isolateHome(t)
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Nil(t, cfg.NotifyCheckins, "field absent from new config means nil")
+	assert.True(t, cfg.NotifyCheckinsEnabled(), "nil means notifications enabled")
+}
+
+func TestNotifyCheckinsRoundTrip(t *testing.T) {
+	isolateHome(t)
+	cfg, err := Load()
+	require.NoError(t, err)
+
+	// Disable and persist.
+	cfg.NotifyCheckins = new(false)
+	require.NoError(t, cfg.Save())
+
+	cfg2, err := Load()
+	require.NoError(t, err)
+	require.NotNil(t, cfg2.NotifyCheckins)
+	assert.False(t, cfg2.NotifyCheckinsEnabled(), "persisted false must survive round-trip")
+
+	// Re-enable and persist.
+	cfg2.NotifyCheckins = new(true)
+	require.NoError(t, cfg2.Save())
+
+	cfg3, err := Load()
+	require.NoError(t, err)
+	require.NotNil(t, cfg3.NotifyCheckins)
+	assert.True(t, cfg3.NotifyCheckinsEnabled(), "persisted true must survive round-trip")
+}
+
+// TestNotifyCheckinsOldConfig verifies that a config file written before
+// notify_checkins existed (field absent) enables notifications by default.
+func TestNotifyCheckinsOldConfig(t *testing.T) {
+	isolateHome(t)
+	path, err := Path()
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
+	// Old-style config without notify_checkins.
+	require.NoError(t, os.WriteFile(path, []byte(
+		`{"data_dir": "/d", "morning_time": "09:00", "evening_time": "17:30"}`), 0o600))
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Nil(t, cfg.NotifyCheckins)
+	assert.True(t, cfg.NotifyCheckinsEnabled())
+}
+
 func TestParseTimeOfDay(t *testing.T) {
 	t.Parallel()
 	for _, good := range []string{"07:45", "7:45"} {
