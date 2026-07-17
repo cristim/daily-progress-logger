@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Splash / Activity window background theme. The Compose UI overrides
+        everything visual; this just provides a platform theme for the Activity
+        window so aapt2 is satisfied and the status-bar chrome initialises
+        correctly before setContent() runs.
+    -->
+    <style name="Theme.DailyProgress" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>
