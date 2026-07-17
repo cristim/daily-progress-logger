@@ -4,6 +4,20 @@ Reviewed at HEAD `31526f9` (detached worktree `.claude/worktrees/mcore-review`).
 Scope: `mobilecore/*.go`, `internal/store/schedule_state.go`, `internal/store/weekly.go` (WeekFlags),
 compared against the Qt reference (`internal/ui`) and `internal/store`.
 
+> **2026-07-17 update (branch feat/mobile-errcodes)**: All three H2 conformance
+> gaps documented in the freeze verdict are now resolved: (1) `parseDate` wraps
+> failures as `BAD_INPUT`; (2) `ConfigJSON`/`SetConfig` outer wraps dropped so
+> `BAD_INPUT` propagates correctly; (3) `codeStoreErr` helper maps
+> `ErrProjectNotFound`/`ErrBacklogItemNotFound` to `NOT_FOUND` at all mobilecore
+> return sites (plain-text store not-found errors also converted to sentinel).
+> Should-fix BAD_INPUT paths in `checkin.go`/`weekly.go`/`recurring.go` also
+> wrapped. `omitempty` doc nit on `syncResultDTO.Token` and `taskDTO.Project`
+> clarified (key absent when empty, not ""). H2 is now **RESOLVED**.
+>
+> Post-fix build status: `go build ./...` PASS, `go test -race ./mobilecore/...
+> ./internal/store/...` 243 tests PASS, `golangci-lint` no issues,
+> `CGO_ENABLED=0 GOOS=linux go build ./mobilecore` PASS.
+
 ## Build / test / lint status
 
 | Check | Result |
