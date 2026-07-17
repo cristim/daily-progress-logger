@@ -31,7 +31,7 @@ Usage: dpl [--data-dir PATH] [--date YYYY-MM-DD] <subcommand> [flags] [args]
 The CLI and GUI share the same data directory and files.  All file writes are
 atomic, so running both concurrently is safe.
 
-Global flags:
+Global flags (accepted before or after the subcommand):
   --data-dir PATH    Override data directory (default: from config)
   --date YYYY-MM-DD  Target date (default: today in local time)
 
@@ -40,8 +40,9 @@ Subcommands:
         Show the day's plan, 1-based numbered.  --json emits a JSON array.
   add [--project SLUG] [--parent N] <text...>
         Add a task.  --project tags it to a project; --parent N adds it as a
-        subtask of item N.  Flags must precede text.  Combining --parent and
-        --project is an error (subtasks inherit the parent's project).
+        subtask of item N.  Flags may appear before, after, or between the text
+        words (use -- before text that starts with a dash).  Combining --parent
+        and --project is an error (subtasks inherit the parent's project).
   done <n>
         Mark item N done ([x]).
   undone <n>
@@ -95,6 +96,96 @@ func printUsage(w io.Writer) { _, _ = fmt.Fprint(w, usageText) }
 // subHandler is the signature shared by all subcommand functions.
 type subHandler func(st *store.Store, date time.Time, args []string, w io.Writer) error
 
+// inlineFlags declares the flags a command accepts so they can be parsed from
+// any position relative to positional arguments. The stdlib flag package stops
+// at the first positional token, which makes "add <text> --project X" silently
+// swallow "--project X" into <text>; this parser instead pulls known flags out
+// of the arg list wherever they appear, matching natural CLI usage where the
+// text usually comes first.
+//
+// Value flags consume the following token (or an "=value" suffix); bool flags
+// are standalone toggles. Both "-name" and "--name" spellings are accepted.
+type inlineFlags struct {
+	value map[string]*string // flag name (no dashes) -> string destination
+	bool  map[string]*bool   // flag name (no dashes) -> bool destination
+}
+
+// parse scans args, assigns recognized flags to their destinations, and returns
+// the positional (non-flag) arguments in their original order.
+//
+// A literal "--" ends flag scanning so task text may begin with a dash.
+// "-h"/"--help" yields flag.ErrHelp so callers can print usage. When strict is
+// true an unrecognized "-flag" token is an error; when false that token (and
+// only it, never the following one) passes through as a positional, letting an
+// outer layer strip global flags before a subcommand parses its own.
+func (f inlineFlags) parse(args []string, strict bool) ([]string, error) {
+	var positional []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" { // explicit end of flags; rest is positional text
+			if strict {
+				return append(positional, args[i+1:]...), nil
+			}
+			// Non-strict: preserve the terminator and remainder so a
+			// downstream strict parser can still honor the "--" escape.
+			return append(positional, args[i:]...), nil
+		}
+		if len(a) < 2 || a[0] != '-' { // "", "-", and positional words
+			positional = append(positional, a)
+			continue
+		}
+		consumed, matched, err := f.assign(args, i)
+		if err != nil {
+			return nil, err
+		}
+		if !matched {
+			if strict {
+				return nil, fmt.Errorf("unknown flag %q", a)
+			}
+			positional = append(positional, a) // let an outer layer claim it
+			continue
+		}
+		i += consumed
+	}
+	return positional, nil
+}
+
+// assign interprets args[i] as a flag token and, when recognized, stores its
+// value in the matching destination. It returns the number of extra args
+// consumed (1 when a value flag takes the following token, else 0), whether the
+// flag was recognized, and any error. "-h"/"--help" surfaces flag.ErrHelp.
+func (f inlineFlags) assign(args []string, i int) (consumed int, matched bool, err error) {
+	name := args[i][1:]
+	if name[0] == '-' {
+		name = name[1:]
+	}
+	value, hasValue := "", false
+	if eq := strings.IndexByte(name, '='); eq >= 0 {
+		name, value, hasValue = name[:eq], name[eq+1:], true
+	}
+	switch {
+	case name == "h" || name == "help":
+		return 0, false, flag.ErrHelp
+	case f.bool[name] != nil:
+		if hasValue {
+			return 0, false, fmt.Errorf("flag --%s does not take a value", name)
+		}
+		*f.bool[name] = true
+		return 0, true, nil
+	case f.value[name] != nil:
+		if !hasValue {
+			if i+1 >= len(args) {
+				return 0, false, fmt.Errorf("flag --%s requires a value", name)
+			}
+			value, consumed = args[i+1], 1
+		}
+		*f.value[name] = value
+		return consumed, true, nil
+	default:
+		return 0, false, nil
+	}
+}
+
 // subcommands maps each subcommand name to its handler, enabling a simple
 // O(1) dispatch in run() without a sprawling switch.
 var subcommands = map[string]subHandler{
@@ -133,20 +224,23 @@ func main() {
 
 // run is the entry point used by main and by tests.
 func run(args []string, w, errW io.Writer) error {
-	fs := flag.NewFlagSet("dpl", flag.ContinueOnError)
-	fs.SetOutput(errW)
-	dataDir := fs.String("data-dir", "", "override data directory (default: from config)")
-	dateStr := fs.String("date", "", "target date YYYY-MM-DD (default: today)")
-
-	if err := fs.Parse(args); err != nil {
+	// Global flags may appear before OR after the subcommand (e.g. a trailing
+	// "--date" is commonly appended). Strip them from anywhere in the arg list
+	// with a loose (non-strict) pass so unknown flags fall through to the
+	// subcommand, which parses its own flags.
+	var dataDirVal, dateStr string
+	globals := inlineFlags{value: map[string]*string{
+		"data-dir": &dataDirVal,
+		"date":     &dateStr,
+	}}
+	subcmdArgs, err := globals.parse(args, false)
+	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			printUsage(w)
 			return nil
 		}
 		return usageErr(err.Error())
 	}
-
-	subcmdArgs := fs.Args()
 	if len(subcmdArgs) == 0 || subcmdArgs[0] == "help" {
 		printUsage(w)
 		return nil
@@ -163,18 +257,17 @@ func run(args []string, w, errW io.Writer) error {
 
 	// Resolve date (midnight local).
 	var date time.Time
-	if *dateStr == "" {
+	if dateStr == "" {
 		now := time.Now()
 		date = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 	} else {
-		var err error
-		date, err = time.ParseInLocation(dateFormat, *dateStr, time.Local)
+		date, err = time.ParseInLocation(dateFormat, dateStr, time.Local)
 		if err != nil {
-			return fmt.Errorf("invalid --date %q: %w", *dateStr, err)
+			return fmt.Errorf("invalid --date %q: %w", dateStr, err)
 		}
 	}
 
-	dir := *dataDir
+	dir := dataDirVal
 	if dir == "" {
 		cfg, err := config.Load()
 		if err != nil {
@@ -352,24 +445,32 @@ func cmdList(st *store.Store, date time.Time, args []string, w io.Writer) error 
 // --parent N and --project SLUG cannot be combined: subtasks always inherit
 // their depth-0 ancestor's project tag and do not carry one themselves.
 func cmdAdd(st *store.Store, date time.Time, args []string, w io.Writer) error {
-	fs := flag.NewFlagSet("dpl add", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	projectSlug := fs.String("project", "", "project id to tag the new task with")
-	parentN := fs.Int("parent", 0, "add as a subtask of item N (1-based)")
-	if err := fs.Parse(args); err != nil {
+	var projectSlug, parentStr string
+	spec := inlineFlags{value: map[string]*string{
+		"project": &projectSlug,
+		"parent":  &parentStr,
+	}}
+	positional, err := spec.parse(args, true)
+	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			printUsage(w)
 			return nil
 		}
 		return usageErr("add: " + err.Error())
 	}
-	if fs.NArg() == 0 {
+	if len(positional) == 0 {
 		return usageErr("add: requires <text...>")
 	}
-	if *parentN > 0 && *projectSlug != "" {
+	parentN := 0
+	if parentStr != "" {
+		if parentN, err = parseN(parentStr); err != nil {
+			return usageErr("add: --parent " + err.Error())
+		}
+	}
+	if parentN > 0 && projectSlug != "" {
 		return usageErr("add: --parent and --project cannot both be specified (subtasks inherit their depth-0 ancestor's project)")
 	}
-	if err := doAdd(st, date, *parentN, *projectSlug, strings.Join(fs.Args(), " ")); err != nil {
+	if err := doAdd(st, date, parentN, projectSlug, strings.Join(positional, " ")); err != nil {
 		return err
 	}
 	return afterMutation(st, date, w)
@@ -499,19 +600,17 @@ func cmdRm(st *store.Store, date time.Time, args []string, w io.Writer) error {
 
 // cmdPostpone implements: dpl postpone <n> [--week].
 //
-// --week may appear before or after <n> since stdlib flag.Parse stops at
-// the first non-flag argument.
+// --week may appear before or after <n> since flags are parsed positionally.
 func cmdPostpone(st *store.Store, date time.Time, args []string, w io.Writer) error {
-	// Separate --week / -week from positional args so the flag can appear
-	// anywhere (e.g. "postpone 2 --week" as well as "postpone --week 2").
-	week := false
-	var positional []string
-	for _, a := range args {
-		if a == "--week" || a == "-week" {
-			week = true
-		} else {
-			positional = append(positional, a)
+	var week bool
+	spec := inlineFlags{bool: map[string]*bool{"week": &week}}
+	positional, err := spec.parse(args, true)
+	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			printUsage(w)
+			return nil
 		}
+		return usageErr("postpone: " + err.Error())
 	}
 	if len(positional) != 1 {
 		return usageErr("postpone: requires exactly one argument <n>")

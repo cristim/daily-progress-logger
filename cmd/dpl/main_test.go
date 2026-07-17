@@ -196,6 +196,118 @@ func TestAddSubtask(t *testing.T) {
 	assert.Contains(t, lines[1], "  [ ] Child task") // 2-space indent at depth 1
 }
 
+// TestAddFlagsAfterText is the regression guard for the bug where stdlib
+// flag.Parse stopped at the first positional token, so "add <text> --project X"
+// swallowed "--project X" into the task text (creating an untagged task literally
+// named "<text> --project X"). Flags must be honored in any position.
+func TestAddFlagsAfterText(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"project after text", []string{"write the docs", "--project", "marketing"}},
+		{"project before text", []string{"--project", "marketing", "write the docs"}},
+		{"project interleaved", []string{"write", "the", "--project", "marketing", "docs"}},
+		{"project equals form after text", []string{"write the docs", "--project=marketing"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			st := newTestStore(t)
+			date := testDate
+			_, err := st.AddProject("Marketing")
+			require.NoError(t, err)
+
+			var buf bytes.Buffer
+			require.NoError(t, cmdAdd(st, date, tc.args, &buf))
+			out := buf.String()
+
+			// Tag must be applied and the flag must NOT leak into the text.
+			assert.Contains(t, out, "#marketing")
+			assert.NotContains(t, out, "--project")
+
+			// Verify via JSON that the text is clean and the project is set.
+			var jbuf bytes.Buffer
+			require.NoError(t, cmdList(st, date, []string{"--json"}, &jbuf))
+			var items []jsonItem
+			require.NoError(t, json.Unmarshal(jbuf.Bytes(), &items))
+			require.Len(t, items, 1)
+			assert.Equal(t, "marketing", items[0].Project)
+			// Text must contain the words but none of the flag tokens.
+			assert.NotContains(t, items[0].Text, "--project")
+			assert.NotContains(t, items[0].Text, "marketing")
+			assert.Contains(t, items[0].Text, "docs")
+		})
+	}
+}
+
+// TestAddParentAfterText guards the same bug for --parent: "add <text> --parent N"
+// must create a subtask of item N, not a top-level task named "<text> --parent N".
+func TestAddParentAfterText(t *testing.T) {
+	for _, args := range [][]string{
+		{"cover parsing", "--parent", "1"},    // flag after text (the reported bug)
+		{"cover", "--parent", "1", "parsing"}, // interleaved
+		{"cover parsing", "--parent=1"},       // equals form after text
+	} {
+		st := newTestStore(t)
+		date := testDate
+		require.NoError(t, cmdAdd(st, date, []string{"Parent task"}, &bytes.Buffer{}))
+
+		var buf bytes.Buffer
+		require.NoError(t, cmdAdd(st, date, args, &buf))
+
+		items, err := loadPlan(st, date)
+		require.NoError(t, err)
+		require.Len(t, items, 2)
+		// The new item is an indented subtask (depth 1) with clean text.
+		assert.Equal(t, 1, items[1].Depth, "args=%v", args)
+		assert.NotContains(t, items[1].Text, "--parent")
+		assert.NotContains(t, items[1].Text, "cover parsing --parent")
+	}
+}
+
+// TestAddUnknownFlagErrors verifies an unrecognized flag fails loudly instead of
+// silently leaking into the task text.
+func TestAddUnknownFlagErrors(t *testing.T) {
+	st := newTestStore(t)
+	err := runCmdErr(func(w *bytes.Buffer) error {
+		return cmdAdd(st, testDate, []string{"hello", "--bogus"}, w)
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown flag")
+	items, err2 := loadPlan(st, testDate)
+	require.NoError(t, err2)
+	assert.Empty(t, items) // no partial write
+}
+
+// TestAddDashLeadingText verifies "--" lets task text begin with a dash.
+func TestAddDashLeadingText(t *testing.T) {
+	st := newTestStore(t)
+	date := testDate
+	require.NoError(t, cmdAdd(st, date, []string{"--", "--not-a-flag", "text"}, &bytes.Buffer{}))
+	items, err := loadPlan(st, date)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "--not-a-flag text", items[0].Text)
+}
+
+// TestGlobalDateAfterSubcommand verifies the global --date flag is honored when
+// appended after the subcommand and its arguments (commonly-appended usage).
+func TestGlobalDateAfterSubcommand(t *testing.T) {
+	st := newTestStore(t)
+	target := testDate.AddDate(0, 0, 5)
+
+	var buf bytes.Buffer
+	require.NoError(t, run(
+		[]string{"--data-dir", st.DataDir, "add", "future task", "--date", target.Format(dateFormat)},
+		&buf, &bytes.Buffer{},
+	))
+	// Task must land on the target date, not today.
+	items, err := loadPlan(st, target)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "future task", items[0].Text)
+}
+
 // TestBadIndex verifies clear error output for out-of-range indices.
 func TestBadIndex(t *testing.T) {
 	st := newTestStore(t)
