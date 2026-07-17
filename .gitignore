@@ -14,6 +14,9 @@
 /android/**/build/
 /android/local.properties
 
+# Xcode build output
+/ios/build/
+
 # Session tooling (Claude Code scratch scripts)
 .claude/
 
