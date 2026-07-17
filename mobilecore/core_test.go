@@ -819,6 +819,39 @@ func TestBadInputState(t *testing.T) {
 	assert.Contains(t, err.Error(), ErrCodeBadInput)
 }
 
+// ---- Config BAD_INPUT tests --------------------------------------------------
+
+// TestConfigJSON_CorruptFile_BadInput verifies that a corrupt mobile-config.json
+// surfaces as a BAD_INPUT coded error through ConfigJSON (not wrapped as INTERNAL).
+func TestConfigJSON_CorruptFile_BadInput(t *testing.T) {
+	t.Parallel()
+	c, dir := openTestCoreWithDir(t)
+	// Write invalid JSON to the mobile config file.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "mobile-config.json"), []byte("{INVALID"), 0o600))
+
+	_, err := c.ConfigJSON()
+	require.Error(t, err)
+	assert.True(t,
+		strings.HasPrefix(err.Error(), ErrCodeBadInput+": "),
+		"corrupt config must surface as BAD_INPUT; got %q", err.Error())
+	assert.Equal(t, ErrCodeBadInput, ClassifyError(err.Error()))
+}
+
+// TestSetConfig_CorruptFile_BadInput verifies that a corrupt mobile-config.json
+// surfaces as a BAD_INPUT coded error through SetConfig (not wrapped as INTERNAL).
+func TestSetConfig_CorruptFile_BadInput(t *testing.T) {
+	t.Parallel()
+	c, dir := openTestCoreWithDir(t)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "mobile-config.json"), []byte("{INVALID"), 0o600))
+
+	err := c.SetConfig(`{"morning_time":"08:00"}`)
+	require.Error(t, err)
+	assert.True(t,
+		strings.HasPrefix(err.Error(), ErrCodeBadInput+": "),
+		"corrupt config must surface as BAD_INPUT; got %q", err.Error())
+	assert.Equal(t, ErrCodeBadInput, ClassifyError(err.Error()))
+}
+
 // ---- ReorderTask + MoveTaskToProject ----------------------------------------
 
 func TestReorderTask(t *testing.T) {

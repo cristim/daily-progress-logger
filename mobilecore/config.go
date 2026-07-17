@@ -18,7 +18,7 @@ func (c *Core) ConfigJSON() (string, error) {
 	defer c.mu.Unlock()
 	cfg, err := c.loadMobileConfig()
 	if err != nil {
-		return "", fmt.Errorf("loading config: %w", err)
+		return "", err
 	}
 	return toJSON(cfg)
 }
@@ -38,7 +38,7 @@ func (c *Core) SetConfig(patchJSON string) error {
 
 	cfg, err := c.loadMobileConfig()
 	if err != nil {
-		return fmt.Errorf("loading config before patch: %w", err)
+		return err
 	}
 	var patch mobileConfigDTO
 	if err := json.Unmarshal([]byte(patchJSON), &patch); err != nil {
