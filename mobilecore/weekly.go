@@ -27,6 +27,8 @@ func (c *Core) WeeklyPlanJSON(date string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	goals, planned, err := c.store.WeeklyPlan(week)
 	if err != nil {
 		return "", err
@@ -45,11 +47,22 @@ func (c *Core) WeeklyPlanJSON(date string) (string, error) {
 // SetWeeklyPlan sets the weekly plan for the week containing date.
 // goalsJSON is a JSON array of {"text":"...","done":false} objects.
 // Example: [{"text":"ship mobile core"},{"text":"write tests","done":false}].
+//
+// Passing "null" or "" returns a BAD_INPUT error: a nil goals list would mark
+// the week as planned with zero goals, silently suppressing the weekly-plan
+// prompt. Always pass at least an empty array ([]) to clear the plan explicitly.
 func (c *Core) SetWeeklyPlan(date, goalsJSON string) error {
 	week, err := weekFromDate(date)
 	if err != nil {
 		return err
 	}
+	if goalsJSON == "" || goalsJSON == "null" {
+		return fmt.Errorf("%s: goalsJSON must be a JSON array (e.g. []), not null or empty"+
+			" — a null input would mark the week planned with zero goals,"+
+			" silently suppressing the weekly-plan prompt", ErrCodeBadInput)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	var raw []weeklyGoalJSON
 	if err := json.Unmarshal([]byte(goalsJSON), &raw); err != nil {
 		return fmt.Errorf("parsing goals: %w", err)
@@ -79,6 +92,8 @@ func (c *Core) WeekReviewCandidatesJSON(date string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	candidates, err := c.store.WeekReviewCandidates(week)
 	if err != nil {
 		return "", err
@@ -110,6 +125,8 @@ func (c *Core) ApplyWeekReview(date, decisionsJSON string) error {
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	var input reviewDecisionInput
 	if decisionsJSON != "" && decisionsJSON != "{}" {
 		if err := json.Unmarshal([]byte(decisionsJSON), &input); err != nil {
@@ -164,6 +181,8 @@ func (c *Core) WeeklySummaryJSON(date string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	dailies, err := c.store.DailiesInWeek(week)
 	if err != nil {
 		return "", err
@@ -209,6 +228,8 @@ func (c *Core) MarkWeekSummarized(date string) error {
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.store.MarkWeekSummarized(week)
 }
 
@@ -225,6 +246,8 @@ func (c *Core) WeeklySummaryPendingJSON(date string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	pendingWeek, pending, err := c.store.WeekSummaryPending(d)
 	if err != nil {
 		return "", err
@@ -249,6 +272,8 @@ func (c *Core) UnreviewedWeekJSON(date string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	week, found, err := c.store.UnreviewedWeek(d)
 	if err != nil {
 		return "", err

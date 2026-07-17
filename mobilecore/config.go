@@ -3,35 +3,24 @@ package mobilecore
 import (
 	"encoding/json"
 	"fmt"
-
-	"github.com/cristim/daily-progress-logger/internal/config"
 )
 
-// ConfigJSON returns the current app configuration as JSON. The returned
-// object mirrors config.Config with kebab-case JSON keys (matching the on-disk
-// format). Returns an error when the config file cannot be read or parsed.
+// ConfigJSON returns the current mobile configuration as JSON.
+// The schema is mobileConfigDTO (see dto.go): mobile-relevant settings only.
+// Desktop-specific fields (data_dir, shortcuts, login_item_offered, etc.) are
+// intentionally absent; Open's dataDir is the authoritative data location.
+//
+// Configuration is stored in <dataDir>/mobile-config.json, which syncs to
+// Drive like all other data files.  Returns a BAD_INPUT coded error when the
+// config file exists but cannot be parsed.
 func (c *Core) ConfigJSON() (string, error) {
-	cfg, err := config.Load()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	cfg, err := c.loadMobileConfig()
 	if err != nil {
 		return "", fmt.Errorf("loading config: %w", err)
 	}
-	b, err := json.Marshal(cfg)
-	if err != nil {
-		return "", fmt.Errorf("encoding config: %w", err)
-	}
-	return string(b), nil
-}
-
-// configPatch is a subset of config.Config fields settable from the mobile host.
-// Only fields relevant to mobile are included; data_dir changes are handled
-// by the host (re-opening the Core with a new dataDir).
-type configPatch struct {
-	MorningTime    *string `json:"morning_time,omitempty"`
-	EveningTime    *string `json:"evening_time,omitempty"`
-	SummaryDay     *string `json:"summary_day,omitempty"`
-	SummaryTime    *string `json:"summary_time,omitempty"`
-	GoogleClientID *string `json:"google_client_id,omitempty"`
-	NotifyCheckins *bool   `json:"notify_checkins,omitempty"`
+	return toJSON(cfg)
 }
 
 // SetConfig applies a partial JSON config update. Only fields present in the
@@ -40,34 +29,38 @@ type configPatch struct {
 //
 //	{"morning_time":"08:30"}
 //
-// The config is validated before saving; an invalid value returns an error
+// The config is written to <dataDir>/mobile-config.json atomically.
+// An invalid value (e.g. malformed time string) returns a BAD_INPUT error
 // without writing.
 func (c *Core) SetConfig(patchJSON string) error {
-	cfg, err := config.Load()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	cfg, err := c.loadMobileConfig()
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+		return fmt.Errorf("loading config before patch: %w", err)
 	}
-	var patch configPatch
+	var patch mobileConfigDTO
 	if err := json.Unmarshal([]byte(patchJSON), &patch); err != nil {
-		return fmt.Errorf("parsing config patch: %w", err)
+		return fmt.Errorf("%s: parsing config patch: %w", ErrCodeBadInput, err)
 	}
-	if patch.MorningTime != nil {
-		cfg.MorningTime = *patch.MorningTime
+	if patch.MorningTime != "" {
+		cfg.MorningTime = patch.MorningTime
 	}
-	if patch.EveningTime != nil {
-		cfg.EveningTime = *patch.EveningTime
+	if patch.EveningTime != "" {
+		cfg.EveningTime = patch.EveningTime
 	}
-	if patch.SummaryDay != nil {
-		cfg.SummaryDay = *patch.SummaryDay
+	if patch.SummaryDay != "" {
+		cfg.SummaryDay = patch.SummaryDay
 	}
-	if patch.SummaryTime != nil {
-		cfg.SummaryTime = *patch.SummaryTime
+	if patch.SummaryTime != "" {
+		cfg.SummaryTime = patch.SummaryTime
 	}
-	if patch.GoogleClientID != nil {
-		cfg.GoogleClientID = *patch.GoogleClientID
+	if patch.GoogleClientID != "" {
+		cfg.GoogleClientID = patch.GoogleClientID
 	}
 	if patch.NotifyCheckins != nil {
 		cfg.NotifyCheckins = patch.NotifyCheckins
 	}
-	return cfg.Save()
+	return c.saveMobileConfig(cfg)
 }
