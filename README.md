@@ -221,12 +221,55 @@ dpl project add My Project # create a project, prints its id
 # Recurring templates
 dpl recur list
 
+# Full-screen interactive TUI
+dpl tui       # also: dpl ui
+
 # Use a different date
 dpl --date 2025-06-09 list
 
 # Help
 dpl help
 ```
+
+### Interactive TUI (`dpl tui`)
+
+A full-screen interactive tree view of the day's task list, implemented with
+[tview](https://github.com/rivo/tview) and [tcell](https://github.com/gdamore/tcell)
+— pure Go, no ncurses, no CGO. Reads and writes the same data files as the GUI
+and all other `dpl` commands; both can run concurrently.
+
+```sh
+dpl tui          # launch TUI for today
+dpl tui --date 2026-07-14   # any date
+```
+
+The tree mirrors the GUI's main window: open projects (expandable) with their
+tasks and subtasks, an Unfiled section for untagged tasks, a read-only
+Recurring section, and a Recycle Bin section (collapsed by default).
+
+#### Key bindings
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Move selection up / down |
+| `←` / `→` | Collapse / expand the selected node |
+| `Enter` | Toggle expand/collapse on branch nodes; toggle done on leaf tasks |
+| `Space` or `x` | Toggle done / to-do on the selected task |
+| `a` | Add a task (context-aware: project, subtask, or unfiled) |
+| `e` | Edit the selected task's text |
+| `d` | Delete the selected task (confirm modal; moves to recycle bin) |
+| `p` | Postpone selected task to **next day** |
+| `P` or `w` | Postpone selected task to **next week** (marks `[>]`, queues in backlog) |
+| `[` | Previous day |
+| `]` | Next day |
+| `t` | Jump to today |
+| `r` | Reload from disk |
+| `q` | Quit |
+
+Add-task routing (`a` key): if a project node is selected the task is tagged to
+that project; if a branch task (one with subtasks) is selected the new task is
+added as a subtask; otherwise the task lands in the Unfiled section. The footer
+shows the active context hint.
 
 ## GUI flags
 
