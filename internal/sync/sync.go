@@ -513,6 +513,11 @@ func (e *Engine) Resolve(path string, choice ResolveChoice) error {
 		}
 	case KeepBoth:
 		// Leave both files; just clear the record.
+	default:
+		// Unknown choice: fail loud instead of silently dismissing the conflict.
+		// The mobilecore layer validates choices before reaching here; this arm
+		// catches any future caller that bypasses that validation.
+		return fmt.Errorf("sync: unknown resolve choice %q (want keep_local/keep_remote/keep_both)", choice)
 	}
 	return e.saveConflicts(remaining)
 }
