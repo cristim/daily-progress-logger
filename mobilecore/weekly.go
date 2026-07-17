@@ -65,7 +65,7 @@ func (c *Core) SetWeeklyPlan(date, goalsJSON string) error {
 	defer c.mu.Unlock()
 	var raw []weeklyGoalJSON
 	if err := json.Unmarshal([]byte(goalsJSON), &raw); err != nil {
-		return fmt.Errorf("parsing goals: %w", err)
+		return fmt.Errorf("%s: parsing goals: %w", ErrCodeBadInput, err)
 	}
 	goals := make([]store.Item, len(raw))
 	for i, g := range raw {
@@ -130,7 +130,7 @@ func (c *Core) ApplyWeekReview(date, decisionsJSON string) error {
 	var input reviewDecisionInput
 	if decisionsJSON != "" && decisionsJSON != "{}" {
 		if err := json.Unmarshal([]byte(decisionsJSON), &input); err != nil {
-			return fmt.Errorf("parsing review decisions: %w", err)
+			return fmt.Errorf("%s: parsing review decisions: %w", ErrCodeBadInput, err)
 		}
 	}
 	decisions := make([]store.ReviewDecision, len(input.Decisions))
@@ -153,7 +153,7 @@ func parseReviewAction(n int) (store.ReviewAction, error) {
 	case 2:
 		return store.ReviewDrop, nil
 	}
-	return 0, fmt.Errorf("unknown review action %d (0=keep,1=postpone,2=drop)", n)
+	return 0, fmt.Errorf("%s: unknown review action %d (0=keep,1=postpone,2=drop)", ErrCodeBadInput, n)
 }
 
 // dayDoneJSON is one day's done items in the weekly summary.

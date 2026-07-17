@@ -1,5 +1,7 @@
 package mobilecore
 
+import "fmt"
+
 // recurringTaskDTO is the wire form of a recurring template for RecurringJSON.
 // This is the management view (add / remove templates).  For the richer display
 // view (with schedule description and structured fields) see recurringTemplateDTO
@@ -29,11 +31,17 @@ func (c *Core) RecurringJSON() (string, error) {
 
 // AddRecurring stores text as a recurring template. text must include a
 // recurrence keyword (@daily, @weekly @mon @09:00, etc.).
-// Returns an error when text carries no valid recurrence tag.
+// Returns a BAD_INPUT coded error when text carries no valid recurrence tag.
 func (c *Core) AddRecurring(text string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.store.AddRecurring(text)
+	err := c.store.AddRecurring(text)
+	if err != nil {
+		// The store signals bad input (missing recurrence tag, empty description)
+		// with a plain-text error; wrap it as BAD_INPUT so hosts can classify it.
+		return fmt.Errorf("%s: %w", ErrCodeBadInput, err)
+	}
+	return nil
 }
 
 // RemoveRecurring deletes the first recurring template whose raw text matches

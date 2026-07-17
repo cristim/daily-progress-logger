@@ -445,6 +445,8 @@ func TestAddRecurring_NoTag(t *testing.T) {
 	c := openTestCore(t)
 	err := c.AddRecurring("No recurrence tag here")
 	require.Error(t, err)
+	assert.Equal(t, ErrCodeBadInput, ClassifyError(err.Error()),
+		"missing recurrence tag must surface as BAD_INPUT; got %q", err.Error())
 }
 
 // ---- Recycle ----------------------------------------------------------------
@@ -1016,6 +1018,63 @@ func TestResolveConflict_UnknownChoice(t *testing.T) {
 		assert.Contains(t, err.Error(), ErrCodeBadInput,
 			"bad choice %q must return BAD_INPUT, got: %v", bad, err)
 	}
+}
+
+// ---- Should-fix BAD_INPUT tests (checkin/weekly/recurring) ------------------
+
+// TestApplyMorning_MalformedJSON verifies ApplyMorning returns BAD_INPUT for
+// malformed decisionsJSON.
+func TestApplyMorning_MalformedJSON(t *testing.T) {
+	t.Parallel()
+	c := openTestCore(t)
+	err := c.ApplyMorning(today(), "{not json}")
+	require.Error(t, err)
+	assert.Equal(t, ErrCodeBadInput, ClassifyError(err.Error()),
+		"malformed decisionsJSON must surface as BAD_INPUT; got %q", err.Error())
+}
+
+// TestApplyEvening_UnknownAction verifies ApplyEvening returns BAD_INPUT for
+// an unrecognised action code.
+func TestApplyEvening_UnknownAction(t *testing.T) {
+	t.Parallel()
+	c := openTestCore(t)
+	err := c.ApplyEvening(today(), `{"decisions":[{"text":"x","action":99}]}`)
+	require.Error(t, err)
+	assert.Equal(t, ErrCodeBadInput, ClassifyError(err.Error()),
+		"unknown evening action must surface as BAD_INPUT; got %q", err.Error())
+}
+
+// TestSetWeeklyPlan_MalformedJSON verifies SetWeeklyPlan returns BAD_INPUT for
+// malformed goalsJSON.
+func TestSetWeeklyPlan_MalformedJSON(t *testing.T) {
+	t.Parallel()
+	c := openTestCore(t)
+	err := c.SetWeeklyPlan(today(), "{not json}")
+	require.Error(t, err)
+	assert.Equal(t, ErrCodeBadInput, ClassifyError(err.Error()),
+		"malformed goalsJSON must surface as BAD_INPUT; got %q", err.Error())
+}
+
+// TestApplyWeekReview_MalformedJSON verifies ApplyWeekReview returns BAD_INPUT
+// for malformed decisionsJSON.
+func TestApplyWeekReview_MalformedJSON(t *testing.T) {
+	t.Parallel()
+	c := openTestCore(t)
+	err := c.ApplyWeekReview(today(), "{not json}")
+	require.Error(t, err)
+	assert.Equal(t, ErrCodeBadInput, ClassifyError(err.Error()),
+		"malformed decisionsJSON must surface as BAD_INPUT; got %q", err.Error())
+}
+
+// TestApplyWeekReview_UnknownAction verifies ApplyWeekReview returns BAD_INPUT
+// for an unrecognised review action code.
+func TestApplyWeekReview_UnknownAction(t *testing.T) {
+	t.Parallel()
+	c := openTestCore(t)
+	err := c.ApplyWeekReview(today(), `{"decisions":[{"text":"x","action":99}]}`)
+	require.Error(t, err)
+	assert.Equal(t, ErrCodeBadInput, ClassifyError(err.Error()),
+		"unknown review action must surface as BAD_INPUT; got %q", err.Error())
 }
 
 // TestResolveConflict_ValidChoicesAccepted checks that the three known choice

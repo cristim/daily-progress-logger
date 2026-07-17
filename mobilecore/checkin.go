@@ -65,7 +65,7 @@ func (c *Core) ApplyMorning(date, decisionsJSON string) error {
 	var input morningDecisionInput
 	if decisionsJSON != "" && decisionsJSON != "{}" {
 		if err := json.Unmarshal([]byte(decisionsJSON), &input); err != nil {
-			return fmt.Errorf("parsing morning decisions: %w", err)
+			return fmt.Errorf("%s: parsing morning decisions: %w", ErrCodeBadInput, err)
 		}
 	}
 	adopted := make([]store.Candidate, len(input.Adopted))
@@ -132,5 +132,5 @@ func parseEveningAction(n int) (store.EveningAction, error) {
 	case 4:
 		return store.EveningActionBacklog, nil
 	}
-	return 0, fmt.Errorf("unknown evening action %d (0=todo,1=done,2=next_day,3=next_week,4=backlog)", n)
+	return 0, fmt.Errorf("%s: unknown evening action %d (0=todo,1=done,2=next_day,3=next_week,4=backlog)", ErrCodeBadInput, n)
 }
