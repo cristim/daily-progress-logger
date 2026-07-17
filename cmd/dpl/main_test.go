@@ -299,7 +299,7 @@ func TestGlobalDateAfterSubcommand(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, run(
 		[]string{"--data-dir", st.DataDir, "add", "future task", "--date", target.Format(dateFormat)},
-		&buf, &bytes.Buffer{},
+		&buf, &bytes.Buffer{}, "",
 	))
 	// Task must land on the target date, not today.
 	items, err := loadPlan(st, target)
@@ -435,7 +435,7 @@ func TestRunDispatch(t *testing.T) {
 	var buf bytes.Buffer
 	err = run(
 		[]string{"--data-dir", st.DataDir, "--date", date.Format(dateFormat), "list"},
-		&buf, &bytes.Buffer{},
+		&buf, &bytes.Buffer{}, "",
 	)
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "Direct item")
@@ -443,9 +443,25 @@ func TestRunDispatch(t *testing.T) {
 
 // TestRunUnknownSubcommand verifies exit code 2 for bad subcommands.
 func TestRunUnknownSubcommand(t *testing.T) {
-	err := run([]string{"--data-dir", t.TempDir(), "bogus"}, &bytes.Buffer{}, &bytes.Buffer{})
+	err := run([]string{"--data-dir", t.TempDir(), "bogus"}, &bytes.Buffer{}, &bytes.Buffer{}, "")
 	require.Error(t, err)
 	var ec *exitError
 	require.ErrorAs(t, err, &ec)
 	assert.Equal(t, 2, ec.code)
+}
+
+// TestRunDefaultCmdDispatch verifies that with no subcommand, an empty
+// defaultCmd prints usage while a non-empty one dispatches to that command.
+func TestRunDefaultCmdDispatch(t *testing.T) {
+	dir := t.TempDir()
+
+	var usage bytes.Buffer
+	require.NoError(t, run([]string{"--data-dir", dir}, &usage, &bytes.Buffer{}, ""))
+	assert.Contains(t, usage.String(), "Usage: dpl", "empty defaultCmd should print usage")
+
+	// A non-empty defaultCmd dispatches to that subcommand (use "list", which
+	// is safe and needs no TTY, as a stand-in for the interactive "tui").
+	var listed bytes.Buffer
+	require.NoError(t, run([]string{"--data-dir", dir}, &listed, &bytes.Buffer{}, "list"))
+	assert.NotContains(t, listed.String(), "Usage: dpl", "defaultCmd should dispatch, not print usage")
 }

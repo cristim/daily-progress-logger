@@ -239,9 +239,14 @@ A full-screen interactive tree view of the day's task list, implemented with
 and all other `dpl` commands; both can run concurrently.
 
 ```sh
-dpl tui          # launch TUI for today
+dpl              # in a terminal, bare `dpl` launches the TUI by default
+dpl tui          # launch TUI for today (explicit)
 dpl tui --date 2026-07-14   # any date
 ```
+
+Running `dpl` with no subcommand launches the TUI when attached to a real
+terminal; when its output is piped or redirected (scripts, `dpl list | ...`)
+it prints usage instead, so the command-based workflow stays scriptable.
 
 The tree mirrors the GUI's main window: open projects (expandable) with their
 tasks and subtasks, an Unfiled section for untagged tasks, a read-only

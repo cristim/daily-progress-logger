@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/cristim/daily-progress-logger/internal/config"
 	"github.com/cristim/daily-progress-logger/internal/store"
 )
@@ -27,6 +29,10 @@ const (
 	usageText = `dpl — Daily Progress Logger CLI
 
 Usage: dpl [--data-dir PATH] [--date YYYY-MM-DD] <subcommand> [flags] [args]
+
+Run "dpl" with no subcommand in a terminal to launch the interactive tree UI
+(same as "dpl tui"); when output is piped or redirected it prints this usage
+instead, so scripts keep working.
 
 The CLI and GUI share the same data directory and files.  All file writes are
 atomic, so running both concurrently is safe.
@@ -215,7 +221,17 @@ var subcommands = map[string]subHandler{
 }
 
 func main() {
-	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
+	// With no subcommand, launch the interactive TUI when attached to a real
+	// terminal; otherwise (piped, redirected, or scripted) fall back to
+	// printing usage so the command-based workflow stays scriptable.
+	defaultCmd := ""
+	// os.*.Fd() returns a uintptr; the int conversion for term.IsTerminal is
+	// the standard idiom and safe (file descriptors are small).
+	//nolint:gosec // G115: fd fits in int
+	if term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
+		defaultCmd = "tui"
+	}
+	if err := run(os.Args[1:], os.Stdout, os.Stderr, defaultCmd); err != nil {
 		var ec *exitError
 		if errors.As(err, &ec) {
 			if ec.msg != "" {
@@ -229,7 +245,10 @@ func main() {
 }
 
 // run is the entry point used by main and by tests.
-func run(args []string, w, errW io.Writer) error {
+// run is the entry point used by main and by tests. defaultCmd is the
+// subcommand to dispatch when the user gives none (empty string = print
+// usage); main sets it to "tui" only on an interactive terminal.
+func run(args []string, w, errW io.Writer, defaultCmd string) error {
 	// Global flags may appear before OR after the subcommand (e.g. a trailing
 	// "--date" is commonly appended). Strip them from anywhere in the arg list
 	// with a loose (non-strict) pass so unknown flags fall through to the
@@ -247,7 +266,14 @@ func run(args []string, w, errW io.Writer) error {
 		}
 		return usageErr(err.Error())
 	}
-	if len(subcmdArgs) == 0 || subcmdArgs[0] == "help" {
+	if len(subcmdArgs) == 0 {
+		if defaultCmd == "" {
+			printUsage(w)
+			return nil
+		}
+		subcmdArgs = []string{defaultCmd}
+	}
+	if subcmdArgs[0] == "help" {
 		printUsage(w)
 		return nil
 	}
