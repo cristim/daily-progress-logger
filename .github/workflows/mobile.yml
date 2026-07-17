@@ -1,0 +1,138 @@
+name: Mobile
+
+# Builds the shared Go core into the iOS xcframework and the Android AAR on
+# every change to the mobile code. This validates that mobilecore stays
+# gomobile-compatible (e.g. no exported method uses an unsupported type) and
+# that both native toolchains can consume it. The actual app builds
+# (xcodebuild for iOS, ./gradlew for Android) are added below once the
+# ios/ and android/ app projects exist — see the placeholder steps.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mobilecore/**"
+      - "internal/**"
+      - "ios/**"
+      - "android/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/mobile.yml"
+  pull_request:
+    paths:
+      - "mobilecore/**"
+      - "internal/**"
+      - "ios/**"
+      - "android/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/mobile.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    name: iOS binding (Core.xcframework)
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # gomobile compiles the mobile stdlib on a cold runner; cache it.
+      - name: Cache Go build cache
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/go-build
+          key: ${{ runner.os }}-gomobile-ios-${{ hashFiles('**/go.sum') }}-v1
+          restore-keys: |
+            ${{ runner.os }}-gomobile-ios-
+
+      - name: Portability check (core must not import darwin-only code)
+        run: CGO_ENABLED=0 GOOS=linux go build ./mobilecore
+
+      - name: Install gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          gomobile init
+
+      - name: Build Core.xcframework
+        run: |
+          mkdir -p ios/Frameworks
+          gomobile bind -target=ios,iossimulator \
+            -o ios/Frameworks/Core.xcframework ./mobilecore
+          ls -R ios/Frameworks/Core.xcframework | head -20
+
+      - name: Upload xcframework
+        uses: actions/upload-artifact@v4
+        with:
+          name: Core.xcframework
+          path: ios/Frameworks/Core.xcframework
+          if-no-files-found: error
+
+      # --- iOS app build (added once the SwiftUI app project exists) ---
+      # - name: Build iOS app
+      #   run: |
+      #     xcodebuild -project ios/DailyProgress.xcodeproj \
+      #       -scheme DailyProgress -destination 'generic/platform=iOS Simulator' \
+      #       build
+
+  android:
+    name: Android binding (Core.aar)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache Go build cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/go-build
+          key: ${{ runner.os }}-gomobile-android-${{ hashFiles('**/go.sum') }}-v1
+          restore-keys: |
+            ${{ runner.os }}-gomobile-android-
+
+      # GitHub's ubuntu runners ship the Android SDK; ANDROID_NDK_LATEST_HOME
+      # points at a preinstalled NDK. gomobile reads ANDROID_NDK_HOME.
+      - name: Point gomobile at the runner NDK
+        run: echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+
+      - name: Install gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          gomobile init
+
+      - name: Build Core.aar
+        run: |
+          mkdir -p android/core
+          gomobile bind -target=android -androidapi 21 \
+            -o android/core/core.aar ./mobilecore
+          ls -la android/core
+
+      - name: Upload AAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: core.aar
+          path: android/core/core.aar
+          if-no-files-found: error
+
+      # --- Android app build (added once the Compose app project exists) ---
+      # - name: Build Android app
+      #   run: ./android/gradlew -p android assembleDebug

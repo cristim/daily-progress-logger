@@ -120,8 +120,16 @@ uninstall-checkin-agent:
 # Build the shared Go core (store + sync) into an iOS xcframework for the app.
 # Requires the gomobile toolchain: go install golang.org/x/mobile/cmd/gomobile@latest
 ios-core:
-	gomobile bind -target=ios -o ios/Frameworks/Core.xcframework ./mobilecore
+	gomobile bind -target=ios,iossimulator -o ios/Frameworks/Core.xcframework ./mobilecore
 	@echo "Built ios/Frameworks/Core.xcframework"
+
+# Build the shared Go core into an Android AAR for the app. Requires gomobile
+# plus a JDK and the Android NDK; point ANDROID_NDK_HOME at an installed NDK
+# (e.g. export ANDROID_NDK_HOME=$$HOME/Library/Android/sdk/ndk/<version>).
+android-core:
+	mkdir -p android/core
+	gomobile bind -target=android -androidapi 21 -o android/core/core.aar ./mobilecore
+	@echo "Built android/core/core.aar"
 
 clean:
 	rm -rf $(BUILD_DIR)
