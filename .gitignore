@@ -6,6 +6,14 @@
 # gomobile-generated iOS framework (built via `make ios-core`)
 /ios/Frameworks/
 
+# Android — generated build artifacts (never commit)
+/android/core/*.aar
+/android/core/*.jar
+/android/.gradle/
+/android/**/.gradle/
+/android/**/build/
+/android/local.properties
+
 # Session tooling (Claude Code scratch scripts)
 .claude/
 
