@@ -1,5 +1,6 @@
 package com.cristim.dailyprogress.ui.nav
 
+import android.content.Context
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -14,9 +15,15 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -26,6 +33,12 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.cristim.dailyprogress.core.CoreRepository
+import com.cristim.dailyprogress.model.PromptId
+import com.cristim.dailyprogress.ui.checkin.CheckinCoordinator
+import com.cristim.dailyprogress.ui.checkin.CheckinPresentation
+import com.cristim.dailyprogress.ui.checkin.EveningCheckinScreen
+import com.cristim.dailyprogress.ui.checkin.MorningCheckinScreen
+import com.cristim.dailyprogress.ui.checkin.SharedPrefsSnoozeSkipStorage
 import com.cristim.dailyprogress.ui.day.DayScreen
 import com.cristim.dailyprogress.ui.more.MoreScreen
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,6 +59,35 @@ fun RootScaffold(
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
+
+    // -----------------------------------------------------------------------
+    // Check-in prompt coordinator: runs on each app resume via repeatOnLifecycle.
+    // -----------------------------------------------------------------------
+    val context = LocalContext.current
+    val coordinator = remember {
+        val prefs = context.getSharedPreferences("checkin_coordinator", Context.MODE_PRIVATE)
+        CheckinCoordinator(repository, SharedPrefsSnoozeSkipStorage(prefs))
+    }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            val prompt = coordinator.nextPresentable() ?: return@repeatOnLifecycle
+            val id = try {
+                PromptId.fromWire(prompt.id)
+            } catch (_: Exception) {
+                return@repeatOnLifecycle // unknown id: already logged in coordinator
+            }
+            when (id) {
+                PromptId.MORNING ->
+                    navController.navigate(Routes.morningCheckin(LocalDate.now(), scheduled = true))
+                PromptId.EVENING ->
+                    navController.navigate(Routes.eveningCheckin(LocalDate.now(), scheduled = true))
+                PromptId.WEEK_REVIEW, PromptId.WEEKLY_PLAN, PromptId.WEEKLY_SUMMARY -> {
+                    // phase B: not routed yet
+                }
+            }
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -164,7 +206,7 @@ fun RootScaffold(
             composable(Routes.SYNC) { MoreScreen() }        // phase H
             composable(Routes.SETTINGS) { MoreScreen() }    // phase G
 
-            // Check-in destinations (phase A commit 4 fills these with real screens)
+            // Check-in destinations (routed by coordinator on resume + manual menu)
             composable(
                 route = Routes.MORNING_CHECKIN,
                 arguments = listOf(
@@ -176,8 +218,21 @@ fun RootScaffold(
                     LocalDate.parse(backStack.arguments?.getString("date") ?: "")
                 }.getOrDefault(LocalDate.now())
                 val scheduled = backStack.arguments?.getString("scheduled")?.toBooleanStrictOrNull() != false
-                MorningCheckinPlaceholder(
+                val presentation = if (scheduled) CheckinPresentation.SCHEDULED else CheckinPresentation.MANUAL
+                MorningCheckinScreen(
+                    date = date,
+                    repository = repository,
+                    dataVersion = dataVersion,
+                    presentation = presentation,
                     onDismiss = { navController.popBackStack() },
+                    onSnooze = {
+                        coordinator.snooze(PromptId.MORNING.wire)
+                        navController.popBackStack()
+                    },
+                    onSkipToday = {
+                        coordinator.skipToday(PromptId.MORNING.wire)
+                        navController.popBackStack()
+                    },
                 )
             }
 
@@ -192,8 +247,21 @@ fun RootScaffold(
                     LocalDate.parse(backStack.arguments?.getString("date") ?: "")
                 }.getOrDefault(LocalDate.now())
                 val scheduled = backStack.arguments?.getString("scheduled")?.toBooleanStrictOrNull() != false
-                EveningCheckinPlaceholder(
+                val presentation = if (scheduled) CheckinPresentation.SCHEDULED else CheckinPresentation.MANUAL
+                EveningCheckinScreen(
+                    date = date,
+                    repository = repository,
+                    dataVersion = dataVersion,
+                    presentation = presentation,
                     onDismiss = { navController.popBackStack() },
+                    onSnooze = {
+                        coordinator.snooze(PromptId.EVENING.wire)
+                        navController.popBackStack()
+                    },
+                    onSkipToday = {
+                        coordinator.skipToday(PromptId.EVENING.wire)
+                        navController.popBackStack()
+                    },
                 )
             }
         }
@@ -211,19 +279,5 @@ private fun WeekPlaceholder() {
 
 @Composable
 private fun BacklogPlaceholder() {
-    Box(modifier = Modifier.fillMaxSize())
-}
-
-// ---------------------------------------------------------------------------
-// Phase-A check-in placeholders (replaced in commit 4)
-// ---------------------------------------------------------------------------
-
-@Composable
-private fun MorningCheckinPlaceholder(onDismiss: () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize())
-}
-
-@Composable
-private fun EveningCheckinPlaceholder(onDismiss: () -> Unit) {
     Box(modifier = Modifier.fillMaxSize())
 }
