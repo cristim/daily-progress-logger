@@ -22,8 +22,11 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.IndeterminateCheckBox
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,6 +61,7 @@ import com.cristim.dailyprogress.core.CoreRepository
 import com.cristim.dailyprogress.model.TaskState
 import com.cristim.dailyprogress.model.TreeProjectDto
 import com.cristim.dailyprogress.model.TreeTaskDto
+import kotlinx.coroutines.flow.MutableStateFlow
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -69,8 +73,11 @@ import java.time.format.DateTimeFormatter
 fun DayScreen(
     initialDate: LocalDate,
     repository: CoreRepository,
+    dataVersion: MutableStateFlow<Int>,
+    onMorningCheckin: () -> Unit = {},
+    onEveningCheckin: () -> Unit = {},
 ) {
-    val vm: DayViewModel = viewModel(factory = DayViewModel.Factory(repository, initialDate))
+    val vm: DayViewModel = viewModel(factory = DayViewModel.Factory(repository, initialDate, dataVersion))
     val uiState by vm.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -96,6 +103,8 @@ fun DayScreen(
         onPostponeNextWeek = vm::postponeToNextWeek,
         onMoveToBacklog = vm::moveToBacklog,
         onAddTask = vm::addTask,
+        onMorningCheckin = onMorningCheckin,
+        onEveningCheckin = onEveningCheckin,
     )
 }
 
@@ -120,6 +129,8 @@ private fun DayScreenContent(
     onPostponeNextWeek: (index: Long, expectedText: String, date: String) -> Unit,
     onMoveToBacklog: (index: Long, expectedText: String, date: String) -> Unit,
     onAddTask: (text: String, projectId: String) -> Unit,
+    onMorningCheckin: () -> Unit = {},
+    onEveningCheckin: () -> Unit = {},
 ) {
     // Derive the displayed date from state for the top bar.
     val displayDate = when (uiState) {
@@ -135,6 +146,7 @@ private fun DayScreenContent(
     var showAddDialog by remember { mutableStateOf(false) }
     var addTaskProjectId by remember { mutableStateOf("") }
     var editDialogTask by remember { mutableStateOf<TreeTaskDto?>(null) }
+    var menuExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -156,6 +168,30 @@ private fun DayScreenContent(
                                 Icon(Icons.Filled.Today, contentDescription = "Go to today")
                             }
                         }
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Morning Check-in…") },
+                            onClick = {
+                                menuExpanded = false
+                                onMorningCheckin()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Evening Check-in…") },
+                            onClick = {
+                                menuExpanded = false
+                                onEveningCheckin()
+                            },
+                        )
                     }
                 },
             )

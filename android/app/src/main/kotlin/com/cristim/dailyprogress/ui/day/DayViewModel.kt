@@ -11,6 +11,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -35,6 +36,7 @@ data class SnackbarEvent(val message: String)
 class DayViewModel(
     private val repository: CoreRepository,
     initialDate: LocalDate,
+    dataVersion: StateFlow<Int>,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<DayUiState>(DayUiState.Loading)
@@ -48,6 +50,11 @@ class DayViewModel(
 
     init {
         refresh()
+        // Refresh when another screen mutates shared data (e.g. check-in apply).
+        // Drop the initial emission (init already loaded).
+        viewModelScope.launch {
+            dataVersion.drop(1).collect { refresh() }
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -172,9 +179,10 @@ class DayViewModel(
     class Factory(
         private val repository: CoreRepository,
         private val initialDate: LocalDate,
+        private val dataVersion: StateFlow<Int>,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            DayViewModel(repository, initialDate) as T
+            DayViewModel(repository, initialDate, dataVersion) as T
     }
 }

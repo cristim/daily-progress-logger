@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.cristim.dailyprogress.ui.nav.AppNavGraph
+import com.cristim.dailyprogress.ui.nav.RootScaffold
 import com.cristim.dailyprogress.ui.theme.DailyProgressTheme
 
 class MainActivity : ComponentActivity() {
@@ -15,7 +15,10 @@ class MainActivity : ComponentActivity() {
         val app = application as App
         setContent {
             DailyProgressTheme {
-                AppNavGraph(repository = app.container.coreRepository)
+                RootScaffold(
+                    repository = app.container.coreRepository,
+                    dataVersion = app.container.dataVersion,
+                )
             }
         }
     }

@@ -1,42 +1,29 @@
 package com.cristim.dailyprogress.ui.nav
 
-import androidx.compose.runtime.Composable
-import androidx.navigation.NavHostController
-import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
-import com.cristim.dailyprogress.core.CoreRepository
-import com.cristim.dailyprogress.ui.day.DayScreen
 import java.time.LocalDate
 
-/** Route constants for the navigation graph. */
+/** Route constants for the navigation graph. All route strings live here. */
 object Routes {
+    // Bottom nav destinations
     const val DAY = "day/{date}"
+    const val WEEK = "week"
+    const val BACKLOG = "backlog"
+    const val MORE = "more"
+
+    // Check-in destinations (added in Phase A commit 4)
+    const val MORNING_CHECKIN = "checkin/morning/{date}/{scheduled}"
+    const val EVENING_CHECKIN = "checkin/evening/{date}/{scheduled}"
+
+    // More sub-routes (filled in later phases)
+    const val PROJECTS = "projects"
+    const val RECURRING = "recurring"
+    const val RECYCLE = "recycle"
+    const val SYNC = "sync"
+    const val SETTINGS = "settings"
 
     fun day(date: LocalDate = LocalDate.now()): String = "day/$date"
-}
-
-@Composable
-fun AppNavGraph(
-    repository: CoreRepository,
-    navController: NavHostController = rememberNavController(),
-) {
-    NavHost(
-        navController = navController,
-        startDestination = Routes.day(),
-    ) {
-        composable(
-            route = Routes.DAY,
-            arguments = listOf(navArgument("date") { type = NavType.StringType }),
-        ) { backStackEntry ->
-            val dateStr = backStackEntry.arguments?.getString("date")
-                ?: LocalDate.now().toString()
-            DayScreen(
-                initialDate = runCatching { LocalDate.parse(dateStr) }.getOrDefault(LocalDate.now()),
-                repository = repository,
-            )
-        }
-    }
+    fun morningCheckin(date: LocalDate = LocalDate.now(), scheduled: Boolean = true): String =
+        "checkin/morning/$date/$scheduled"
+    fun eveningCheckin(date: LocalDate = LocalDate.now(), scheduled: Boolean = true): String =
+        "checkin/evening/$date/$scheduled"
 }
