@@ -6,6 +6,9 @@ struct RootTabView: View {
     let appState: AppState
     @State private var coordinator = CheckinCoordinator()
     @State private var checkinStore: CheckinStore?
+    /// Separate WeekStore used exclusively for scheduled prompt sheets.
+    /// Kept distinct from WeekView's own store so the tab's viewed week is never clobbered.
+    @State private var weekSheetStore: WeekStore?
     @Environment(\.scenePhase) private var scenePhase
 
     // Manual trigger state for Today toolbar
@@ -36,10 +39,11 @@ struct RootTabView: View {
                     Label("More", systemImage: "ellipsis.circle")
                 }
         }
-        // Lazily create CheckinStore once core is available
+        // Lazily create per-session stores once core is available.
         .task(id: appState.core != nil ? 1 : 0) {
             if let core = appState.core {
                 checkinStore = CheckinStore(core: core)
+                weekSheetStore = WeekStore(core: core)
             }
         }
         // Cold-launch / first-appear: process whatever prompts are already loaded.
@@ -62,12 +66,12 @@ struct RootTabView: View {
                 coordinator.process(duePrompts: appState.duePrompts)
             }
         }
-        // Create a fresh CheckinStore each time the coordinator schedules a new prompt
-        // so each session starts with clean state (no stale toggles from a prior session).
+        // Create fresh stores each time the coordinator schedules a new prompt
+        // so each session starts with clean state (no stale data from a prior session).
         .onChange(of: coordinator.scheduledPrompt) { _, prompt in
-            if prompt != nil, let core = appState.core {
-                checkinStore = CheckinStore(core: core)
-            }
+            guard prompt != nil, let core = appState.core else { return }
+            checkinStore = CheckinStore(core: core)
+            weekSheetStore = WeekStore(core: core)
         }
         // Scheduled sheet: driven by coordinator.scheduledPrompt
         .sheet(item: $bindCoord.scheduledPrompt, onDismiss: { coordinator.dismissCurrent() }) { prompt in
@@ -122,9 +126,9 @@ struct RootTabView: View {
 
     @ViewBuilder
     private func scheduledSheet(for prompt: DuePrompt) -> some View {
-        if let store = checkinStore {
-            switch prompt.id {
-            case .morning:
+        switch prompt.id {
+        case .morning:
+            if let store = checkinStore {
                 MorningCheckinSheet(
                     store: store,
                     appState: appState,
@@ -133,7 +137,9 @@ struct RootTabView: View {
                     onSnooze: { coordinator.snooze(prompt: prompt) },
                     onSkipOrClose: { coordinator.skipToday(prompt: prompt) }
                 )
-            case .evening:
+            }
+        case .evening:
+            if let store = checkinStore {
                 EveningCheckinSheet(
                     store: store,
                     appState: appState,
@@ -142,9 +148,41 @@ struct RootTabView: View {
                     onSnooze: { coordinator.snooze(prompt: prompt) },
                     onSkipOrClose: { coordinator.skipToday(prompt: prompt) }
                 )
-            default:
-                // Phase B: weekReview (0), weeklyPlan (1), weeklySummary (4)
-                EmptyView()
+            }
+        case .weeklyPlan:
+            if let store = weekSheetStore {
+                WeeklyPlanSheet(
+                    store: store,
+                    appState: appState,
+                    presentation: .scheduled,
+                    onComplete: { appState.bumpDataVersion() },
+                    onSnooze: { coordinator.snooze(prompt: prompt) },
+                    onSkipOrClose: { coordinator.skipToday(prompt: prompt) }
+                )
+            }
+        case .weekReview:
+            if let store = weekSheetStore {
+                WeekReviewSheet(
+                    store: store,
+                    appState: appState,
+                    presentation: .scheduled,
+                    reviewDate: Date().coreDate,  // ignored by sheet; it queries nextUnreviewedWeek()
+                    rollover: true,
+                    onComplete: { appState.bumpDataVersion() },
+                    onSnooze: { coordinator.snooze(prompt: prompt) },
+                    onSkipOrClose: { coordinator.skipToday(prompt: prompt) }
+                )
+            }
+        case .weeklySummary:
+            if let store = weekSheetStore {
+                WeeklySummarySheet(
+                    store: store,
+                    appState: appState,
+                    presentation: .scheduled,
+                    onComplete: { appState.bumpDataVersion() },
+                    onSnooze: { coordinator.snooze(prompt: prompt) },
+                    onSkipOrClose: { coordinator.skipToday(prompt: prompt) }
+                )
             }
         }
     }

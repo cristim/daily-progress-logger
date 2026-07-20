@@ -47,14 +47,15 @@ final class CheckinCoordinator {
     // MARK: - Process due prompts
 
     /// Called whenever AppState.duePrompts is refreshed.
-    /// Filters snoozed/skipped prompts, restricts to Phase-A IDs (.morning, .evening),
-    /// and sets scheduledPrompt to the first presentable prompt.
+    /// Filters snoozed/skipped prompts and sets scheduledPrompt to the first presentable one.
+    /// All known prompt IDs are now processed (phase A: morning/evening;
+    /// phase B: weekReview, weeklyPlan, weeklySummary).
     /// If a sheet is already showing, this is a no-op (don't interrupt).
     func process(duePrompts: [DuePrompt]) {
         guard scheduledPrompt == nil else { return }
         let now = Date()
         let presentable = duePrompts
-            .filter { isPhaseA($0) && !isSnoozed($0, at: now) && !isSkipped($0, at: now) }
+            .filter { !isSnoozed($0, at: now) && !isSkipped($0, at: now) }
         guard !presentable.isEmpty else { return }
         pendingQueue = Array(presentable.dropFirst())
         scheduledPrompt = presentable.first
@@ -102,11 +103,6 @@ final class CheckinCoordinator {
     }
 
     // MARK: - Private predicates
-
-    private func isPhaseA(_ prompt: DuePrompt) -> Bool {
-        prompt.id == .morning || prompt.id == .evening
-        // Prompt IDs 0 (weekReview), 1 (weeklyPlan), 4 (weeklySummary) are phase B.
-    }
 
     private func isSnoozed(_ prompt: DuePrompt, at now: Date) -> Bool {
         guard let until = snoozeUntil[prompt.id.rawValue] else { return false }
