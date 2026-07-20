@@ -16,6 +16,9 @@ struct EveningCheckinSheet: View {
     var onSkipOrClose: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    /// Captured once when the sheet appears so load and apply always use the same date,
+    /// even if the sheet is held open across midnight.
+    @State private var date = Date()
     @State private var extraText = ""
     @State private var isApplying = false
 
@@ -25,7 +28,7 @@ struct EveningCheckinSheet: View {
                 .navigationTitle("Evening Check-in")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbarItems }
-                .task { await store.loadEvening(date: Date()) }
+                .task { await store.loadEvening(date: date) }
                 .toast(store.toast)
                 .alert("Error", isPresented: Binding(
                     get: { store.errorMessage != nil },
@@ -115,7 +118,7 @@ struct EveningCheckinSheet: View {
     private func applyAndDismiss() {
         isApplying = true
         Task {
-            let ok = await store.applyEvening(date: Date(), extraText: extraText)
+            let ok = await store.applyEvening(date: date, extraText: extraText)
             isApplying = false
             if ok {
                 onComplete()
