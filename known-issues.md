@@ -34,16 +34,26 @@ screens ship.
   and a real `kind=0` are indistinguishable (violates the no-magic-default
   rule). iOS now models these as optionals. Fix Android before the Recurring
   screen is built.
-- **[open] iOS `AppState.refreshDuePrompts` decodes with a bare JSONDecoder
-  and swallows errors.** Decode-failure classification lives only in
-  `TodayStore.decode`; Android classifies at the repository level for every
-  endpoint. Hoist iOS decode+classify into `CoreClient`/a shared helper as
-  more stores land.
-- **[open] Android must send local-offset RFC3339 when it wires DuePrompts.**
-  iOS was fixed to emit `+HH:MM` (the core compares the embedded offset for
-  local hour/minute). Android has no DuePrompts caller yet; when added it must
-  use `OffsetDateTime.now()` + `ISO_OFFSET_DATE_TIME`, or the prompt-timing
-  bug reappears on Android.
+- **[done] iOS `AppState.refreshDuePrompts` decoded with a bare JSONDecoder
+  and swallowed errors.** Fixed in Phase A: `CoreDecoding` is the single
+  decode/encode surface and classifies failures; `refreshDuePrompts` logs on
+  failure.
+- **[done] Android must send local-offset RFC3339 when it wires DuePrompts.**
+  Fixed in Phase A: `util/Time.nowRfc3339Local()` emits `+HH:MM` (pattern
+  `yyyy-MM-dd'T'HH:mm:ssxxx`, so UTC is `+00:00` not `Z`).
 - **[open] iOS `RecycleEntry.id = "date#text"` can collide** if the same text
   is deleted twice on one day (SwiftUI `Identifiable` nit). Include a stable
   discriminator (e.g. array index) when the Recycle screen is built.
+
+### Phase B (weekly) follow-up nits - non-blocking
+
+- **[open] iOS double `dataVersion` bump per completed prompt flow.** Each
+  weekly mutation bumps via `onMutation` and `onComplete` bumps again; harmless
+  (idempotent refresh), drop the `onComplete` bumps later.
+- **[open] iOS WeeklyPlanSheet OK after a failed load saves `[]` sight-unseen.**
+  Only reachable in a stale-prompt race (the plan prompt fires only when no plan
+  exists). Optional: disable OK while `store.plan == nil`.
+- **[open] Stale KDoc** on Android `WeekReviewScreen` composable ("dismisses
+  immediately" - it now applies the empty review first).
+- **[open] Android `submitting` flag not `rememberSaveable`** - rotation
+  mid-submit re-enables buttons; ops are idempotent, cosmetic.
