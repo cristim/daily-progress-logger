@@ -3,7 +3,6 @@ import SwiftUI
 @main
 struct DailyProgressApp: App {
     @State private var appState = AppState()
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -24,13 +23,8 @@ struct DailyProgressApp: App {
                 await appState.openCore()
                 await appState.refreshDuePrompts()
             }
-            // Re-evaluate due prompts whenever the app returns to the foreground
-            // so the coordinator can surface any newly-due check-ins.
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active {
-                    Task { await appState.refreshDuePrompts() }
-                }
-            }
+            // Foreground refresh + coordinator re-evaluation are handled in
+            // RootTabView, which has direct access to CheckinCoordinator.
         }
     }
 }

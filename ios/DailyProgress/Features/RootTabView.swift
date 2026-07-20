@@ -6,6 +6,7 @@ struct RootTabView: View {
     let appState: AppState
     @State private var coordinator = CheckinCoordinator()
     @State private var checkinStore: CheckinStore?
+    @Environment(\.scenePhase) private var scenePhase
 
     // Manual trigger state for Today toolbar
     @State private var showMorningManual = false
@@ -41,9 +42,25 @@ struct RootTabView: View {
                 checkinStore = CheckinStore(core: core)
             }
         }
-        // Route due prompts through coordinator whenever duePrompts updates
+        // Cold-launch / first-appear: process whatever prompts are already loaded.
+        // This covers the race where refreshDuePrompts() completes before RootTabView
+        // appears so no onChange fires, and ensures process() runs on the initial value.
+        .task {
+            coordinator.process(duePrompts: appState.duePrompts)
+        }
+        // Route due prompts through coordinator whenever duePrompts value changes.
         .onChange(of: appState.duePrompts) { _, prompts in
             coordinator.process(duePrompts: prompts)
+        }
+        // Foreground return: refresh prompts then call process() regardless of equality.
+        // onChange(of: duePrompts) does not fire when the list is Equatable-equal, so a
+        // snoozed prompt that has since expired would never be re-presented without this.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task {
+                await appState.refreshDuePrompts()
+                coordinator.process(duePrompts: appState.duePrompts)
+            }
         }
         // Create a fresh CheckinStore each time the coordinator schedules a new prompt
         // so each session starts with clean state (no stale toggles from a prior session).
