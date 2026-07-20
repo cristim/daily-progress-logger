@@ -113,12 +113,19 @@ struct WeeklySummarySheet: View {
             }
         } else {
             // Scheduled: find the oldest week with a pending (unsummarized) summary.
-            if let monday = await store.nextPendingSummaryWeek() {
-                store.referenceDate = monday
-                await store.refresh()
-            } else {
-                // Nothing pending — prompt was stale; dismiss silently.
-                dismiss()
+            do {
+                if let monday = try await store.nextPendingSummaryWeek() {
+                    store.referenceDate = monday
+                    await store.refresh()
+                } else {
+                    // Nothing pending — prompt was stale; dismiss silently.
+                    dismiss()
+                }
+            } catch {
+                // Error querying next pending week: surface and abort loop (I3).
+                store.errorMessage = (error as? CoreError)?.errorDescription
+                    ?? error.localizedDescription
+                // Sheet stays open; user dismisses via Skip Today after seeing the alert.
             }
         }
     }
@@ -132,16 +139,23 @@ struct WeeklySummarySheet: View {
                 // Mark the current week as summarized, then advance to the next pending week.
                 let ok = await store.markSummarized(date: store.referenceDate.coreDate)
                 if ok {
-                    if let nextMonday = await store.nextPendingSummaryWeek() {
-                        // Continue the loop with the next pending week.
-                        store.referenceDate = nextMonday
-                        await store.refresh()
+                    do {
+                        if let nextMonday = try await store.nextPendingSummaryWeek() {
+                            // Continue the loop with the next pending week.
+                            store.referenceDate = nextMonday
+                            await store.refresh()
+                            isApplying = false
+                        } else {
+                            // Loop exhausted — done.
+                            isApplying = false
+                            onComplete()
+                            dismiss()
+                        }
+                    } catch {
+                        // Error querying next pending week: surface and abort loop (I3).
                         isApplying = false
-                    } else {
-                        // Loop exhausted — done.
-                        isApplying = false
-                        onComplete()
-                        dismiss()
+                        store.errorMessage = (error as? CoreError)?.errorDescription
+                            ?? error.localizedDescription
                     }
                 } else {
                     // markSummarized failed; store.errorMessage is set; sheet stays open.

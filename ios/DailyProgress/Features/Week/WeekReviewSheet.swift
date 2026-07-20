@@ -134,12 +134,19 @@ struct WeekReviewSheet: View {
     private func loadCurrentWeek() async {
         if presentation == .scheduled {
             // Scheduled: always start from the oldest unreviewed week.
-            if let monday = await store.nextUnreviewedWeek() {
-                currentDate = monday.coreDate
-                await store.loadReview(date: monday.coreDate)
-            } else {
-                // No unreviewed weeks (prompt was stale); dismiss silently.
-                dismiss()
+            do {
+                if let monday = try await store.nextUnreviewedWeek() {
+                    currentDate = monday.coreDate
+                    await store.loadReview(date: monday.coreDate)
+                } else {
+                    // No unreviewed weeks (prompt was stale); dismiss silently.
+                    dismiss()
+                }
+            } catch {
+                // Error querying next unreviewed week: surface and abort loop (I3).
+                store.errorMessage = (error as? CoreError)?.errorDescription
+                    ?? error.localizedDescription
+                // Sheet stays open; user dismisses via Skip Today after seeing the alert.
             }
         } else {
             // Manual: load candidates for the provided reviewDate.
@@ -156,15 +163,22 @@ struct WeekReviewSheet: View {
             if ok {
                 if presentation == .scheduled {
                     // Check for more unreviewed weeks (oldest-first loop).
-                    if let nextMonday = await store.nextUnreviewedWeek() {
-                        currentDate = nextMonday.coreDate
-                        await store.loadReview(date: nextMonday.coreDate)
+                    do {
+                        if let nextMonday = try await store.nextUnreviewedWeek() {
+                            currentDate = nextMonday.coreDate
+                            await store.loadReview(date: nextMonday.coreDate)
+                            isApplying = false
+                        } else {
+                            // Loop exhausted.
+                            isApplying = false
+                            onComplete()
+                            dismiss()
+                        }
+                    } catch {
+                        // Error querying next week: surface and abort loop (I3).
                         isApplying = false
-                    } else {
-                        // Loop exhausted.
-                        isApplying = false
-                        onComplete()
-                        dismiss()
+                        store.errorMessage = (error as? CoreError)?.errorDescription
+                            ?? error.localizedDescription
                     }
                 } else {
                     // Manual: single pass.

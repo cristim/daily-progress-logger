@@ -195,28 +195,24 @@ final class WeekStore {
 
     /// Returns the Monday of the oldest unreviewed week, or nil when all caught up.
     /// Always queries today so the loop advances past weeks already reviewed this session.
-    func nextUnreviewedWeek() async -> Date? {
-        do {
-            let json = try await core.unreviewedWeekJSON(date: Date().coreDate)
-            let pending = try CoreDecoding.decode(PendingWeek.self, from: json)
-            if pending.pending, let week = pending.week {
-                return DateFormatting.date(fromISOWeek: week)
-            }
-        } catch {
-            // Non-fatal: return nil so the loop stops cleanly.
+    /// Throws on network or decode error — callers must surface the error and abort (I3).
+    func nextUnreviewedWeek() async throws -> Date? {
+        let json = try await core.unreviewedWeekJSON(date: Date().coreDate)
+        let pending = try CoreDecoding.decode(PendingWeek.self, from: json)
+        if pending.pending, let week = pending.week {
+            return DateFormatting.date(fromISOWeek: week)
         }
         return nil
     }
 
     /// Returns the Monday of the oldest week with a pending (unsummarized) summary, or nil.
-    func nextPendingSummaryWeek() async -> Date? {
-        do {
-            let json = try await core.weeklySummaryPendingJSON(date: Date().coreDate)
-            let pending = try CoreDecoding.decode(PendingWeek.self, from: json)
-            if pending.pending, let week = pending.week {
-                return DateFormatting.date(fromISOWeek: week)
-            }
-        } catch { }
+    /// Throws on network or decode error — callers must surface the error and abort (I3).
+    func nextPendingSummaryWeek() async throws -> Date? {
+        let json = try await core.weeklySummaryPendingJSON(date: Date().coreDate)
+        let pending = try CoreDecoding.decode(PendingWeek.self, from: json)
+        if pending.pending, let week = pending.week {
+            return DateFormatting.date(fromISOWeek: week)
+        }
         return nil
     }
 
