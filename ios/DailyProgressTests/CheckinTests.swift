@@ -261,9 +261,10 @@ final class CheckinCoordinatorTests: XCTestCase {
                         "After manual Close (no skip), prompt should be schedulable again")
     }
 
-    // MARK: - Phase B prompts are filtered
+    // MARK: - Phase B prompts are now routed
 
-    func testPhaseBPromptsAreIgnored() {
+    func testPhaseBPromptsAreProcessed() {
+        // Phase B implements week prompts; coordinator now routes all known IDs.
         let coordinator = CheckinCoordinator(defaults: defaults)
         let phaseBPrompts: [DuePrompt] = [
             DuePrompt(id: .weekReview,     name: "week review"),
@@ -271,8 +272,10 @@ final class CheckinCoordinatorTests: XCTestCase {
             DuePrompt(id: .weeklySummary,  name: "weekly summary"),
         ]
         coordinator.process(duePrompts: phaseBPrompts)
-        XCTAssertNil(coordinator.scheduledPrompt,
-                     "Phase B prompt IDs (0,1,4) must be ignored in Phase A")
+        XCTAssertNotNil(coordinator.scheduledPrompt,
+                        "Phase B prompt IDs (0,1,4) must now be scheduled (phase B implemented)")
+        XCTAssertEqual(coordinator.scheduledPrompt?.id, .weekReview,
+                       "First prompt in the list should be weekReview (id=0)")
     }
 
     // MARK: - Queue advances correctly
