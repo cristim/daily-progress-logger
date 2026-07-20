@@ -16,7 +16,10 @@ struct WeekView: View {
         self.appState = appState
         // core is guaranteed non-nil when WeekView initialises: DailyProgressApp only
         // renders RootTabView (and thus tab views) after openCore() succeeds.
-        _store = State(initialValue: WeekStore(core: appState.core!))
+        _store = State(initialValue: WeekStore(
+            core: appState.core!,
+            onMutation: { appState.bumpDataVersion() }  // notify sibling tabs on inline edits (I2)
+        ))
     }
 
     var body: some View {

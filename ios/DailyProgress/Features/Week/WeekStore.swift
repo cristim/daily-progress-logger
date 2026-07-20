@@ -53,9 +53,13 @@ final class WeekStore {
     // MARK: - Init
 
     private let core: any CoreAPI
+    /// Called after every successful mutation so sibling tabs can refresh.
+    /// Excluded from observation — changing this property must not trigger re-renders.
+    @ObservationIgnored var onMutation: (@MainActor () -> Void)?
 
-    init(core: any CoreAPI) {
+    init(core: any CoreAPI, onMutation: (@MainActor () -> Void)? = nil) {
         self.core = core
+        self.onMutation = onMutation
     }
 
     // MARK: - Week navigation
@@ -130,6 +134,7 @@ final class WeekStore {
         do {
             let goalsJSON = try CoreDecoding.encode(goals)
             try await core.setWeeklyPlan(date: referenceDate.coreDate, goalsJSON: goalsJSON)
+            onMutation?()  // bump dataVersion so sibling tabs refresh (I2)
             await refresh()
         } catch {
             handleError(error)
@@ -164,6 +169,7 @@ final class WeekStore {
             let payload = WeekReviewDecisions(decisions: decisions, rollover: rollover)
             let json = try CoreDecoding.encode(payload)
             try await core.applyWeekReview(date: date, decisionsJSON: json)
+            onMutation?()  // bump dataVersion per mutation even if loop continues (I2)
             return true
         } catch {
             handleError(error)
@@ -177,6 +183,7 @@ final class WeekStore {
     func markSummarized(date: String) async -> Bool {
         do {
             try await core.markWeekSummarized(date: date)
+            onMutation?()  // bump dataVersion per mutation even if loop continues (I2)
             return true
         } catch {
             handleError(error)

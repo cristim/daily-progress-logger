@@ -43,7 +43,7 @@ struct RootTabView: View {
         .task(id: appState.core != nil ? 1 : 0) {
             if let core = appState.core {
                 checkinStore = CheckinStore(core: core)
-                weekSheetStore = WeekStore(core: core)
+                weekSheetStore = WeekStore(core: core, onMutation: { appState.bumpDataVersion() })
             }
         }
         // Cold-launch / first-appear: process whatever prompts are already loaded.
@@ -71,7 +71,7 @@ struct RootTabView: View {
         .onChange(of: coordinator.scheduledPrompt) { _, prompt in
             guard prompt != nil, let core = appState.core else { return }
             checkinStore = CheckinStore(core: core)
-            weekSheetStore = WeekStore(core: core)
+            weekSheetStore = WeekStore(core: core, onMutation: { appState.bumpDataVersion() })
         }
         // Scheduled sheet: driven by coordinator.scheduledPrompt
         .sheet(item: $bindCoord.scheduledPrompt, onDismiss: { coordinator.dismissCurrent() }) { prompt in
