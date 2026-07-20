@@ -31,7 +31,6 @@ struct MorningCheckinSheet: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbarItems }
                 .task { await store.loadMorning(date: date) }
-                .toast(store.toast)
                 .alert("Error", isPresented: Binding(
                     get: { store.errorMessage != nil },
                     set: { if !$0 { store.errorMessage = nil } }

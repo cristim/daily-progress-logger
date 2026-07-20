@@ -40,8 +40,6 @@ final class CheckinStore {
     var isLoading = false
     /// Non-nil to show an alert inside the sheet (sheet stays open on error).
     var errorMessage: String?
-    /// Non-nil for a brief toast overlay.
-    var toast: String?
 
     // MARK: - EveningItem
 

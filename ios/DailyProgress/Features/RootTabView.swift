@@ -45,6 +45,13 @@ struct RootTabView: View {
         .onChange(of: appState.duePrompts) { _, prompts in
             coordinator.process(duePrompts: prompts)
         }
+        // Create a fresh CheckinStore each time the coordinator schedules a new prompt
+        // so each session starts with clean state (no stale toggles from a prior session).
+        .onChange(of: coordinator.scheduledPrompt) { _, prompt in
+            if prompt != nil, let core = appState.core {
+                checkinStore = CheckinStore(core: core)
+            }
+        }
         // Scheduled sheet: driven by coordinator.scheduledPrompt
         .sheet(item: $bindCoord.scheduledPrompt, onDismiss: { coordinator.dismissCurrent() }) { prompt in
             scheduledSheet(for: prompt)
@@ -84,8 +91,14 @@ struct RootTabView: View {
                 )
             }
         }
-        .environment(\.showMorningCheckin, { showMorningManual = true })
-        .environment(\.showEveningCheckin, { showEveningManual = true })
+        .environment(\.showMorningCheckin, {
+            if let core = appState.core { checkinStore = CheckinStore(core: core) }
+            showMorningManual = true
+        })
+        .environment(\.showEveningCheckin, {
+            if let core = appState.core { checkinStore = CheckinStore(core: core) }
+            showEveningManual = true
+        })
     }
 
     // MARK: - Scheduled sheet routing
