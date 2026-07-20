@@ -238,7 +238,9 @@ fun RootScaffold(
                 val date = runCatching {
                     LocalDate.parse(backStack.arguments?.getString("date") ?: "")
                 }.getOrDefault(LocalDate.now())
-                val scheduled = backStack.arguments?.getString("scheduled")?.toBooleanStrictOrNull() != false
+                // Default to MANUAL on missing or malformed arg: no bookkeeping is safer
+                // than silently treating an unknown caller as SCHEDULED.
+                val scheduled = backStack.arguments?.getString("scheduled")?.toBooleanStrictOrNull() == true
                 val presentation = if (scheduled) CheckinPresentation.SCHEDULED else CheckinPresentation.MANUAL
                 MorningCheckinScreen(
                     date = date,
@@ -272,7 +274,9 @@ fun RootScaffold(
                 val date = runCatching {
                     LocalDate.parse(backStack.arguments?.getString("date") ?: "")
                 }.getOrDefault(LocalDate.now())
-                val scheduled = backStack.arguments?.getString("scheduled")?.toBooleanStrictOrNull() != false
+                // Default to MANUAL on missing or malformed arg: no bookkeeping is safer
+                // than silently treating an unknown caller as SCHEDULED.
+                val scheduled = backStack.arguments?.getString("scheduled")?.toBooleanStrictOrNull() == true
                 val presentation = if (scheduled) CheckinPresentation.SCHEDULED else CheckinPresentation.MANUAL
                 EveningCheckinScreen(
                     date = date,
