@@ -74,6 +74,10 @@ class CheckinViewModel(
     private val _uiState = MutableStateFlow<CheckinUiState>(CheckinUiState.Loading)
     val uiState: StateFlow<CheckinUiState> = _uiState.asStateFlow()
 
+    /** True while applyMorning or applyEvening is in flight; disables the OK button. */
+    private val _submitting = MutableStateFlow(false)
+    val submitting: StateFlow<Boolean> = _submitting.asStateFlow()
+
     /** One-shot snackbar messages (apply errors — sheet stays open per rule 4). */
     private val _snackbar = Channel<SnackbarEvent>(Channel.BUFFERED)
     val snackbarEvents = _snackbar.receiveAsFlow()
@@ -147,8 +151,10 @@ class CheckinViewModel(
      * Emits [doneEvents] on success; snackbar on error (sheet stays open).
      */
     fun applyMorning(date: LocalDate, newItemsText: String) {
+        if (_submitting.value) return
         val morning = _uiState.value as? CheckinUiState.Morning ?: return
         viewModelScope.launch {
+            _submitting.value = true
             val newItems = newItemsText.lines().map { it.trim() }.filter { it.isNotEmpty() }
             val adopted = morning.candidates.filterIndexed { i, _ ->
                 i < morning.adopted.size && morning.adopted[i]
@@ -163,6 +169,7 @@ class CheckinViewModel(
                     val err = t as? CoreError ?: CoreError.Unknown(t.message.orEmpty())
                     _snackbar.trySend(SnackbarEvent("Error: ${err.message}"))
                 }
+            _submitting.value = false
         }
     }
 
@@ -229,8 +236,10 @@ class CheckinViewModel(
      * bonus accomplished items (one per line). Emits [doneEvents] on success.
      */
     fun applyEvening(date: LocalDate, extraText: String) {
+        if (_submitting.value) return
         val evening = _uiState.value as? CheckinUiState.Evening ?: return
         viewModelScope.launch {
+            _submitting.value = true
             val decisions = evening.items.map { item ->
                 EveningDecisionDto(text = item.text, action = item.action.wire)
             }
@@ -245,6 +254,7 @@ class CheckinViewModel(
                     val err = t as? CoreError ?: CoreError.Unknown(t.message.orEmpty())
                     _snackbar.trySend(SnackbarEvent("Error: ${err.message}"))
                 }
+            _submitting.value = false
         }
     }
 

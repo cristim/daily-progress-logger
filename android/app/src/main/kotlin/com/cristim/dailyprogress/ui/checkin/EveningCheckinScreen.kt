@@ -65,6 +65,7 @@ fun EveningCheckinScreen(
         factory = CheckinViewModel.Factory(repository, dataVersion),
     )
     val uiState by vm.uiState.collectAsStateWithLifecycle()
+    val submitting by vm.submitting.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(date) { vm.loadEvening(date) }
@@ -170,6 +171,7 @@ fun EveningCheckinScreen(
                             onOk = { vm.applyEvening(date, extraText) },
                             onSnooze = onSnooze,
                             onSkipOrClose = if (presentation == CheckinPresentation.SCHEDULED) onSkipToday else onDismiss,
+                            enabled = !submitting,
                         )
                         Spacer(Modifier.height(16.dp))
                     }

@@ -63,6 +63,7 @@ fun MorningCheckinScreen(
         factory = CheckinViewModel.Factory(repository, dataVersion),
     )
     val uiState by vm.uiState.collectAsStateWithLifecycle()
+    val submitting by vm.submitting.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(date) { vm.loadMorning(date) }
@@ -219,6 +220,7 @@ fun MorningCheckinScreen(
                             onOk = { vm.applyMorning(date, newItemsText) },
                             onSnooze = onSnooze,
                             onSkipOrClose = if (presentation == CheckinPresentation.SCHEDULED) onSkipToday else onDismiss,
+                            enabled = !submitting,
                         )
                         Spacer(Modifier.height(16.dp))
                     }
@@ -241,10 +243,13 @@ internal fun ActionButtonRow(
     onOk: () -> Unit,
     onSnooze: () -> Unit,
     onSkipOrClose: () -> Unit,
+    /** False while the apply call is in flight to prevent double-submit. */
+    enabled: Boolean = true,
 ) {
     Row(modifier = Modifier.fillMaxWidth()) {
         Button(
             onClick = onOk,
+            enabled = enabled,
             modifier = Modifier
                 .weight(1f)
                 .padding(end = 4.dp),
