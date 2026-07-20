@@ -1,7 +1,6 @@
 package com.cristim.dailyprogress.ui.nav
 
 import android.content.Context
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -34,6 +33,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.cristim.dailyprogress.core.CoreRepository
 import com.cristim.dailyprogress.model.PromptId
+import com.cristim.dailyprogress.ui.backlog.BacklogScreen
 import com.cristim.dailyprogress.ui.checkin.CheckinCoordinator
 import com.cristim.dailyprogress.ui.checkin.CheckinPresentation
 import com.cristim.dailyprogress.ui.checkin.EveningCheckinScreen
@@ -357,7 +357,10 @@ fun RootScaffold(
 
             // Backlog tab (phase C)
             composable(Routes.BACKLOG) {
-                BacklogPlaceholder()
+                BacklogScreen(
+                    repository = repository,
+                    dataVersion = dataVersion,
+                )
             }
 
             // More tab + nested destinations (phases D-H)
@@ -444,11 +447,3 @@ fun RootScaffold(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Phase-C placeholder screen (replaced when that phase lands)
-// ---------------------------------------------------------------------------
-
-@Composable
-private fun BacklogPlaceholder() {
-    Box(modifier = Modifier.fillMaxSize())
-}

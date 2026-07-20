@@ -36,7 +36,7 @@ data class SnackbarEvent(val message: String)
 class DayViewModel(
     private val repository: CoreRepository,
     initialDate: LocalDate,
-    dataVersion: StateFlow<Int>,
+    private val dataVersion: MutableStateFlow<Int>,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<DayUiState>(DayUiState.Loading)
@@ -146,13 +146,19 @@ class DayViewModel(
 
     /**
      * Runs a Core mutation on [viewModelScope], then refreshes the tree.
+     * On success: bumps [dataVersion] so sibling screens (BacklogScreen,
+     * WeekScreen) refresh to reflect the change (e.g. moveToBacklog updates
+     * the backlog; task state changes affect the weekly summary done-by-day).
      * On [CoreError.CasMismatch] the tree is refreshed and the user gets a
      * snackbar ("List changed - refreshed, try again") instead of an error.
      */
     private fun mutate(block: suspend () -> Unit) {
         viewModelScope.launch {
             runCatching { block() }
-                .onSuccess { refresh() }
+                .onSuccess {
+                    dataVersion.value++
+                    refresh()
+                }
                 .onFailure { t ->
                     val err = t as? CoreError ?: CoreError.Unknown(t.message.orEmpty())
                     when (err) {
@@ -179,7 +185,7 @@ class DayViewModel(
     class Factory(
         private val repository: CoreRepository,
         private val initialDate: LocalDate,
-        private val dataVersion: StateFlow<Int>,
+        private val dataVersion: MutableStateFlow<Int>,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =

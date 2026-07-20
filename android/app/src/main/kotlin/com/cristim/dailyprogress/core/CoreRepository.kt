@@ -36,7 +36,7 @@ import kotlinx.serialization.json.Json
  * - No optimistic UI: callers re-fetch the affected read endpoint after each
  *   mutation and replace state entirely.
  */
-class CoreRepository(private val client: CoreClient) : WeekReviewOps {
+class CoreRepository(private val client: CoreClient) : WeekReviewOps, BacklogOps {
 
     /** JSON codec: ignoreUnknownKeys so additive core changes never crash. */
     private val json = Json {
@@ -124,14 +124,14 @@ class CoreRepository(private val client: CoreClient) : WeekReviewOps {
     // Backlog
     // -----------------------------------------------------------------------
 
-    suspend fun backlog(): BacklogDto = call { core ->
+    override suspend fun backlog(): BacklogDto = call { core ->
         json.decodeFromString(core.backlogJSON())
     }
 
-    suspend fun adoptFromBacklog(date: String, text: String) =
+    override suspend fun adoptFromBacklog(date: String, text: String) =
         call { core -> core.adoptFromBacklog(date, text) }
 
-    suspend fun moveBacklogItem(text: String, toNextWeek: Boolean) =
+    override suspend fun moveBacklogItem(text: String, toNextWeek: Boolean) =
         call { core -> core.moveBacklogItem(text, toNextWeek) }
 
     // -----------------------------------------------------------------------
