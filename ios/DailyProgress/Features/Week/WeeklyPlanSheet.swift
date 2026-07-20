@@ -18,6 +18,9 @@ struct WeeklyPlanSheet: View {
     /// Captured once on appear so edits always apply to the same week even if held open at midnight.
     @State private var isApplying = false
     @State private var newGoalsText = ""
+    /// Local done-state for each existing goal; synced from store on load.
+    /// Toggles are deferred to OK so Snooze/Skip discards them (matches Qt/Android).
+    @State private var localGoalDoneStates: [Bool] = []
 
     var body: some View {
         NavigationStack {
@@ -33,7 +36,11 @@ struct WeeklyPlanSheet: View {
                         onSkipOrClose: { onSkipOrClose(); dismiss() }
                     )
                 }
-                .task { await store.refresh() }
+                .task {
+                    await store.refresh()
+                    // Sync local done-states to whatever the store loaded.
+                    localGoalDoneStates = store.plan?.goals.map(\.done) ?? []
+                }
                 .alert("Error", isPresented: Binding(
                     get: { store.errorMessage != nil },
                     set: { if !$0 { store.errorMessage = nil } }
@@ -62,22 +69,24 @@ struct WeeklyPlanSheet: View {
 
     // Existing goals with done/not-done toggles (struck through when done).
     // Uses enumerated() id — duplicate goal texts are legal (plan rule).
+    // Toggles write to localGoalDoneStates only; applied to the store on OK (C3).
     @ViewBuilder
     private var currentGoalsSection: some View {
         if let goals = store.plan?.goals, !goals.isEmpty {
             Section("Current goals") {
                 ForEach(Array(goals.enumerated()), id: \.offset) { index, goal in
+                    let isDone = localGoalDoneStates.indices.contains(index)
+                        ? localGoalDoneStates[index] : goal.done
                     Toggle(goal.text, isOn: Binding(
-                        get: {
-                            guard let gs = store.plan?.goals, gs.indices.contains(index) else { return false }
-                            return gs[index].done
-                        },
+                        get: { isDone },
                         set: { done in
-                            Task { await store.setGoalDone(index: index, done: done) }
+                            if localGoalDoneStates.indices.contains(index) {
+                                localGoalDoneStates[index] = done
+                            }
                         }
                     ))
-                    .strikethrough(goal.done)
-                    .foregroundStyle(goal.done ? .secondary : .primary)
+                    .strikethrough(isDone)
+                    .foregroundStyle(isDone ? .secondary : .primary)
                 }
             }
         }
@@ -95,13 +104,24 @@ struct WeeklyPlanSheet: View {
     private func applyAndDismiss() {
         isApplying = true
         Task {
+            // Build new goals from the text editor (one per line).
             let trimmed = newGoalsText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                // Appends new lines to existing goals and saves the full array.
-                await store.addGoals(text: trimmed)
+            let newGoals: [WeeklyGoal] = trimmed.isEmpty ? [] :
+                trimmed.split(separator: "\n", omittingEmptySubsequences: true)
+                    .map { String($0).trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+                    .map { WeeklyGoal(text: $0, done: false) }
+            // Apply local done-states to existing goals, then append new goals.
+            var goals = store.plan?.goals ?? []
+            for i in goals.indices where localGoalDoneStates.indices.contains(i) {
+                goals[i].done = localGoalDoneStates[i]
             }
+            goals.append(contentsOf: newGoals)
+            // Always call savePlan — even when goals is [] — so the week is marked
+            // planned and the scheduled prompt stops firing (I1: empty-OK case).
+            await store.savePlan(goals: goals)
             isApplying = false
-            // If an error occurred during addGoals, stay open (rule 4).
+            // If an error occurred, stay open (rule 4).
             if store.errorMessage == nil {
                 onComplete()
                 dismiss()
