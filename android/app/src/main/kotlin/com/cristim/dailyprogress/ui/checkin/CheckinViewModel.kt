@@ -89,8 +89,13 @@ class CheckinViewModel(
     /**
      * Loads morning check-in state in parallel:
      * candidates + weekly plan goals + today's already-planned item count.
+     *
+     * Guard: if the ViewModel already holds Morning state (e.g. after a
+     * configuration change where the VM survives), skip the reload so
+     * adopted-candidate toggles and in-progress text are not reset.
      */
     fun loadMorning(date: LocalDate) {
+        if (_uiState.value is CheckinUiState.Morning) return
         viewModelScope.launch {
             _uiState.value = CheckinUiState.Loading
             runCatching {
@@ -170,8 +175,12 @@ class CheckinViewModel(
      * into a list of [EveningItem]s with initial actions seeded from task state.
      * Order: projects' tasks (pre-order) then unfiled — matches Qt's plan-file
      * ordering well enough that ApplyEvening's text-match semantics are safe.
+     *
+     * Guard: skip reload when the ViewModel already holds Evening state so
+     * per-row action selections survive configuration changes.
      */
     fun loadEvening(date: LocalDate) {
+        if (_uiState.value is CheckinUiState.Evening) return
         viewModelScope.launch {
             _uiState.value = CheckinUiState.Loading
             runCatching { repository.tree(date.toString()) }

@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,7 +73,7 @@ fun EveningCheckinScreen(
         vm.snackbarEvents.collect { event -> snackbarHostState.showSnackbar(event.message) }
     }
 
-    var extraText by remember { mutableStateOf("") }
+    var extraText by rememberSaveable { mutableStateOf("") }
 
     Scaffold(
         topBar = {
