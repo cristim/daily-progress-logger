@@ -42,6 +42,7 @@ import com.cristim.dailyprogress.ui.checkin.SharedPrefsSnoozeSkipStorage
 import com.cristim.dailyprogress.ui.day.DayScreen
 import com.cristim.dailyprogress.ui.more.MoreScreen
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
 import java.time.LocalDate
 
 /**
@@ -62,28 +63,43 @@ fun RootScaffold(
 
     // -----------------------------------------------------------------------
     // Check-in prompt coordinator: runs on each app resume via repeatOnLifecycle.
+    //
+    // checkNextSignal is bumped after every check-in dismiss so the coordinator
+    // re-checks for additional due prompts in the same resume session (A-1: loop
+    // until all due prompts are handled, morning then evening).
     // -----------------------------------------------------------------------
     val context = LocalContext.current
     val coordinator = remember {
         val prefs = context.getSharedPreferences("checkin_coordinator", Context.MODE_PRIVATE)
         CheckinCoordinator(repository, SharedPrefsSnoozeSkipStorage(prefs))
     }
+    val checkNextSignal = remember { MutableStateFlow(0) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            val prompt = coordinator.nextPresentable() ?: return@repeatOnLifecycle
-            val id = try {
-                PromptId.fromWire(prompt.id)
-            } catch (_: Exception) {
-                return@repeatOnLifecycle // unknown id: already logged in coordinator
-            }
-            when (id) {
-                PromptId.MORNING ->
-                    navController.navigate(Routes.morningCheckin(LocalDate.now(), scheduled = true))
-                PromptId.EVENING ->
-                    navController.navigate(Routes.eveningCheckin(LocalDate.now(), scheduled = true))
-                PromptId.WEEK_REVIEW, PromptId.WEEKLY_PLAN, PromptId.WEEKLY_SUMMARY -> {
-                    // phase B: not routed yet
+            // StateFlow always replays its current value, so this fires once on
+            // every resume and once more after each dismiss increment.
+            checkNextSignal.collect { _ ->
+                // A-2: skip when a check-in screen is already on top; prevents
+                // stacking duplicates on repeated ON_RESUME while the prompt is open.
+                if (navController.currentBackStackEntry
+                        ?.destination?.route?.startsWith("checkin/") == true
+                ) return@collect
+
+                val prompt = coordinator.nextPresentable() ?: return@collect
+                val id = try {
+                    PromptId.fromWire(prompt.id)
+                } catch (_: Exception) {
+                    return@collect // unknown id: already logged in coordinator
+                }
+                when (id) {
+                    PromptId.MORNING ->
+                        navController.navigate(Routes.morningCheckin(LocalDate.now(), scheduled = true))
+                    PromptId.EVENING ->
+                        navController.navigate(Routes.eveningCheckin(LocalDate.now(), scheduled = true))
+                    PromptId.WEEK_REVIEW, PromptId.WEEKLY_PLAN, PromptId.WEEKLY_SUMMARY -> {
+                        // phase B: not routed yet
+                    }
                 }
             }
         }
@@ -224,14 +240,19 @@ fun RootScaffold(
                     repository = repository,
                     dataVersion = dataVersion,
                     presentation = presentation,
-                    onDismiss = { navController.popBackStack() },
+                    onDismiss = {
+                        navController.popBackStack()
+                        checkNextSignal.value++
+                    },
                     onSnooze = {
                         coordinator.snooze(PromptId.MORNING.wire)
                         navController.popBackStack()
+                        checkNextSignal.value++
                     },
                     onSkipToday = {
                         coordinator.skipToday(PromptId.MORNING.wire)
                         navController.popBackStack()
+                        checkNextSignal.value++
                     },
                 )
             }
@@ -253,14 +274,19 @@ fun RootScaffold(
                     repository = repository,
                     dataVersion = dataVersion,
                     presentation = presentation,
-                    onDismiss = { navController.popBackStack() },
+                    onDismiss = {
+                        navController.popBackStack()
+                        checkNextSignal.value++
+                    },
                     onSnooze = {
                         coordinator.snooze(PromptId.EVENING.wire)
                         navController.popBackStack()
+                        checkNextSignal.value++
                     },
                     onSkipToday = {
                         coordinator.skipToday(PromptId.EVENING.wire)
                         navController.popBackStack()
+                        checkNextSignal.value++
                     },
                 )
             }
