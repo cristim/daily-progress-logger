@@ -270,8 +270,8 @@ enum class ConflictChoice {
  * The [wire] value matches the `id` field in [DuePromptDto].
  * Use [fromWire] to convert; unknown values throw — fail loud, no silent default.
  *
- * Phase B routing: WEEK_REVIEW, WEEKLY_PLAN, WEEKLY_SUMMARY are ignored
- * by CheckinCoordinator until phase B lands (explicit arm, not a silent default).
+ * Wire values: 0=WEEK_REVIEW, 1=WEEKLY_PLAN, 2=MORNING, 3=EVENING, 4=WEEKLY_SUMMARY.
+ * All five are handled by CheckinCoordinator and routed to their screens.
  */
 enum class PromptId(val wire: Int) {
     WEEK_REVIEW(0),

@@ -57,8 +57,9 @@ class SharedPrefsSnoozeSkipStorage(private val prefs: SharedPreferences) : Snooz
  * via `LaunchedEffect`. Snooze/skip state is persisted so it survives process
  * death.
  *
- * Phase B: WEEK_REVIEW (0), WEEKLY_PLAN (1), WEEKLY_SUMMARY (4) are explicitly
- * ignored here — they route to phase-B sheets once those land.
+ * All five prompt types are handled: WEEK_REVIEW (0), WEEKLY_PLAN (1),
+ * MORNING (2), EVENING (3), and WEEKLY_SUMMARY (4) each apply the same
+ * snooze/skip gate and route to their respective screen via RootScaffold.
  */
 class CheckinCoordinator(
     /**
@@ -100,7 +101,6 @@ class CheckinCoordinator(
                     nowMillis >= storage.snoozeUntil(prompt.id) &&
                         storage.skippedOn(prompt.id) != today
                 }
-                // Phase B: week-related prompts now routed; same snooze/skip rules.
                 PromptId.WEEK_REVIEW, PromptId.WEEKLY_PLAN, PromptId.WEEKLY_SUMMARY -> {
                     nowMillis >= storage.snoozeUntil(prompt.id) &&
                         storage.skippedOn(prompt.id) != today

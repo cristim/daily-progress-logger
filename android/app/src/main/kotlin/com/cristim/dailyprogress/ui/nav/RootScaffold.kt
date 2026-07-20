@@ -112,9 +112,8 @@ fun RootScaffold(
                     PromptId.EVENING ->
                         navController.navigate(Routes.eveningCheckin(LocalDate.now(), scheduled = true))
                     PromptId.WEEK_REVIEW -> {
-                        // Oldest-first loop: navigate to WEEK first (ensures WeekScreen
-                        // is in the back stack so WeekViewModel is accessible from the
-                        // review route), then navigate to the review screen.
+                        // Navigate to the Week tab first so the back-stack lands the user
+                        // there after they dismiss the review screen.
                         if (navController.currentBackStackEntry?.destination?.route != Routes.WEEK) {
                             navController.navigate(Routes.WEEK)
                         }
