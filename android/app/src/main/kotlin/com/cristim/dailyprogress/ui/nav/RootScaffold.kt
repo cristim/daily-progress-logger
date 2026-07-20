@@ -41,6 +41,10 @@ import com.cristim.dailyprogress.ui.checkin.MorningCheckinScreen
 import com.cristim.dailyprogress.ui.checkin.SharedPrefsSnoozeSkipStorage
 import com.cristim.dailyprogress.ui.day.DayScreen
 import com.cristim.dailyprogress.ui.more.MoreScreen
+import com.cristim.dailyprogress.ui.week.WeekReviewScreen
+import com.cristim.dailyprogress.ui.week.WeekScreen
+import com.cristim.dailyprogress.ui.week.WeeklySummaryScreen
+import com.cristim.dailyprogress.ui.week.WeeklyPlanSheet
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import java.time.LocalDate
@@ -60,9 +64,13 @@ fun RootScaffold(
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    // True while a scheduled check-in is on top; hides the bottom nav so check-ins
-    // are truly modal and users cannot tap away to another tab mid-prompt.
-    val isCheckinRoute = currentRoute?.startsWith("checkin/") == true
+    // True while a modal prompt (check-in or weekly) is on top; hides the bottom
+    // nav so the user cannot tap away to another tab mid-prompt. Matches the
+    // Phase A A-3 fix for check-ins, extended to week review/summary/plan routes.
+    val isCheckinRoute = currentRoute?.startsWith("checkin/") == true ||
+        currentRoute?.startsWith("week/review") == true ||
+        currentRoute?.startsWith("week/summary") == true ||
+        currentRoute?.startsWith("week/plan") == true
 
     // -----------------------------------------------------------------------
     // Check-in prompt coordinator: runs on each app resume via repeatOnLifecycle.
@@ -83,10 +91,13 @@ fun RootScaffold(
             // StateFlow always replays its current value, so this fires once on
             // every resume and once more after each dismiss increment.
             checkNextSignal.collect { _ ->
-                // A-2: skip when a check-in screen is already on top; prevents
-                // stacking duplicates on repeated ON_RESUME while the prompt is open.
-                if (navController.currentBackStackEntry
-                        ?.destination?.route?.startsWith("checkin/") == true
+                // Skip when a modal prompt screen is already on top; prevents
+                // stacking duplicates on repeated ON_RESUME while a prompt is open.
+                val onTopRoute = navController.currentBackStackEntry?.destination?.route
+                if (onTopRoute?.startsWith("checkin/") == true ||
+                    onTopRoute?.startsWith("week/review") == true ||
+                    onTopRoute?.startsWith("week/summary") == true ||
+                    onTopRoute?.startsWith("week/plan") == true
                 ) return@collect
 
                 val prompt = coordinator.nextPresentable() ?: return@collect
@@ -100,8 +111,26 @@ fun RootScaffold(
                         navController.navigate(Routes.morningCheckin(LocalDate.now(), scheduled = true))
                     PromptId.EVENING ->
                         navController.navigate(Routes.eveningCheckin(LocalDate.now(), scheduled = true))
-                    PromptId.WEEK_REVIEW, PromptId.WEEKLY_PLAN, PromptId.WEEKLY_SUMMARY -> {
-                        // phase B: not routed yet
+                    PromptId.WEEK_REVIEW -> {
+                        // Oldest-first loop: navigate to WEEK first (ensures WeekScreen
+                        // is in the back stack so WeekViewModel is accessible from the
+                        // review route), then navigate to the review screen.
+                        if (navController.currentBackStackEntry?.destination?.route != Routes.WEEK) {
+                            navController.navigate(Routes.WEEK)
+                        }
+                        navController.navigate(Routes.weekReview(LocalDate.now(), scheduled = true))
+                    }
+                    PromptId.WEEKLY_PLAN -> {
+                        if (navController.currentBackStackEntry?.destination?.route != Routes.WEEK) {
+                            navController.navigate(Routes.WEEK)
+                        }
+                        navController.navigate(Routes.weekPlan(LocalDate.now(), scheduled = true))
+                    }
+                    PromptId.WEEKLY_SUMMARY -> {
+                        if (navController.currentBackStackEntry?.destination?.route != Routes.WEEK) {
+                            navController.navigate(Routes.WEEK)
+                        }
+                        navController.navigate(Routes.weekSummary(LocalDate.now(), scheduled = true))
                     }
                 }
             }
@@ -211,7 +240,120 @@ fun RootScaffold(
 
             // Week tab (phase B)
             composable(Routes.WEEK) {
-                WeekPlaceholder()
+                WeekScreen(
+                    repository = repository,
+                    dataVersion = dataVersion,
+                    navController = navController,
+                )
+            }
+
+            // Week sub-routes: review, summary, plan-edit (phase B)
+            composable(
+                route = Routes.WEEK_REVIEW,
+                arguments = listOf(
+                    navArgument("date") { type = NavType.StringType },
+                    navArgument("scheduled") { type = NavType.StringType },
+                ),
+            ) { backStack ->
+                val date = runCatching {
+                    LocalDate.parse(backStack.arguments?.getString("date") ?: "")
+                }.getOrDefault(LocalDate.now())
+                val scheduled =
+                    backStack.arguments?.getString("scheduled")?.toBooleanStrictOrNull() == true
+                val presentation =
+                    if (scheduled) CheckinPresentation.SCHEDULED else CheckinPresentation.MANUAL
+                WeekReviewScreen(
+                    anchorDate = date,
+                    repository = repository,
+                    dataVersion = dataVersion,
+                    presentation = presentation,
+                    onDismiss = {
+                        navController.popBackStack()
+                        checkNextSignal.value++
+                    },
+                    onSnooze = {
+                        coordinator.snooze(PromptId.WEEK_REVIEW.wire)
+                        navController.popBackStack()
+                        checkNextSignal.value++
+                    },
+                    onSkipToday = {
+                        coordinator.skipToday(PromptId.WEEK_REVIEW.wire)
+                        navController.popBackStack()
+                        checkNextSignal.value++
+                    },
+                )
+            }
+
+            composable(
+                route = Routes.WEEK_SUMMARY,
+                arguments = listOf(
+                    navArgument("date") { type = NavType.StringType },
+                    navArgument("scheduled") { type = NavType.StringType },
+                ),
+            ) { backStack ->
+                val date = runCatching {
+                    LocalDate.parse(backStack.arguments?.getString("date") ?: "")
+                }.getOrDefault(LocalDate.now())
+                val scheduled =
+                    backStack.arguments?.getString("scheduled")?.toBooleanStrictOrNull() == true
+                val presentation =
+                    if (scheduled) CheckinPresentation.SCHEDULED else CheckinPresentation.MANUAL
+                WeeklySummaryScreen(
+                    date = date,
+                    repository = repository,
+                    dataVersion = dataVersion,
+                    presentation = presentation,
+                    onDismiss = {
+                        navController.popBackStack()
+                        checkNextSignal.value++
+                    },
+                    onSnooze = {
+                        coordinator.snooze(PromptId.WEEKLY_SUMMARY.wire)
+                        navController.popBackStack()
+                        checkNextSignal.value++
+                    },
+                    onSkipToday = {
+                        coordinator.skipToday(PromptId.WEEKLY_SUMMARY.wire)
+                        navController.popBackStack()
+                        checkNextSignal.value++
+                    },
+                )
+            }
+
+            composable(
+                route = Routes.WEEK_PLAN,
+                arguments = listOf(
+                    navArgument("date") { type = NavType.StringType },
+                    navArgument("scheduled") { type = NavType.StringType },
+                ),
+            ) { backStack ->
+                val date = runCatching {
+                    LocalDate.parse(backStack.arguments?.getString("date") ?: "")
+                }.getOrDefault(LocalDate.now())
+                val scheduled =
+                    backStack.arguments?.getString("scheduled")?.toBooleanStrictOrNull() == true
+                val presentation =
+                    if (scheduled) CheckinPresentation.SCHEDULED else CheckinPresentation.MANUAL
+                WeeklyPlanSheet(
+                    date = date,
+                    repository = repository,
+                    dataVersion = dataVersion,
+                    presentation = presentation,
+                    onDismiss = {
+                        navController.popBackStack()
+                        checkNextSignal.value++
+                    },
+                    onSnooze = {
+                        coordinator.snooze(PromptId.WEEKLY_PLAN.wire)
+                        navController.popBackStack()
+                        checkNextSignal.value++
+                    },
+                    onSkipToday = {
+                        coordinator.skipToday(PromptId.WEEKLY_PLAN.wire)
+                        navController.popBackStack()
+                        checkNextSignal.value++
+                    },
+                )
             }
 
             // Backlog tab (phase C)
@@ -304,13 +446,8 @@ fun RootScaffold(
 }
 
 // ---------------------------------------------------------------------------
-// Phase-B/C placeholder screens (replaced when those phases land)
+// Phase-C placeholder screen (replaced when that phase lands)
 // ---------------------------------------------------------------------------
-
-@Composable
-private fun WeekPlaceholder() {
-    Box(modifier = Modifier.fillMaxSize())
-}
 
 @Composable
 private fun BacklogPlaceholder() {

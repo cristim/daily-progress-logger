@@ -100,9 +100,10 @@ class CheckinCoordinator(
                     nowMillis >= storage.snoozeUntil(prompt.id) &&
                         storage.skippedOn(prompt.id) != today
                 }
+                // Phase B: week-related prompts now routed; same snooze/skip rules.
                 PromptId.WEEK_REVIEW, PromptId.WEEKLY_PLAN, PromptId.WEEKLY_SUMMARY -> {
-                    // phase B: not routed until week screens land
-                    false
+                    nowMillis >= storage.snoozeUntil(prompt.id) &&
+                        storage.skippedOn(prompt.id) != today
                 }
             }
         }
