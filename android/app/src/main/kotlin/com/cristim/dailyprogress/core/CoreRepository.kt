@@ -36,7 +36,7 @@ import kotlinx.serialization.json.Json
  * - No optimistic UI: callers re-fetch the affected read endpoint after each
  *   mutation and replace state entirely.
  */
-class CoreRepository(private val client: CoreClient) {
+class CoreRepository(private val client: CoreClient) : WeekReviewOps {
 
     /** JSON codec: ignoreUnknownKeys so additive core changes never crash. */
     private val json = Json {
@@ -161,15 +161,15 @@ class CoreRepository(private val client: CoreClient) {
     }
 
     /** date: any date in the week to check for an unreviewed week. */
-    suspend fun unreviewedWeek(date: String): PendingWeekDto = call { core ->
+    override suspend fun unreviewedWeek(date: String): PendingWeekDto = call { core ->
         json.decodeFromString(core.unreviewedWeekJSON(date))
     }
 
-    suspend fun weekReviewCandidates(date: String): WeekReviewCandidatesDto = call { core ->
+    override suspend fun weekReviewCandidates(date: String): WeekReviewCandidatesDto = call { core ->
         json.decodeFromString(core.weekReviewCandidatesJSON(date))
     }
 
-    suspend fun applyWeekReview(date: String, decisions: ReviewDecisionsDto) =
+    override suspend fun applyWeekReview(date: String, decisions: ReviewDecisionsDto) =
         call { core -> core.applyWeekReview(date, json.encodeToString(decisions)) }
 
     suspend fun weeklySummary(date: String): WeeklySummaryDto = call { core ->

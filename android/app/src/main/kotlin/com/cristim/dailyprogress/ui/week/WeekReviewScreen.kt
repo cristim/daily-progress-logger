@@ -36,6 +36,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.cristim.dailyprogress.core.CoreError
 import com.cristim.dailyprogress.core.CoreRepository
+import com.cristim.dailyprogress.core.WeekReviewOps
 import com.cristim.dailyprogress.model.ReviewAction
 import com.cristim.dailyprogress.model.ReviewDecisionDto
 import com.cristim.dailyprogress.model.ReviewDecisionsDto
@@ -78,8 +79,12 @@ sealed interface ReviewUiState {
         val items: List<ReviewItem>,
     ) : ReviewUiState
 
-    /** No open items remain from this week — show empty state + OK. */
-    data class Empty(val weekLabel: String) : ReviewUiState
+    /**
+     * No open items remain from this week — show empty state + OK.
+     * [weekDate] is retained so [WeekReviewViewModel.apply] can still call
+     * applyWeekReview with an empty decisions list, marking the week reviewed.
+     */
+    data class Empty(val weekLabel: String, val weekDate: LocalDate) : ReviewUiState
 
     data class Error(val error: CoreError) : ReviewUiState
 }
@@ -97,7 +102,7 @@ sealed interface ReviewUiState {
  * candidates for it. Manual path: loads candidates for the previous week directly.
  */
 class WeekReviewViewModel(
-    private val repository: CoreRepository,
+    private val ops: WeekReviewOps,
     private val dataVersion: MutableStateFlow<Int>,
     private val anchorDate: LocalDate,
     private val scheduled: Boolean,
@@ -126,7 +131,7 @@ class WeekReviewViewModel(
             runCatching {
                 val reviewDate: LocalDate = if (scheduled) {
                     // Oldest-first: find the unreviewed week.
-                    val pending = repository.unreviewedWeek(anchorDate.toString())
+                    val pending = ops.unreviewedWeek(anchorDate.toString())
                     if (!pending.pending || pending.week.isEmpty()) {
                         // Nothing to review — emit done immediately.
                         _done.trySend(Unit)
@@ -137,9 +142,9 @@ class WeekReviewViewModel(
                     // Manual: use the previous-week anchor directly.
                     anchorDate
                 }
-                val dto = repository.weekReviewCandidates(reviewDate.toString())
+                val dto = ops.weekReviewCandidates(reviewDate.toString())
                 if (dto.candidates.isEmpty()) {
-                    ReviewUiState.Empty(dto.week)
+                    ReviewUiState.Empty(weekLabel = dto.week, weekDate = reviewDate)
                 } else {
                     ReviewUiState.Content(
                         weekLabel = dto.week,
@@ -174,8 +179,26 @@ class WeekReviewViewModel(
         if (_submitting.value) return
         when (val state = _uiState.value) {
             is ReviewUiState.Empty -> {
-                // Nothing to apply; emit done (empty OK is valid per plan §6).
-                viewModelScope.launch { _done.trySend(Unit) }
+                // No open items, but we must still call applyWeekReview with an
+                // empty decisions list so the core marks the week reviewed.
+                // Without this, UnreviewedWeekJSON keeps returning the same week
+                // and the scheduled loop never terminates.
+                viewModelScope.launch {
+                    _submitting.value = true
+                    val payload = ReviewDecisionsDto(decisions = emptyList(), rollover = rollover)
+                    runCatching {
+                        ops.applyWeekReview(state.weekDate.toString(), payload)
+                    }
+                        .onSuccess {
+                            dataVersion.value++
+                            _done.trySend(Unit)
+                        }
+                        .onFailure { t ->
+                            val err = t as? CoreError ?: CoreError.Unknown(t.message.orEmpty())
+                            _snackbar.trySend(SnackbarEvent("Error applying review: ${err.message}"))
+                        }
+                    _submitting.value = false
+                }
                 return
             }
             is ReviewUiState.Content -> {
@@ -186,7 +209,7 @@ class WeekReviewViewModel(
                     }
                     val payload = ReviewDecisionsDto(decisions = decisions, rollover = rollover)
                     runCatching {
-                        repository.applyWeekReview(state.weekDate.toString(), payload)
+                        ops.applyWeekReview(state.weekDate.toString(), payload)
                     }
                         .onSuccess {
                             dataVersion.value++
@@ -211,7 +234,12 @@ class WeekReviewViewModel(
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            WeekReviewViewModel(repository, dataVersion, anchorDate, scheduled) as T
+            WeekReviewViewModel(
+                ops = repository,
+                dataVersion = dataVersion,
+                anchorDate = anchorDate,
+                scheduled = scheduled,
+            ) as T
     }
 }
 
