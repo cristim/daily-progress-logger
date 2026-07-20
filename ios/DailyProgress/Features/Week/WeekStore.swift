@@ -79,8 +79,6 @@ final class WeekStore {
     // MARK: - Refresh (plan + summary + unreviewed badge, parallel)
 
     func refresh() async {
-        // Guard against concurrent refreshes; a double-tap could trigger two.
-        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
@@ -219,6 +217,9 @@ final class WeekStore {
     // MARK: - Private helpers
 
     private func handleError(_ error: Error) {
+        // CancellationError fires when .task(id:) cancels a stale in-flight refresh;
+        // it is not a failure and must not produce a user-visible alert (I4).
+        if error is CancellationError { return }
         if let coreError = error as? CoreError {
             errorMessage = coreError.errorDescription
         } else {
