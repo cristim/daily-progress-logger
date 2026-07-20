@@ -30,6 +30,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.SaverScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,6 +41,8 @@ import com.cristim.dailyprogress.core.CoreError
 import com.cristim.dailyprogress.core.CoreRepository
 import com.cristim.dailyprogress.model.WeeklyGoalDto
 import com.cristim.dailyprogress.model.WeeklyPlanDto
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import com.cristim.dailyprogress.ui.checkin.ActionButtonRow
 import com.cristim.dailyprogress.ui.checkin.CheckinPresentation
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,6 +55,23 @@ private sealed interface PlanSheetState {
     data object Loading : PlanSheetState
     data class Content(val plan: WeeklyPlanDto) : PlanSheetState
     data class Error(val error: CoreError) : PlanSheetState
+}
+
+/** JSON codec for WeeklyGoalDto serialization (survives rotation via Saver). */
+private val planSheetJson = Json { ignoreUnknownKeys = true; explicitNulls = false }
+
+/**
+ * Saver that serializes the editable goals list to/from a JSON string so the
+ * list survives activity recreation (rotation, multi-window resize). Avoids
+ * requiring WeeklyGoalDto to be Parcelable.
+ */
+private val GoalListSaver = object : androidx.compose.runtime.saveable.Saver<List<WeeklyGoalDto>, String> {
+    override fun SaverScope.save(value: List<WeeklyGoalDto>): String =
+        planSheetJson.encodeToString(value)
+
+    override fun restore(value: String): List<WeeklyGoalDto> =
+        runCatching { planSheetJson.decodeFromString<List<WeeklyGoalDto>>(value) }
+            .getOrElse { emptyList() }
 }
 
 /**
@@ -77,8 +97,15 @@ fun WeeklyPlanSheet(
     onSkipToday: () -> Unit,
 ) {
     var localState: PlanSheetState by remember { mutableStateOf(PlanSheetState.Loading) }
-    // Mutable goals list: edited in-place by the user.
-    var editableGoals: List<WeeklyGoalDto> by remember { mutableStateOf(emptyList()) }
+    // editableGoals: rememberSaveable so in-progress toggles/additions survive
+    // rotation. GoalListSaver serializes to/from a JSON string in the Bundle.
+    var editableGoals: List<WeeklyGoalDto> by rememberSaveable(stateSaver = GoalListSaver) {
+        mutableStateOf(emptyList())
+    }
+    // goalsInitialized: once goals are seeded from the server, stop overwriting
+    // them on re-load (rotation triggers a fresh LaunchedEffect, which would
+    // otherwise reset editableGoals back to the server state, discarding edits).
+    var goalsInitialized by rememberSaveable { mutableStateOf(false) }
     var addGoalsText by rememberSaveable { mutableStateOf("") }
     var submitting by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -93,7 +120,13 @@ fun WeeklyPlanSheet(
         localState = runCatching { repository.weeklyPlan(date.toString()) }
             .fold(
                 onSuccess = { plan ->
-                    editableGoals = plan.goals
+                    // Seed editable goals from server on the first load only.
+                    // On subsequent loads (rotation re-trigger), keep whatever the
+                    // user has already edited rather than discarding in-progress changes.
+                    if (!goalsInitialized) {
+                        editableGoals = plan.goals
+                        goalsInitialized = true
+                    }
                     PlanSheetState.Content(plan)
                 },
                 onFailure = { t ->
