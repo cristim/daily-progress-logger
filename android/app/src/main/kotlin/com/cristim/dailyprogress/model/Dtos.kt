@@ -156,6 +156,29 @@ data class WeekReviewCandidatesDto(
     val candidates: List<String> = emptyList(),
 )
 
+/**
+ * Typed representation of the week-review action integer (mobilecore/weekly.go).
+ * The [wire] value is sent to ApplyWeekReview; never use bare magic ints in
+ * ViewModel/UI code — always convert through this enum.
+ *
+ * 0=keep (stays in backlog Current), 1=postpone (move to Next week), 2=drop.
+ */
+enum class ReviewAction(val wire: Int) {
+    KEEP(0),
+    POSTPONE(1),
+    DROP(2);
+
+    companion object {
+        /**
+         * Converts a wire integer to [ReviewAction].
+         * Throws [SerializationException] on unknown values — fail loud, no silent default.
+         */
+        fun fromWire(n: Int): ReviewAction =
+            entries.firstOrNull { it.wire == n }
+                ?: throw SerializationException("Unknown ReviewAction wire value: $n (expected 0-2)")
+    }
+}
+
 /** 0=keep 1=postpone 2=drop (mobilecore/weekly.go). */
 @Serializable
 data class ReviewDecisionDto(val text: String, val action: Int)

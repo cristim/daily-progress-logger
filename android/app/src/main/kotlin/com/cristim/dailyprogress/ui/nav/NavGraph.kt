@@ -14,6 +14,11 @@ object Routes {
     const val MORNING_CHECKIN = "checkin/morning/{date}/{scheduled}"
     const val EVENING_CHECKIN = "checkin/evening/{date}/{scheduled}"
 
+    // Week sub-routes (phase B): review, summary, plan-edit
+    const val WEEK_REVIEW = "week/review/{date}/{scheduled}"
+    const val WEEK_SUMMARY = "week/summary/{date}/{scheduled}"
+    const val WEEK_PLAN = "week/plan/{date}/{scheduled}"
+
     // More sub-routes (filled in later phases)
     const val PROJECTS = "projects"
     const val RECURRING = "recurring"
@@ -26,4 +31,10 @@ object Routes {
         "checkin/morning/$date/$scheduled"
     fun eveningCheckin(date: LocalDate = LocalDate.now(), scheduled: Boolean = true): String =
         "checkin/evening/$date/$scheduled"
+    fun weekReview(date: LocalDate = LocalDate.now(), scheduled: Boolean = true): String =
+        "week/review/$date/$scheduled"
+    fun weekSummary(date: LocalDate = LocalDate.now(), scheduled: Boolean = true): String =
+        "week/summary/$date/$scheduled"
+    fun weekPlan(date: LocalDate = LocalDate.now(), scheduled: Boolean = true): String =
+        "week/plan/$date/$scheduled"
 }
