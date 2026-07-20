@@ -84,21 +84,32 @@ fun WeeklySummaryScreen(
     // For manual path: load the summary for the date provided.
     LaunchedEffect(date, retryCounter) {
         localState = SummaryScreenState.Loading
-        val targetDate = if (presentation == CheckinPresentation.SCHEDULED) {
-            // Find oldest pending summary week and use its date.
-            runCatching { repository.weeklySummaryPending(date.toString()) }
-                .getOrNull()
-                ?.let { pending ->
-                    if (pending.pending && pending.week.isNotEmpty()) {
-                        runCatching {
-                            com.cristim.dailyprogress.util.isoWeekToMonday(pending.week)
-                        }.getOrDefault(date)
-                    } else {
-                        // Nothing pending: dismiss immediately (loop is done)
-                        onDismiss()
-                        return@LaunchedEffect
-                    }
-                } ?: date
+        val targetDate: LocalDate = if (presentation == CheckinPresentation.SCHEDULED) {
+            // Find oldest pending summary week. Errors abort and surface here
+            // (plan §B6: "scheduled-loop errors abort AND surface") rather than
+            // defaulting to today, which would mark the wrong week summarized.
+            val pending = runCatching { repository.weeklySummaryPending(date.toString()) }
+                .getOrElse { t ->
+                    localState = SummaryScreenState.Error(
+                        t as? CoreError ?: CoreError.Unknown(t.message.orEmpty()),
+                    )
+                    return@LaunchedEffect
+                }
+            if (pending.pending && pending.week.isNotEmpty()) {
+                runCatching {
+                    com.cristim.dailyprogress.util.isoWeekToMonday(pending.week)
+                }.getOrElse {
+                    // Malformed week string from core: surface, do not default to today.
+                    localState = SummaryScreenState.Error(
+                        CoreError.Unknown("Invalid week format: ${pending.week}"),
+                    )
+                    return@LaunchedEffect
+                }
+            } else {
+                // Nothing pending: dismiss immediately (loop is done).
+                onDismiss()
+                return@LaunchedEffect
+            }
         } else {
             date
         }
