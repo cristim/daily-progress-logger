@@ -91,7 +91,8 @@ final class WeekTests: XCTestCase {
     }
 
     func testDecodePendingWeekFalseNoWeekField() throws {
-        // When pending=false, Go's omitempty omits the week field entirely.
+        // Defensive: handle absent week field even though the actual wire sends week:"".
+        // (unreviewedWeekJSON and weeklySummaryPendingJSON carry no omitempty tag.)
         let json = #"{"pending":false}"#
         let p = try CoreDecoding.decode(PendingWeek.self, from: json)
         XCTAssertFalse(p.pending)
