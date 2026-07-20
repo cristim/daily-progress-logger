@@ -63,7 +63,7 @@ struct RootTabView: View {
                     store: store,
                     appState: appState,
                     presentation: .manual,
-                    onComplete: {},
+                    onComplete: { appState.bumpDataVersion() },
                     onSnooze: {
                         // Manual snooze still suppresses the auto-prompt
                         if let prompt = DuePrompt.synthetic(.morning) {
@@ -81,7 +81,7 @@ struct RootTabView: View {
                     store: store,
                     appState: appState,
                     presentation: .manual,
-                    onComplete: {},
+                    onComplete: { appState.bumpDataVersion() },
                     onSnooze: {
                         if let prompt = DuePrompt.synthetic(.evening) {
                             coordinator.snooze(prompt: prompt)
@@ -112,7 +112,7 @@ struct RootTabView: View {
                     store: store,
                     appState: appState,
                     presentation: .scheduled,
-                    onComplete: {},
+                    onComplete: { appState.bumpDataVersion() },
                     onSnooze: { coordinator.snooze(prompt: prompt) },
                     onSkipOrClose: { coordinator.skipToday(prompt: prompt) }
                 )
@@ -121,7 +121,7 @@ struct RootTabView: View {
                     store: store,
                     appState: appState,
                     presentation: .scheduled,
-                    onComplete: {},
+                    onComplete: { appState.bumpDataVersion() },
                     onSnooze: { coordinator.snooze(prompt: prompt) },
                     onSkipOrClose: { coordinator.skipToday(prompt: prompt) }
                 )
