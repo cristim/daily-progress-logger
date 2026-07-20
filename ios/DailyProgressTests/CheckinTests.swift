@@ -170,33 +170,65 @@ final class CheckinCoordinatorTests: XCTestCase {
     // Note: coordinator uses UserDefaults.standard; these tests exercise the
     // pure logic (snooze deadline, skip-today predicate) via direct method calls.
 
-    // MARK: - Snooze caps at end of day
+    // MARK: - Snooze deadline calculation
 
     func testSnoozeDeadlineIsNowPlusOneHour() {
-        let coordinator = CheckinCoordinator()
-        // Feed a morning prompt
+        // Verify the +1h case directly via the exposed internal method.
+        let coordinator = CheckinCoordinator(defaults: defaults)
+        let now = Date()
+        let deadline = coordinator.snoozeDeadline(from: now)
+        XCTAssertEqual(
+            deadline.timeIntervalSince1970,
+            now.addingTimeInterval(3600).timeIntervalSince1970,
+            accuracy: 1.0,
+            "Normal snooze deadline should be now + 1 hour"
+        )
+    }
+
+    func testSnoozeDeadlineCapsAtEndOfDay() {
+        // 23:30 local -> +1h would cross midnight; must cap at 23:59:59.
+        let coordinator = CheckinCoordinator(defaults: defaults)
+        let calendar = Calendar.current
+        var lateComponents = calendar.dateComponents([.year, .month, .day], from: Date())
+        lateComponents.hour = 23
+        lateComponents.minute = 30
+        lateComponents.second = 0
+        let lateTime = calendar.date(from: lateComponents)!
+
+        let deadline = coordinator.snoozeDeadline(from: lateTime)
+
+        var endComponents = calendar.dateComponents([.year, .month, .day], from: Date())
+        endComponents.hour = 23
+        endComponents.minute = 59
+        endComponents.second = 59
+        let endOfDay = calendar.date(from: endComponents)!
+
+        XCTAssertEqual(
+            deadline.timeIntervalSince1970,
+            endOfDay.timeIntervalSince1970,
+            accuracy: 1.0,
+            "23:30 snooze deadline should cap at 23:59:59"
+        )
+    }
+
+    func testSnoozeSuppressesPromptWithinWindow() {
+        // Behavioural check: snoozed prompt is filtered by process().
+        let coordinator = CheckinCoordinator(defaults: defaults)
         let prompt = DuePrompt(id: .morning, name: "morning check-in")
         coordinator.process(duePrompts: [prompt])
         XCTAssertNotNil(coordinator.scheduledPrompt)
 
-        let before = Date()
         coordinator.snooze(prompt: prompt)
-        let after = Date()
-
-        // After snooze, the same prompt should NOT reappear until the snooze expires.
-        // Process again with the same prompt and verify it's filtered.
         coordinator.dismissCurrent()
         coordinator.process(duePrompts: [prompt])
-        // The prompt was just snoozed, so should not be scheduled again.
         XCTAssertNil(coordinator.scheduledPrompt,
                      "Snoozed prompt should not be scheduled within the snooze window")
-        _ = before; _ = after
     }
 
     // MARK: - Skip today persists per-day
 
     func testSkipTodaySuppressesPromptForRestOfDay() {
-        let coordinator = CheckinCoordinator()
+        let coordinator = CheckinCoordinator(defaults: defaults)
         let prompt = DuePrompt(id: .morning, name: "morning check-in")
         coordinator.process(duePrompts: [prompt])
         XCTAssertNotNil(coordinator.scheduledPrompt)
@@ -215,7 +247,7 @@ final class CheckinCoordinatorTests: XCTestCase {
     func testManualCloseDoesNotCallSkipToday() {
         // Manual "Close" calls no bookkeeping — we verify by not calling skipToday
         // and then confirming the prompt can be scheduled again immediately.
-        let coordinator = CheckinCoordinator()
+        let coordinator = CheckinCoordinator(defaults: defaults)
         let prompt = DuePrompt(id: .morning, name: "morning check-in")
         coordinator.process(duePrompts: [prompt])
         XCTAssertNotNil(coordinator.scheduledPrompt)
@@ -232,7 +264,7 @@ final class CheckinCoordinatorTests: XCTestCase {
     // MARK: - Phase B prompts are filtered
 
     func testPhaseBPromptsAreIgnored() {
-        let coordinator = CheckinCoordinator()
+        let coordinator = CheckinCoordinator(defaults: defaults)
         let phaseBPrompts: [DuePrompt] = [
             DuePrompt(id: .weekReview,     name: "week review"),
             DuePrompt(id: .weeklyPlan,     name: "weekly plan"),
@@ -246,7 +278,7 @@ final class CheckinCoordinatorTests: XCTestCase {
     // MARK: - Queue advances correctly
 
     func testQueueAdvancesAfterDismiss() {
-        let coordinator = CheckinCoordinator()
+        let coordinator = CheckinCoordinator(defaults: defaults)
         let morning = DuePrompt(id: .morning, name: "morning check-in")
         let evening = DuePrompt(id: .evening, name: "evening check-in")
         coordinator.process(duePrompts: [morning, evening])
@@ -265,7 +297,7 @@ final class CheckinCoordinatorTests: XCTestCase {
     // MARK: - No interrupt while sheet is showing
 
     func testProcessDoesNotInterruptActiveSheet() {
-        let coordinator = CheckinCoordinator()
+        let coordinator = CheckinCoordinator(defaults: defaults)
         let morning = DuePrompt(id: .morning, name: "morning check-in")
         let evening = DuePrompt(id: .evening, name: "evening check-in")
 

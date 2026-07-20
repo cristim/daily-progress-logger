@@ -27,6 +27,8 @@ final class CheckinCoordinator {
     private static let snoozeKey = "checkin.snoozeUntil"
     private static let skipKey   = "checkin.skippedOn"
 
+    private let defaults: UserDefaults
+
     /// [promptID: snoozeUntil date] — suppresses a prompt until this time.
     private var snoozeUntil: [Int: Date] = [:]
 
@@ -35,7 +37,10 @@ final class CheckinCoordinator {
 
     // MARK: - Init
 
-    init() {
+    /// Designated init.  `defaults` is injectable so tests can pass a private
+    /// suite and avoid polluting UserDefaults.standard.
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         loadPersisted()
     }
 
@@ -116,7 +121,8 @@ final class CheckinCoordinator {
     // MARK: - Snooze deadline calculation
 
     /// now + 1 hour, capped at 23:59:59 local (end of day).
-    private func snoozeDeadline(from now: Date) -> Date {
+    /// Internal (not private) so tests can verify both the normal and capped cases.
+    func snoozeDeadline(from now: Date) -> Date {
         let oneHourLater = now.addingTimeInterval(3600)
         // Compute 23:59:59 of today in local time
         let calendar = Calendar.current
@@ -128,7 +134,6 @@ final class CheckinCoordinator {
     // MARK: - UserDefaults persistence
 
     private func loadPersisted() {
-        let defaults = UserDefaults.standard
         if let raw = defaults.dictionary(forKey: Self.snoozeKey) as? [String: Date] {
             snoozeUntil = Dictionary(uniqueKeysWithValues: raw.compactMap { k, v in
                 Int(k).map { ($0, v) }
@@ -143,11 +148,11 @@ final class CheckinCoordinator {
 
     private func persistSnoozeUntil() {
         let raw = Dictionary(uniqueKeysWithValues: snoozeUntil.map { ("\($0.key)", $0.value) })
-        UserDefaults.standard.set(raw, forKey: Self.snoozeKey)
+        defaults.set(raw, forKey: Self.snoozeKey)
     }
 
     private func persistSkippedOn() {
         let raw = Dictionary(uniqueKeysWithValues: skippedOn.map { ("\($0.key)", $0.value) })
-        UserDefaults.standard.set(raw, forKey: Self.skipKey)
+        defaults.set(raw, forKey: Self.skipKey)
     }
 }
