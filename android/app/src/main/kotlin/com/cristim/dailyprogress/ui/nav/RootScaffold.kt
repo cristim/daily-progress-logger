@@ -60,6 +60,9 @@ fun RootScaffold(
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
+    // True while a scheduled check-in is on top; hides the bottom nav so check-ins
+    // are truly modal and users cannot tap away to another tab mid-prompt.
+    val isCheckinRoute = currentRoute?.startsWith("checkin/") == true
 
     // -----------------------------------------------------------------------
     // Check-in prompt coordinator: runs on each app resume via repeatOnLifecycle.
@@ -107,7 +110,9 @@ fun RootScaffold(
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
+            // Hidden during check-ins so the bottom tabs are not tappable while
+            // a scheduled prompt is presented (IA rule: check-ins are always modal).
+            if (!isCheckinRoute) NavigationBar {
                 NavigationBarItem(
                     icon = { Icon(Icons.Filled.Today, contentDescription = null) },
                     label = { Text("Today", textAlign = TextAlign.Center) },
