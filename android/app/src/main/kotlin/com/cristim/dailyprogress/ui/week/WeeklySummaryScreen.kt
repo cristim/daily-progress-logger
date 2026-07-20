@@ -21,6 +21,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -74,10 +75,14 @@ fun WeeklySummaryScreen(
     var localState: SummaryScreenState by remember { mutableStateOf(SummaryScreenState.Loading) }
     var submitting by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    // retryCounter: incremented by the Retry button. Keying LaunchedEffect on
+    // (date, retryCounter) ensures it re-runs on Retry even though date hasn't
+    // changed — plain LaunchedEffect(date) would stay dormant after an error.
+    var retryCounter by remember { mutableIntStateOf(0) }
 
     // For scheduled path: the loop finds the oldest pending summary week.
     // For manual path: load the summary for the date provided.
-    LaunchedEffect(date) {
+    LaunchedEffect(date, retryCounter) {
         localState = SummaryScreenState.Loading
         val targetDate = if (presentation == CheckinPresentation.SCHEDULED) {
             // Find oldest pending summary week and use its date.
@@ -145,7 +150,7 @@ fun WeeklySummaryScreen(
                         color = MaterialTheme.colorScheme.error,
                     )
                     Spacer(Modifier.height(16.dp))
-                    Button(onClick = { localState = SummaryScreenState.Loading }) { Text("Retry") }
+                    Button(onClick = { retryCounter++ }) { Text("Retry") }
                 }
             }
 

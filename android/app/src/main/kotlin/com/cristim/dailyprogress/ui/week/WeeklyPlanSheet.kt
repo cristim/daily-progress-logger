@@ -26,6 +26,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -82,8 +83,12 @@ fun WeeklyPlanSheet(
     var submitting by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    // retryCounter: incremented by the Retry button. Keying LaunchedEffect on
+    // (date, retryCounter) ensures it re-runs on Retry even though date hasn't
+    // changed — plain LaunchedEffect(date) would stay dormant after an error.
+    var retryCounter by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(date) {
+    LaunchedEffect(date, retryCounter) {
         localState = PlanSheetState.Loading
         localState = runCatching { repository.weeklyPlan(date.toString()) }
             .fold(
@@ -136,9 +141,7 @@ fun WeeklyPlanSheet(
                         color = MaterialTheme.colorScheme.error,
                     )
                     Spacer(Modifier.height(16.dp))
-                    Button(onClick = {
-                        localState = PlanSheetState.Loading
-                    }) { Text("Retry") }
+                    Button(onClick = { retryCounter++ }) { Text("Retry") }
                 }
             }
 
