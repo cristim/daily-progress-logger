@@ -157,7 +157,12 @@ class DayViewModel(
             runCatching { block() }
                 .onSuccess {
                     dataVersion.value++
-                    refresh()
+                    // Do NOT call refresh() here: the init collector
+                    // (dataVersion.drop(1).collect { refresh() }) fires on the
+                    // bump above and handles the reload -- matching WeekViewModel.
+                    // Calling refresh() here too causes a double reload (flicker +
+                    // double treeJSON fetch). The CAS branch below still calls
+                    // refresh() directly because it does not bump dataVersion.
                 }
                 .onFailure { t ->
                     val err = t as? CoreError ?: CoreError.Unknown(t.message.orEmpty())
