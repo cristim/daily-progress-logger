@@ -120,7 +120,7 @@ class BacklogTest {
         vm.adopt("Task A")
 
         val event = vm.snackbarEvents.first()
-        assertEquals("Planned for today", event.message)
+        assertEquals("Planned for today: Task A", event.message)
         assertTrue("dataVersion must be bumped on adopt success", dataVersion.value > 0)
     }
 

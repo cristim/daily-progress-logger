@@ -116,7 +116,7 @@ class BacklogViewModel(
                 // Bump dataVersion first so sibling screens (DayScreen, WeekScreen)
                 // pick up the change before we re-fetch our own list.
                 dataVersion.value++
-                _snackbar.trySend(SnackbarEvent("Planned for today"))
+                _snackbar.trySend(SnackbarEvent("Planned for today: $text"))
                 refresh()
             }.onFailure { t ->
                 val err = t as? CoreError ?: CoreError.Unknown(t.message.orEmpty())
