@@ -1,6 +1,9 @@
 import Foundation
 import Observation
 import UIKit
+import os.log
+
+private let appStateLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "DailyProgress", category: "AppState")
 
 // MARK: - AppState
 
@@ -57,6 +60,7 @@ final class AppState {
             duePrompts = result.due
         } catch {
             // Non-fatal: prompts are advisory; log but do not surface to the user.
+            appStateLogger.error("refreshDuePrompts failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
