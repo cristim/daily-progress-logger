@@ -51,10 +51,23 @@ struct ReviewItemDecision: Codable {
     }
 }
 
+/// Week-review triage action (int-coded on the wire).
+/// Unknown int values throw at decode time — fail-loud to catch contract drift.
 enum ReviewAction: Int, Codable {
     case keep = 0
     case postpone = 1
     case drop = 2
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(Int.self)
+        guard let value = ReviewAction(rawValue: raw) else {
+            throw DecodingError.dataCorruptedError(
+                in: try decoder.singleValueContainer(),
+                debugDescription: "Unknown ReviewAction \(raw); expected 0=keep 1=postpone 2=drop"
+            )
+        }
+        self = value
+    }
 }
 
 struct WeeklySummary: Codable {

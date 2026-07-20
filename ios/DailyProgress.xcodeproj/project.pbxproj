@@ -8,6 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		0057FF2AB8A5FBBC7D58D77C /* WeekView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D9E84A4318ED0AFA85CDF1A /* WeekView.swift */; };
+		95CAC5ABDE9342B1B0B0A644 /* CheckinButtonsBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B132A872A337424AB317CAFE /* CheckinButtonsBar.swift */; };
+		D90D057BAF0940A7B6DF88BB /* WeeklyPlanSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B06E1DB39DB42158A6A35C2 /* WeeklyPlanSheet.swift */; };
+		CECDE71D18DF4B46980AFCA1 /* WeeklySummarySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E261DC34E14C1780A14999 /* WeeklySummarySheet.swift */; };
+		C077E3F9C95B4EF8AE55DEDA /* WeekReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 769CC804E7434BC8B2EC2AA8 /* WeekReviewSheet.swift */; };
+		E1021A007AAE487AAEFE40B4 /* WeekTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB946DC747F6443F922E43DC /* WeekTests.swift */; };
 		FD058D6BF0B645C99CBBAE3A /* CoreDecoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF523528795E424EB2B8040B /* CoreDecoding.swift */; };
 		AB0FF64E19714B40B8ED072A /* ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70FE43F488E64992874E4C53 /* ToastView.swift */; };
 		F5ED0D25B4554F4198D45242 /* CheckinCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FC7263A4B8F4562BFF071E0 /* CheckinCoordinator.swift */; };
@@ -88,7 +93,12 @@
 		03A785B5271E98D136C48AEF /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		DF523528795E424EB2B8040B /* CoreDecoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreDecoding.swift; sourceTree = "<group>"; };
 		70FE43F488E64992874E4C53 /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
+		B132A872A337424AB317CAFE /* CheckinButtonsBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckinButtonsBar.swift; sourceTree = "<group>"; };
 		4FC7263A4B8F4562BFF071E0 /* CheckinCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckinCoordinator.swift; sourceTree = "<group>"; };
+		7B06E1DB39DB42158A6A35C2 /* WeeklyPlanSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyPlanSheet.swift; sourceTree = "<group>"; };
+		79E261DC34E14C1780A14999 /* WeeklySummarySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklySummarySheet.swift; sourceTree = "<group>"; };
+		769CC804E7434BC8B2EC2AA8 /* WeekReviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekReviewSheet.swift; sourceTree = "<group>"; };
+		AB946DC747F6443F922E43DC /* WeekTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekTests.swift; sourceTree = "<group>"; };
 		787584B0E4384A6D850AEFB3 /* CheckinTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckinTests.swift; sourceTree = "<group>"; };
 		0EE4FAAF75B74340B10C8B56 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		1CCE4A5C5FD6C1C05B17F298 /* Project.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Project.swift; sourceTree = "<group>"; };
@@ -260,6 +270,9 @@
 			children = (
 				E3179577109F6BCB25ED8248 /* WeekStore.swift */,
 				2D9E84A4318ED0AFA85CDF1A /* WeekView.swift */,
+				7B06E1DB39DB42158A6A35C2 /* WeeklyPlanSheet.swift */,
+				79E261DC34E14C1780A14999 /* WeeklySummarySheet.swift */,
+				769CC804E7434BC8B2EC2AA8 /* WeekReviewSheet.swift */,
 			);
 			path = Week;
 			sourceTree = "<group>";
@@ -314,6 +327,7 @@
 		DF1CA9D35001EDA6AFCDA1E3 /* Support */ = {
 			isa = PBXGroup;
 			children = (
+				B132A872A337424AB317CAFE /* CheckinButtonsBar.swift */,
 				D041431D080FD52D0C9ED097 /* DateFormatting.swift */,
 				5A01A020966E2ACCDEB1566B /* Notifications.swift */,
 				70FE43F488E64992874E4C53 /* ToastView.swift */,
@@ -355,6 +369,7 @@
 			children = (
 				2F4C9B0F4F46FB441ADAA34F /* CoreKitTests.swift */,
 				787584B0E4384A6D850AEFB3 /* CheckinTests.swift */,
+				AB946DC747F6443F922E43DC /* WeekTests.swift */,
 			);
 			path = DailyProgressTests;
 			sourceTree = "<group>";
@@ -484,6 +499,7 @@
 			files = (
 				67745151537F54E6F54AADCB /* AddTaskSheet.swift in Sources */,
 				F30E105F8891472373066D8F /* AppState.swift in Sources */,
+				95CAC5ABDE9342B1B0B0A644 /* CheckinButtonsBar.swift in Sources */,
 				E7CE9A5F97BFA08DA5FF34CB /* Backlog.swift in Sources */,
 				52FCBF8F527C5639B26255D7 /* BacklogStore.swift in Sources */,
 				40EF9FA36F23463295E82A24 /* BacklogView.swift in Sources */,
@@ -526,6 +542,9 @@
 				3DD5C232B8299C1D71449B83 /* Tree.swift in Sources */,
 				A52F1C2BE901FA5B61CACB05 /* WeekStore.swift in Sources */,
 				0057FF2AB8A5FBBC7D58D77C /* WeekView.swift in Sources */,
+				D90D057BAF0940A7B6DF88BB /* WeeklyPlanSheet.swift in Sources */,
+				CECDE71D18DF4B46980AFCA1 /* WeeklySummarySheet.swift in Sources */,
+				C077E3F9C95B4EF8AE55DEDA /* WeekReviewSheet.swift in Sources */,
 				4416C998377290D48C3B77B4 /* Weekly.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -536,6 +555,7 @@
 			files = (
 				59B408B5F372426BB55CB025 /* CoreKitTests.swift in Sources */,
 				051E428DCDCF44988F4640DD /* CheckinTests.swift in Sources */,
+				E1021A007AAE487AAEFE40B4 /* WeekTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
