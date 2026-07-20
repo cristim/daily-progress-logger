@@ -77,17 +77,7 @@ struct TodayView: View {
             .sheet(isPresented: $showAddTask) {
                 AddTaskSheet(date: appState.viewedDate, store: store, appState: appState)
             }
-            .overlay(alignment: .bottom) {
-                if let toast = store.toast {
-                    Text(toast)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(.regularMaterial, in: Capsule())
-                        .padding(.bottom, 24)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .animation(.easeInOut, value: store.toast != nil)
-                }
-            }
+            .toast(store.toast)
             // Show mutation/refresh errors as an alert when the tree is already
             // loaded; when tree == nil the error is rendered inline by the Group above.
             .alert("Error", isPresented: Binding(
