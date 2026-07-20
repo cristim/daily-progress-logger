@@ -134,9 +134,11 @@ fun WeekScreen(
                             text = { Text("Review Last Week...") },
                             onClick = {
                                 menuExpanded = false
-                                // Manual review: previous week, rollover=false
-                                val lastWeek = LocalDate.now().minusWeeks(1)
-                                navController.navigate(Routes.weekReview(lastWeek, scheduled = false))
+                                // Use the pending week reported by UnreviewedWeekJSON when
+                                // available; fall back to today-7d for the no-pending case.
+                                val reviewTarget = (uiState as? WeekUiState.Content)?.pendingReviewWeek
+                                    ?: LocalDate.now().minusWeeks(1)
+                                navController.navigate(Routes.weekReview(reviewTarget, scheduled = false))
                             },
                         )
                     }
@@ -210,9 +212,12 @@ fun WeekScreen(
                                 )
                                 Spacer(Modifier.weight(1f))
                                 TextButton(onClick = {
-                                    val lastWeek = LocalDate.now().minusWeeks(1)
+                                    // Route to the week UnreviewedWeekJSON reports, not
+                                    // always today-7d, so the badge clears on completion.
+                                    val reviewTarget = state.pendingReviewWeek
+                                        ?: LocalDate.now().minusWeeks(1)
                                     navController.navigate(
-                                        Routes.weekReview(lastWeek, scheduled = false),
+                                        Routes.weekReview(reviewTarget, scheduled = false),
                                     )
                                 }) { Text("Review") }
                             }

@@ -33,6 +33,13 @@ sealed interface WeekUiState {
         val summary: WeeklySummaryDto,
         /** True when at least one prior week awaits review (drives badge in WeekScreen). */
         val reviewPending: Boolean,
+        /**
+         * The Monday [LocalDate] of the oldest unreviewed week, or null when none is
+         * pending. Sourced from [CoreRepository.unreviewedWeek] so the badge and the
+         * manual "Review Last Week..." action target the SAME pending week, not
+         * necessarily today-7d (which would miss an older stuck week).
+         */
+        val pendingReviewWeek: LocalDate?,
     ) : WeekUiState
 
     data class Error(val error: CoreError) : WeekUiState
@@ -118,11 +125,17 @@ class WeekViewModel(
                 )
             }
                 .onSuccess { (plan, summary, reviewPending) ->
+                    val pendingWeekDate = if (reviewPending.pending && reviewPending.week.isNotEmpty()) {
+                        runCatching { isoWeekToMonday(reviewPending.week) }.getOrNull()
+                    } else {
+                        null
+                    }
                     _uiState.value = WeekUiState.Content(
                         referenceDate = date,
                         plan = plan,
                         summary = summary,
                         reviewPending = reviewPending.pending,
+                        pendingReviewWeek = pendingWeekDate,
                     )
                 }
                 .onFailure { t ->
