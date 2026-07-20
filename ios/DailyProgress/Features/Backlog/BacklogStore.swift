@@ -65,7 +65,11 @@ final class BacklogStore {
             try await core.adoptFromBacklog(date: Date().coreDate, text: text)
             onMutation?()           // bump dataVersion so Today tab refreshes (I2)
             await refresh()
-            showToast("Planned for today: \(text)")
+            // Only show the success toast when the refresh itself succeeded;
+            // if refresh set errorMessage we must not also show a success notice.
+            if errorMessage == nil {
+                showToast("Planned for today: \(text)")
+            }
         } catch {
             handleError(error)
         }
