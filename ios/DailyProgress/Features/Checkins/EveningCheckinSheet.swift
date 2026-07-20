@@ -27,7 +27,15 @@ struct EveningCheckinSheet: View {
             content
                 .navigationTitle("Evening Check-in")
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar { toolbarItems }
+                .toolbar {
+                    CheckinButtonsBar(
+                        presentation: presentation,
+                        isApplying: isApplying,
+                        onOK: applyAndDismiss,
+                        onSnooze: { onSnooze(); dismiss() },
+                        onSkipOrClose: { onSkipOrClose(); dismiss() }
+                    )
+                }
                 .task { await store.loadEvening(date: date) }
                 .alert("Error", isPresented: Binding(
                     get: { store.errorMessage != nil },
@@ -82,33 +90,6 @@ struct EveningCheckinSheet: View {
         Section("Anything else you accomplished?") {
             TextEditor(text: $extraText)
                 .frame(minHeight: 80)
-        }
-    }
-
-    // MARK: - Toolbar
-
-    @ToolbarContentBuilder
-    private var toolbarItems: some ToolbarContent {
-        ToolbarItem(placement: .cancellationAction) {
-            Button(presentation == .scheduled ? "Skip Today" : "Close") {
-                onSkipOrClose()
-                dismiss()
-            }
-        }
-
-        ToolbarItem(placement: .bottomBar) {
-            Button("Remind me in 1h") {
-                onSnooze()
-                dismiss()
-            }
-        }
-
-        ToolbarItem(placement: .primaryAction) {
-            if isApplying {
-                ProgressView()
-            } else {
-                Button("OK") { applyAndDismiss() }
-            }
         }
     }
 
