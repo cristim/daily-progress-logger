@@ -64,23 +64,29 @@ struct BacklogView: View {
         let nextWeek = store.backlog?.nextWeek ?? []
 
         return List {
-            Section("This week") {
-                ForEach(Array(current.enumerated()), id: \.offset) { _, text in
-                    backlogRow(text: text, isCurrentWeek: true)
+            if !current.isEmpty {
+                Section("This week") {
+                    ForEach(Array(current.enumerated()), id: \.offset) { _, text in
+                        backlogRow(text: text, isCurrentWeek: true)
+                    }
                 }
             }
-            Section("Next week") {
-                ForEach(Array(nextWeek.enumerated()), id: \.offset) { _, text in
-                    backlogRow(text: text, isCurrentWeek: false)
+            if !nextWeek.isEmpty {
+                Section("Next week") {
+                    ForEach(Array(nextWeek.enumerated()), id: \.offset) { _, text in
+                        backlogRow(text: text, isCurrentWeek: false)
+                    }
                 }
             }
         }
         .listStyle(.insetGrouped)
         .refreshable { await store.refresh() }
         // Show the empty state only when data is loaded and both sections are empty.
+        // allowsHitTesting(false) keeps the List's pull-to-refresh gesture live.
         .overlay {
             if let b = store.backlog, b.current.isEmpty && b.nextWeek.isEmpty {
                 ContentUnavailableView("Nothing in the backlog", systemImage: "tray")
+                    .allowsHitTesting(false)
             }
         }
     }
