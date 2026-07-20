@@ -69,9 +69,7 @@ struct WeekView: View {
                     store: store,
                     appState: appState,
                     presentation: .manual,
-                    reviewDate: Calendar.current.date(
-                        byAdding: .day, value: -7, to: Date()
-                    )?.coreDate ?? Date().coreDate,
+                    reviewDate: pendingReviewDate.coreDate,  // target actually-pending week (C2)
                     rollover: false,
                     onComplete: { appState.bumpDataVersion() },
                     onSnooze: {},
@@ -227,5 +225,15 @@ struct WeekView: View {
         store.plan?.week
             ?? store.summary?.week
             ?? DateFormatting.isoWeekLabel(from: store.referenceDate)
+    }
+
+    /// The Monday of the actually-pending review week, falling back to today-7d.
+    /// Used by the badge button and manual "Review Last Week…" sheet so both
+    /// target the week reported by UnreviewedWeekJSON rather than always today-7d (C2).
+    private var pendingReviewDate: Date {
+        store.pendingReviewWeekStr
+            .flatMap { DateFormatting.date(fromISOWeek: $0) }
+            ?? Calendar.current.date(byAdding: .day, value: -7, to: Date())
+            ?? Date()
     }
 }
