@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D5B670C82C91EE1E89863181 /* AddRecurringSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B60AEC21B85271A2BB4ACDAC /* AddRecurringSheet.swift */; };
 		0057FF2AB8A5FBBC7D58D77C /* WeekView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D9E84A4318ED0AFA85CDF1A /* WeekView.swift */; };
 		95CAC5ABDE9342B1B0B0A644 /* CheckinButtonsBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B132A872A337424AB317CAFE /* CheckinButtonsBar.swift */; };
 		D90D057BAF0940A7B6DF88BB /* WeeklyPlanSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B06E1DB39DB42158A6A35C2 /* WeeklyPlanSheet.swift */; };
@@ -91,6 +92,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		B60AEC21B85271A2BB4ACDAC /* AddRecurringSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddRecurringSheet.swift; sourceTree = "<group>"; };
 		03A785B5271E98D136C48AEF /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		DF523528795E424EB2B8040B /* CoreDecoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreDecoding.swift; sourceTree = "<group>"; };
 		70FE43F488E64992874E4C53 /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
@@ -261,6 +263,7 @@
 		7F9EB126CBF415A3BD2AF633 /* Recurring */ = {
 			isa = PBXGroup;
 			children = (
+				B60AEC21B85271A2BB4ACDAC /* AddRecurringSheet.swift */,
 				95470751581BA5951DDCF5D1 /* RecurringStore.swift */,
 				D497AC7CBF65EA8CE5878256 /* RecurringView.swift */,
 			);
@@ -501,6 +504,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				67745151537F54E6F54AADCB /* AddTaskSheet.swift in Sources */,
+				D5B670C82C91EE1E89863181 /* AddRecurringSheet.swift in Sources */,
 				F30E105F8891472373066D8F /* AppState.swift in Sources */,
 				95CAC5ABDE9342B1B0B0A644 /* CheckinButtonsBar.swift in Sources */,
 				E7CE9A5F97BFA08DA5FF34CB /* Backlog.swift in Sources */,

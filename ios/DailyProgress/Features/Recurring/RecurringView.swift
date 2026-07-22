@@ -10,6 +10,7 @@ import SwiftUI
 struct RecurringView: View {
     let appState: AppState
     @State private var store: RecurringStore
+    @State private var showingAdd = false
     @State private var pendingDelete: RecurringTemplate?
 
     init(appState: AppState) {
@@ -26,6 +27,10 @@ struct RecurringView: View {
         loadedContent
             .navigationTitle("Recurring Tasks")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar { addToolbarItem }
+            .sheet(isPresented: $showingAdd) {
+                AddRecurringSheet(store: store)
+            }
             .toast(store.toast)
             .modifier(RecurringErrorAlert(store: store))
             .modifier(DeleteRecurringConfirmation(store: store, pendingDelete: $pendingDelete))
@@ -50,6 +55,16 @@ struct RecurringView: View {
             )
         } else {
             recurringContent
+        }
+    }
+
+    private var addToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                showingAdd = true
+            } label: {
+                Label("Add Recurring Task", systemImage: "plus")
+            }
         }
     }
 
