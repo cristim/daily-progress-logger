@@ -1,5 +1,6 @@
 package com.cristim.dailyprogress.ui.checkin
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
@@ -64,6 +66,7 @@ fun MorningCheckinScreen(
     )
     val uiState by vm.uiState.collectAsStateWithLifecycle()
     val submitting by vm.submitting.collectAsStateWithLifecycle()
+    val promptSubmitting by vm.promptSubmitting.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(date) { vm.loadMorning(date) }
@@ -73,6 +76,9 @@ fun MorningCheckinScreen(
     }
 
     var newItemsText by rememberSaveable { mutableStateOf("") }
+    var promptEditing by rememberSaveable { mutableStateOf(false) }
+    var promptDraft by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(Unit) { vm.promptSavedEvents.collect { promptEditing = false } }
 
     Scaffold(
         topBar = {
@@ -126,6 +132,25 @@ fun MorningCheckinScreen(
                         .padding(padding)
                         .padding(horizontal = 16.dp),
                 ) {
+                    // Daily prompt — always the first row, tap to edit.
+                    item {
+                        Spacer(Modifier.height(4.dp))
+                        DailyPromptRow(
+                            prompt = state.dailyPrompt,
+                            editing = promptEditing,
+                            draft = promptDraft,
+                            submitting = promptSubmitting,
+                            onDraftChange = { promptDraft = it },
+                            onStartEdit = {
+                                promptDraft = state.dailyPrompt
+                                promptEditing = true
+                            },
+                            onSave = { vm.saveDailyPrompt(promptDraft) },
+                            onCancel = { promptEditing = false },
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
+                    }
+
                     // Weekly goals section (read-only, shown when non-empty)
                     if (state.goals.isNotEmpty()) {
                         item {
@@ -229,6 +254,63 @@ fun MorningCheckinScreen(
 
             // Evening state: not expected here but handled for exhaustiveness.
             is CheckinUiState.Evening -> Unit
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Daily prompt row — display mode shows the saved text (or a muted
+// placeholder when unset); tapping switches to an inline editor.
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun DailyPromptRow(
+    prompt: String,
+    editing: Boolean,
+    draft: String,
+    /** True while saveDailyPrompt is in flight; disables Save/Cancel. */
+    submitting: Boolean,
+    onDraftChange: (String) -> Unit,
+    onStartEdit: () -> Unit,
+    onSave: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    if (editing) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = onDraftChange,
+                label = { Text("Daily prompt") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !submitting,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row {
+                Button(onClick = onSave, enabled = !submitting) { Text("Save") }
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = onCancel, enabled = !submitting) { Text("Cancel") }
+            }
+            Spacer(Modifier.height(4.dp))
+        }
+    } else {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onStartEdit)
+                .padding(vertical = 8.dp),
+        ) {
+            Text(
+                text = prompt.ifEmpty { "Set a daily prompt…" },
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (prompt.isEmpty()) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
