@@ -3,6 +3,7 @@ package com.cristim.dailyprogress
 import com.cristim.dailyprogress.core.CoreError
 import com.cristim.dailyprogress.model.BacklogDto
 import com.cristim.dailyprogress.model.ConflictDto
+import com.cristim.dailyprogress.model.DailyPromptDto
 import com.cristim.dailyprogress.model.DuePromptsDto
 import com.cristim.dailyprogress.model.EveningAction
 import com.cristim.dailyprogress.model.EveningDecisionDto
@@ -465,6 +466,37 @@ class DtoDecodingTest {
         val msg = "CAS_MISMATCH: tree is stale, please refresh"
         val err = CoreError.parse(msg)
         assertEquals(msg, err.raw)
+    }
+
+    // -----------------------------------------------------------------------
+    // Daily prompt
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun `daily prompt decodes text field`() {
+        val fixture = """{"text": "Ship the release"}"""
+        val dto = json.decodeFromString<DailyPromptDto>(fixture)
+        assertEquals("Ship the release", dto.text)
+    }
+
+    @Test
+    fun `unset daily prompt decodes to empty text`() {
+        val fixture = """{"text": ""}"""
+        val dto = json.decodeFromString<DailyPromptDto>(fixture)
+        assertEquals("", dto.text)
+    }
+
+    @Test
+    fun `daily prompt with wrong text type fails loud on decode`() {
+        // Contract rule: a shape drift (text is not a string) must throw,
+        // never silently coerce or default.
+        val fixture = """{"text": 123}"""
+        try {
+            json.decodeFromString<DailyPromptDto>(fixture)
+            org.junit.Assert.fail("Expected SerializationException for non-string text but none was thrown")
+        } catch (_: SerializationException) {
+            // expected
+        }
     }
 
     // -----------------------------------------------------------------------
