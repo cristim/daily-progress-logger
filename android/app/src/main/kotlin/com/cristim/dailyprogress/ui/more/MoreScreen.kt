@@ -25,7 +25,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
  * "More" bottom-nav destination: navigation menu for secondary screens.
- * Items are disabled placeholders until their respective phases land.
+ * Items are disabled placeholders until their respective phases land them
+ * (Recurring Templates lands in phase D).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
