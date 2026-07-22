@@ -86,8 +86,10 @@ struct MorningCheckinSheet: View {
                         .onSubmit { savePrompt() }
                     Button("Save") { savePrompt() }
                         .buttonStyle(.borderless)
+                        .disabled(store.isSavingPrompt)
                     Button("Cancel", role: .cancel) { cancelPromptEdit() }
                         .buttonStyle(.borderless)
+                        .disabled(store.isSavingPrompt)
                 }
             } else {
                 Text(store.dailyPrompt.isEmpty ? "Set a daily prompt…" : store.dailyPrompt)
@@ -175,10 +177,13 @@ struct MorningCheckinSheet: View {
 
     private func savePrompt() {
         let trimmed = promptDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        isEditingPrompt = false
-        promptFieldFocused = false
         Task {
-            await store.saveDailyPrompt(trimmed)
+            let ok = await store.saveDailyPrompt(trimmed)
+            if ok {
+                isEditingPrompt = false
+                promptFieldFocused = false
+            }
+            // On failure: store.errorMessage is set; editor stays open with the draft intact
         }
     }
 

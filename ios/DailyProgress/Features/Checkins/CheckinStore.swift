@@ -31,6 +31,8 @@ final class CheckinStore {
     var alreadyPlannedCount: Int = 0
     /// The user's daily prompt, shown atop the morning check-in. "" means unset.
     var dailyPrompt: String = ""
+    /// True while saveDailyPrompt is in flight; used to disable the prompt Save/Cancel buttons.
+    var isSavingPrompt = false
 
     // MARK: - Evening state
 
@@ -98,13 +100,20 @@ final class CheckinStore {
 
     /// Persists the daily prompt and updates local state on success.
     /// Errors surface via errorMessage like other mutations (rule 4); no bumpDataVersion
-    /// since the prompt is not shown anywhere else yet.
-    func saveDailyPrompt(_ text: String) async {
+    /// since the prompt is not shown anywhere else yet. Returns true on success so the
+    /// caller can close the editor; false keeps it open with the draft intact for retry.
+    @discardableResult
+    func saveDailyPrompt(_ text: String) async -> Bool {
+        guard !isSavingPrompt else { return false }
+        isSavingPrompt = true
+        defer { isSavingPrompt = false }
         do {
             try await core.setDailyPrompt(text: text)
             dailyPrompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return true
         } catch {
             handleError(error)
+            return false
         }
     }
 
