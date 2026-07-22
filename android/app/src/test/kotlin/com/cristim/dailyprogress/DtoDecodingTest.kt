@@ -243,9 +243,11 @@ class DtoDecodingTest {
         assertEquals("Standup", list[0].text)
         assertEquals("", list[0].project)
         assertEquals("Standup @daily", list[0].raw)
-        // Fields not in this payload use defaults.
-        assertEquals("", list[0].describe)
-        assertEquals(0, list[0].kind)
+        // Fields absent from the management payload must decode to null, not
+        // ""/0 — a silent default would be indistinguishable from a real
+        // kind=0 (daily) template (known-issues.md).
+        assertEquals(null, list[0].describe)
+        assertEquals(null, list[0].kind)
     }
 
     // -----------------------------------------------------------------------

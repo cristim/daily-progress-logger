@@ -56,16 +56,24 @@ fun TaskState.wireString(): String = when (this) {
     TaskState.POSTPONED -> "postponed"
 }
 
+/**
+ * Schedule fields (describe/kind/weekday/monthDay/hour/minute) are nullable,
+ * not defaulted, because RecurringJSON's management shape ({text, project,
+ * raw}) omits them entirely — a Kotlin default of ""/0 would be
+ * indistinguishable from a real kind=0 (daily) template. Only the
+ * TreeJSON.recurring shape populates them. Mirrors iOS's RecurringTemplate
+ * optionals (known-issues.md).
+ */
 @Serializable
 data class RecurringTemplateDto(
     val text: String,
     val project: String = "",
-    val describe: String = "",
-    val kind: Int = 0,
-    val weekday: Int = 0,
-    @SerialName("month_day") val monthDay: Int = 0,
-    val hour: Int = 0,
-    val minute: Int = 0,
+    val describe: String? = null,
+    val kind: Int? = null,
+    val weekday: Int? = null,
+    @SerialName("month_day") val monthDay: Int? = null,
+    val hour: Int? = null,
+    val minute: Int? = null,
     /** Raw stored line; pass to RemoveRecurring to delete. */
     val raw: String,
 )
