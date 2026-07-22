@@ -286,7 +286,7 @@ private fun AddRecurringDialog(
             Column {
                 Text(
                     "Include a recurrence tag: @daily, @weekly @mon, or @monthly @1. " +
-                        "Add @HH:MM for a specific time and #project to file it.",
+                        "Add @HH:MM for a specific time and @<project-slug> to file it.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
