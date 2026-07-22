@@ -164,6 +164,8 @@ final class BacklogMockCoreAPI: CoreAPI, @unchecked Sendable {
     func morningCandidatesJSON(date: String) async throws -> String { throw CoreError.other("unexpected") }
     func applyMorning(date: String, decisionsJSON: String) async throws { throw CoreError.other("unexpected") }
     func applyEvening(date: String, decisionsJSON: String) async throws { throw CoreError.other("unexpected") }
+    func dailyPromptJSON() async throws -> String { throw CoreError.other("unexpected call: dailyPromptJSON") }
+    func setDailyPrompt(text: String) async throws { throw CoreError.other("unexpected") }
     func weeklyPlanJSON(date: String) async throws -> String { throw CoreError.other("unexpected") }
     func setWeeklyPlan(date: String, goalsJSON: String) async throws { throw CoreError.other("unexpected") }
     func unreviewedWeekJSON(date: String) async throws -> String { throw CoreError.other("unexpected") }

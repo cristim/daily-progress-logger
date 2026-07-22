@@ -29,6 +29,8 @@ final class CheckinStore {
     var weeklyGoals: [WeeklyGoal] = []
     /// Count of tasks already in today's plan (all tasks in tree, projects + unfiled).
     var alreadyPlannedCount: Int = 0
+    /// The user's daily prompt, shown atop the morning check-in. "" means unset.
+    var dailyPrompt: String = ""
 
     // MARK: - Evening state
 
@@ -60,7 +62,8 @@ final class CheckinStore {
 
     // MARK: - Morning
 
-    /// Loads candidates, weekly goals, and today's tree (for alreadyPlannedCount) in parallel.
+    /// Loads candidates, weekly goals, today's tree (for alreadyPlannedCount), and the
+    /// daily prompt in parallel.
     func loadMorning(date: Date) async {
         isLoading = true
         errorMessage = nil
@@ -70,9 +73,10 @@ final class CheckinStore {
         async let candidatesJSON = core.morningCandidatesJSON(date: dateStr)
         async let planJSON = core.weeklyPlanJSON(date: dateStr)
         async let treeJSON = core.treeJSON(date: dateStr)
+        async let promptJSON = core.dailyPromptJSON()
 
         do {
-            let (cJSON, pJSON, tJSON) = try await (candidatesJSON, planJSON, treeJSON)
+            let (cJSON, pJSON, tJSON, drJSON) = try await (candidatesJSON, planJSON, treeJSON, promptJSON)
 
             let candidates = try CoreDecoding.decode([MorningCandidate].self, from: cJSON)
             morningCandidates = candidates
@@ -84,6 +88,21 @@ final class CheckinStore {
 
             let tree = try CoreDecoding.decode(ProjectTree.self, from: tJSON)
             alreadyPlannedCount = countAllTasks(in: tree)
+
+            let prompt = try CoreDecoding.decode(DailyPromptDTO.self, from: drJSON)
+            dailyPrompt = prompt.text
+        } catch {
+            handleError(error)
+        }
+    }
+
+    /// Persists the daily prompt and updates local state on success.
+    /// Errors surface via errorMessage like other mutations (rule 4); no bumpDataVersion
+    /// since the prompt is not shown anywhere else yet.
+    func saveDailyPrompt(_ text: String) async {
+        do {
+            try await core.setDailyPrompt(text: text)
+            dailyPrompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
         } catch {
             handleError(error)
         }

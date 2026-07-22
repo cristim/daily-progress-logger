@@ -37,6 +37,8 @@ protocol CoreAPI: Sendable {
     func morningCandidatesJSON(date: String) async throws -> String
     func applyMorning(date: String, decisionsJSON: String) async throws
     func applyEvening(date: String, decisionsJSON: String) async throws
+    func dailyPromptJSON() async throws -> String
+    func setDailyPrompt(text: String) async throws
     func weeklyPlanJSON(date: String) async throws -> String
     func setWeeklyPlan(date: String, goalsJSON: String) async throws
     func unreviewedWeekJSON(date: String) async throws -> String
@@ -256,6 +258,16 @@ actor CoreClient: CoreAPI {
 
     func applyEvening(date: String, decisionsJSON: String) async throws {
         try throwsCall { try core.applyEvening(date, decisionsJSON: decisionsJSON) }
+    }
+
+    // MARK: - Daily prompt
+
+    func dailyPromptJSON() async throws -> String {
+        try strCall { err in core.dailyPromptJSON(err) }
+    }
+
+    func setDailyPrompt(text: String) async throws {
+        try throwsCall { try core.setDailyPrompt(text) }
     }
 
     // MARK: - Weekly
