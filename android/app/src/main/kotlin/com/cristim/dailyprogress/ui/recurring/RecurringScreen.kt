@@ -70,6 +70,7 @@ fun RecurringScreen(
     val uiState by vm.uiState.collectAsStateWithLifecycle()
     val isRefreshing by vm.isRefreshing.collectAsStateWithLifecycle()
     val addFieldError by vm.addFieldError.collectAsStateWithLifecycle()
+    val submitting by vm.submitting.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<RecurringTemplateDto?>(null) }
@@ -162,6 +163,7 @@ fun RecurringScreen(
     if (showAddDialog) {
         AddRecurringDialog(
             fieldError = addFieldError,
+            submitting = submitting,
             onFieldErrorClear = vm::clearAddFieldError,
             onAdd = vm::add,
             onDismiss = { showAddDialog = false },
@@ -273,6 +275,7 @@ private fun RecurringRow(
 @Composable
 private fun AddRecurringDialog(
     fieldError: String?,
+    submitting: Boolean,
     onFieldErrorClear: () -> Unit,
     onAdd: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -285,8 +288,8 @@ private fun AddRecurringDialog(
         text = {
             Column {
                 Text(
-                    "Include a recurrence tag: @daily, @weekly @mon, or @monthly @1. " +
-                        "Add @HH:MM for a specific time and @<project-slug> to file it.",
+                    "Examples: @daily  ·  @weekday  ·  @weekly @mon @09:00  ·  " +
+                        "@monthly @15  ·  optional @project",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -309,7 +312,8 @@ private fun AddRecurringDialog(
         confirmButton = {
             Button(
                 onClick = { if (text.isNotBlank()) onAdd(text.trim()) },
-                enabled = text.isNotBlank(),
+                // Disabled while submitting so a double-tap cannot fire add() twice.
+                enabled = text.isNotBlank() && !submitting,
             ) {
                 Text("Add")
             }
