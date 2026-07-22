@@ -1114,3 +1114,40 @@ func TestSyncNow_InvalidToken(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), ErrCodeBadInput)
 }
+
+// ---- Daily prompt -------------------------------------------------------------
+
+func TestDailyPromptJSON_UnsetIsEmptyText(t *testing.T) {
+	t.Parallel()
+	c := openTestCore(t)
+
+	raw, err := c.DailyPromptJSON()
+	require.NoError(t, err)
+	var got dailyPromptDTO
+	require.NoError(t, json.Unmarshal([]byte(raw), &got))
+	assert.Equal(t, "", got.Text)
+	assert.JSONEq(t, `{"text":""}`, raw)
+}
+
+func TestSetDailyPrompt_RoundTripsThroughDailyPromptJSON(t *testing.T) {
+	t.Parallel()
+	c := openTestCore(t)
+
+	require.NoError(t, c.SetDailyPrompt("What will move the needle today?"))
+
+	raw, err := c.DailyPromptJSON()
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"text":"What will move the needle today?"}`, raw)
+}
+
+func TestSetDailyPrompt_EmptyClearsIt(t *testing.T) {
+	t.Parallel()
+	c := openTestCore(t)
+
+	require.NoError(t, c.SetDailyPrompt("temporary"))
+	require.NoError(t, c.SetDailyPrompt(""))
+
+	raw, err := c.DailyPromptJSON()
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"text":""}`, raw)
+}

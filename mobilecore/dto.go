@@ -194,6 +194,20 @@ type syncResultDTO struct {
 	Token     string        `json:"token,omitempty"`
 }
 
+// --- Daily prompt DTO -----------------------------------------------------------
+
+// dailyPromptDTO is the wire form of the user's daily prompt (the personal
+// reminder shown at the top of the morning check-in).
+//
+// Wire shape for DailyPromptJSON:
+//
+//	{
+//	  "text": "What will move the needle today?"  // string — "" means unset
+//	}
+type dailyPromptDTO struct {
+	Text string `json:"text"`
+}
+
 // --- Mobile config DTO --------------------------------------------------------
 
 // mobileConfigDTO holds the mobile-relevant configuration subset.
