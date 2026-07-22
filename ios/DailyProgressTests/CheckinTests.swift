@@ -160,6 +160,29 @@ final class CheckinTests: XCTestCase {
         let dto = try CoreDecoding.decode(DailyPromptDTO.self, from: json)
         XCTAssertEqual(dto.text, "")
     }
+
+    // Contract rule: a shape drift (text is not a string) must throw, never
+    // silently coerce or default. Matches Android's equivalent decode test.
+    func testDecodeDailyPromptDTOWrongTextTypeFailsLoud() throws {
+        let json = #"{"text":123}"#
+        XCTAssertThrowsError(
+            try CoreDecoding.decode(DailyPromptDTO.self, from: json)
+        ) { error in
+            XCTAssertTrue(error is CoreError, "Expected CoreError.contractViolation, got \(error)")
+        }
+    }
+
+    // Contract rule: text is always present on the wire (FROZEN contract). A
+    // missing key means the payload drifted and must throw, never silently
+    // default to unset/empty.
+    func testDecodeDailyPromptDTOMissingTextKeyFailsLoud() throws {
+        let json = "{}"
+        XCTAssertThrowsError(
+            try CoreDecoding.decode(DailyPromptDTO.self, from: json)
+        ) { error in
+            XCTAssertTrue(error is CoreError, "Expected CoreError.contractViolation, got \(error)")
+        }
+    }
 }
 
 // MARK: - CheckinCoordinator snooze / skip tests
