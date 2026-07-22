@@ -3,6 +3,7 @@ package com.cristim.dailyprogress.core
 import com.cristim.dailyprogress.model.BacklogDto
 import com.cristim.dailyprogress.model.ConflictChoice
 import com.cristim.dailyprogress.model.ConflictDto
+import com.cristim.dailyprogress.model.DailyPromptDto
 import com.cristim.dailyprogress.model.DuePromptsDto
 import com.cristim.dailyprogress.model.EveningDecisionsDto
 import com.cristim.dailyprogress.model.MorningCandidateDto
@@ -36,7 +37,7 @@ import kotlinx.serialization.json.Json
  * - No optimistic UI: callers re-fetch the affected read endpoint after each
  *   mutation and replace state entirely.
  */
-class CoreRepository(private val client: CoreClient) : WeekReviewOps, BacklogOps, RecurringOps {
+class CoreRepository(private val client: CoreClient) : WeekReviewOps, BacklogOps, RecurringOps, CheckinOps {
 
     /** JSON codec: ignoreUnknownKeys so additive core changes never crash. */
     private val json = Json {
@@ -138,21 +139,32 @@ class CoreRepository(private val client: CoreClient) : WeekReviewOps, BacklogOps
     // Check-ins
     // -----------------------------------------------------------------------
 
-    suspend fun morningCandidates(date: String): List<MorningCandidateDto> = call { core ->
+    override suspend fun morningCandidates(date: String): List<MorningCandidateDto> = call { core ->
         json.decodeFromString<List<MorningCandidateDto>>(core.morningCandidatesJSON(date))
     }
 
-    suspend fun applyMorning(date: String, decisions: MorningDecisionsDto) =
+    override suspend fun applyMorning(date: String, decisions: MorningDecisionsDto) =
         call { core -> core.applyMorning(date, json.encodeToString(decisions)) }
 
-    suspend fun applyEvening(date: String, decisions: EveningDecisionsDto) =
+    override suspend fun applyEvening(date: String, decisions: EveningDecisionsDto) =
         call { core -> core.applyEvening(date, json.encodeToString(decisions)) }
+
+    // -----------------------------------------------------------------------
+    // Daily prompt
+    // -----------------------------------------------------------------------
+
+    override suspend fun dailyPrompt(): String = call { core ->
+        json.decodeFromString<DailyPromptDto>(core.dailyPromptJSON()).text
+    }
+
+    override suspend fun setDailyPrompt(text: String) =
+        call { core -> core.setDailyPrompt(text) }
 
     // -----------------------------------------------------------------------
     // Weekly
     // -----------------------------------------------------------------------
 
-    suspend fun weeklyPlan(date: String): WeeklyPlanDto = call { core ->
+    override suspend fun weeklyPlan(date: String): WeeklyPlanDto = call { core ->
         json.decodeFromString(core.weeklyPlanJSON(date))
     }
 

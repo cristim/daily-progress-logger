@@ -3,6 +3,7 @@ package com.cristim.dailyprogress.ui.checkin
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.cristim.dailyprogress.core.CheckinOps
 import com.cristim.dailyprogress.core.CoreError
 import com.cristim.dailyprogress.core.CoreRepository
 import com.cristim.dailyprogress.model.EveningAction
@@ -55,6 +56,8 @@ sealed interface CheckinUiState {
         val goals: List<WeeklyGoalDto>,
         /** Count of plan items already in today's tree (summary line). */
         val plannedCount: Int,
+        /** Saved daily-prompt text; empty when unset. */
+        val dailyPrompt: String,
     ) : CheckinUiState
 
     data class Evening(val items: List<EveningItem>) : CheckinUiState
@@ -67,7 +70,7 @@ sealed interface CheckinUiState {
 // ---------------------------------------------------------------------------
 
 class CheckinViewModel(
-    private val repository: CoreRepository,
+    private val repository: CheckinOps,
     private val dataVersion: MutableStateFlow<Int>,
 ) : ViewModel() {
 
@@ -78,6 +81,10 @@ class CheckinViewModel(
     private val _submitting = MutableStateFlow(false)
     val submitting: StateFlow<Boolean> = _submitting.asStateFlow()
 
+    /** True while saveDailyPrompt is in flight; disables the prompt Save button. */
+    private val _promptSubmitting = MutableStateFlow(false)
+    val promptSubmitting: StateFlow<Boolean> = _promptSubmitting.asStateFlow()
+
     /** One-shot snackbar messages (apply errors — sheet stays open per rule 4). */
     private val _snackbar = Channel<SnackbarEvent>(Channel.BUFFERED)
     val snackbarEvents = _snackbar.receiveAsFlow()
@@ -85,6 +92,10 @@ class CheckinViewModel(
     /** One-shot dismiss signal: emitted on successful apply. */
     private val _done = Channel<Unit>(Channel.BUFFERED)
     val doneEvents = _done.receiveAsFlow()
+
+    /** One-shot signal: emitted on successful saveDailyPrompt, so the editor can close. */
+    private val _promptSaved = Channel<Unit>(Channel.BUFFERED)
+    val promptSavedEvents = _promptSaved.receiveAsFlow()
 
     // -----------------------------------------------------------------------
     // Morning
@@ -107,10 +118,12 @@ class CheckinViewModel(
                 val candidatesDeferred = async { repository.morningCandidates(dateStr) }
                 val planDeferred = async { repository.weeklyPlan(dateStr) }
                 val treeDeferred = async { repository.tree(dateStr) }
+                val promptDeferred = async { repository.dailyPrompt() }
 
                 val candidates = candidatesDeferred.await()
                 val plan = planDeferred.await()
                 val tree = treeDeferred.await()
+                val dailyPrompt = promptDeferred.await()
 
                 // Count plan items already in today's tree (projects + unfiled, flattened).
                 val plannedCount =
@@ -127,6 +140,7 @@ class CheckinViewModel(
                     adopted = adopted,
                     goals = plan.goals,
                     plannedCount = plannedCount,
+                    dailyPrompt = dailyPrompt,
                 )
             }
                 .onSuccess { _uiState.value = it }
@@ -170,6 +184,35 @@ class CheckinViewModel(
                     _snackbar.trySend(SnackbarEvent("Error: ${err.message}"))
                 }
             _submitting.value = false
+        }
+    }
+
+    /**
+     * Saves [text] as the new daily prompt. Trims before persisting so an
+     * all-whitespace edit clears the prompt back to unset, matching Core's
+     * own trim behaviour. Updates Morning state on success (no dataVersion
+     * bump — the prompt is not shown outside this screen) and emits
+     * [promptSavedEvents] so the editor can close; surfaces failures via
+     * snackbar and leaves the editor open for retry.
+     */
+    fun saveDailyPrompt(text: String) {
+        if (_promptSubmitting.value) return
+        if (_uiState.value !is CheckinUiState.Morning) return
+        viewModelScope.launch {
+            _promptSubmitting.value = true
+            val trimmed = text.trim()
+            runCatching { repository.setDailyPrompt(trimmed) }
+                .onSuccess {
+                    (_uiState.value as? CheckinUiState.Morning)?.let { morning ->
+                        _uiState.value = morning.copy(dailyPrompt = trimmed)
+                    }
+                    _promptSaved.trySend(Unit)
+                }
+                .onFailure { t ->
+                    val err = t as? CoreError ?: CoreError.Unknown(t.message.orEmpty())
+                    _snackbar.trySend(SnackbarEvent("Error: ${err.message}"))
+                }
+            _promptSubmitting.value = false
         }
     }
 
