@@ -146,6 +146,20 @@ final class CheckinTests: XCTestCase {
         let result = try CoreDecoding.decode(DuePrompts.self, from: json)
         XCTAssertTrue(result.due.isEmpty)
     }
+
+    // MARK: - DailyPromptDTO decode
+
+    func testDecodeDailyPromptDTOWithText() throws {
+        let json = #"{"text":"What will move the needle today?"}"#
+        let dto = try CoreDecoding.decode(DailyPromptDTO.self, from: json)
+        XCTAssertEqual(dto.text, "What will move the needle today?")
+    }
+
+    func testDecodeDailyPromptDTOEmptyMeansUnset() throws {
+        let json = #"{"text":""}"#
+        let dto = try CoreDecoding.decode(DailyPromptDTO.self, from: json)
+        XCTAssertEqual(dto.text, "")
+    }
 }
 
 // MARK: - CheckinCoordinator snooze / skip tests
@@ -313,4 +327,134 @@ final class CheckinCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.scheduledPrompt?.id, .morning,
                        "process() must not interrupt an active sheet")
     }
+}
+
+// MARK: - CheckinStore daily-prompt behavior tests
+
+/// Store-level tests exercising the daily-prompt load/save wiring.
+/// CheckinStore is @MainActor so all test methods must be async.
+@MainActor
+final class CheckinStoreDailyPromptTests: XCTestCase {
+
+    // MARK: - loadMorning loads the daily prompt
+
+    func testLoadMorningLoadsDailyPrompt() async {
+        let mock = CheckinMockCoreAPI()
+        mock.dailyPromptJSONResult = #"{"text":"Ship the release"}"#
+
+        let store = CheckinStore(core: mock)
+        await store.loadMorning(date: Date())
+
+        XCTAssertEqual(store.dailyPrompt, "Ship the release")
+        XCTAssertNil(store.errorMessage)
+    }
+
+    func testLoadMorningWithUnsetPromptIsEmpty() async {
+        let mock = CheckinMockCoreAPI()
+        mock.dailyPromptJSONResult = #"{"text":""}"#
+
+        let store = CheckinStore(core: mock)
+        await store.loadMorning(date: Date())
+
+        XCTAssertEqual(store.dailyPrompt, "")
+        XCTAssertNil(store.errorMessage)
+    }
+
+    // MARK: - saveDailyPrompt calls setDailyPrompt and updates local state
+
+    func testSaveDailyPromptUpdatesLocalState() async {
+        let mock = CheckinMockCoreAPI()
+        let store = CheckinStore(core: mock)
+
+        await store.saveDailyPrompt("Focus on the launch")
+
+        XCTAssertEqual(mock.setDailyPromptCalls, ["Focus on the launch"],
+                       "saveDailyPrompt must call core.setDailyPrompt with the given text")
+        XCTAssertEqual(store.dailyPrompt, "Focus on the launch")
+        XCTAssertNil(store.errorMessage)
+    }
+
+    // MARK: - saveDailyPrompt error surfaces via errorMessage
+
+    func testSaveDailyPromptErrorSurfaces() async {
+        let mock = CheckinMockCoreAPI()
+        mock.setDailyPromptError = CoreError.other("internal failure")
+        let store = CheckinStore(core: mock)
+
+        await store.saveDailyPrompt("Focus on the launch")
+
+        XCTAssertNotNil(store.errorMessage, "setDailyPrompt failure must surface as errorMessage")
+        XCTAssertEqual(store.dailyPrompt, "",
+                       "local state must not update when the save fails")
+    }
+}
+
+// MARK: - CheckinMockCoreAPI
+
+/// Minimal mock of CoreAPI for CheckinStore daily-prompt unit tests.
+/// Only the methods loadMorning/saveDailyPrompt touch are configured; all
+/// others throw CoreError.other to catch unexpected calls.
+final class CheckinMockCoreAPI: CoreAPI, @unchecked Sendable {
+
+    // MARK: Configurable per test
+
+    var morningCandidatesJSONResult: String = "[]"
+    var weeklyPlanJSONResult: String = #"{"week":"","planned":false,"goals":[]}"#
+    var treeJSONResult: String = #"{"projects":[],"unfiled":[],"recycled":[],"recurring":[]}"#
+    var dailyPromptJSONResult: String = #"{"text":""}"#
+    var setDailyPromptError: Error? = nil
+    private(set) var setDailyPromptCalls: [String] = []
+
+    // MARK: CoreAPI — used by CheckinStore.loadMorning / saveDailyPrompt
+
+    func morningCandidatesJSON(date: String) async throws -> String { morningCandidatesJSONResult }
+    func weeklyPlanJSON(date: String) async throws -> String { weeklyPlanJSONResult }
+    func treeJSON(date: String) async throws -> String { treeJSONResult }
+    func dailyPromptJSON() async throws -> String { dailyPromptJSONResult }
+
+    func setDailyPrompt(text: String) async throws {
+        setDailyPromptCalls.append(text)
+        if let err = setDailyPromptError { throw err }
+    }
+
+    // MARK: CoreAPI — all other methods (not used by these tests)
+
+    func addTask(date: String, text: String, projectID: String) async throws { throw CoreError.other("unexpected") }
+    func setTaskState(date: String, index: Int, expectedText: String, state: String) async throws { throw CoreError.other("unexpected") }
+    func deleteTask(date: String, index: Int, expectedText: String) async throws { throw CoreError.other("unexpected") }
+    func editTaskText(date: String, index: Int, expectedText: String, newText: String) async throws { throw CoreError.other("unexpected") }
+    func postponeToNextDay(date: String, index: Int, expectedText: String) async throws { throw CoreError.other("unexpected") }
+    func postponeToNextWeek(date: String, index: Int, expectedText: String) async throws { throw CoreError.other("unexpected") }
+    func moveTaskToBacklog(date: String, index: Int, expectedText: String) async throws { throw CoreError.other("unexpected") }
+    func moveTaskToProject(date: String, index: Int, expectedText: String, projectID: String) async throws { throw CoreError.other("unexpected") }
+    func addSubtask(date: String, parentIndex: Int, expectedParentText: String, text: String) async throws { throw CoreError.other("unexpected") }
+    func backlogJSON() async throws -> String { throw CoreError.other("unexpected") }
+    func adoptFromBacklog(date: String, text: String) async throws { throw CoreError.other("unexpected") }
+    func moveBacklogItem(text: String, toNextWeek: Bool) async throws { throw CoreError.other("unexpected") }
+    func projectsJSON() async throws -> String { throw CoreError.other("unexpected") }
+    func addProject(name: String) async throws -> String { throw CoreError.other("unexpected") }
+    func renameProject(id: String, newName: String) async throws { throw CoreError.other("unexpected") }
+    func closeProject(id: String) async throws { throw CoreError.other("unexpected") }
+    func reopenProject(id: String) async throws { throw CoreError.other("unexpected") }
+    func recurringJSON() async throws -> String { throw CoreError.other("unexpected") }
+    func addRecurring(text: String) async throws { throw CoreError.other("unexpected") }
+    func removeRecurring(rawText: String) async throws { throw CoreError.other("unexpected") }
+    func recycleJSON() async throws -> String { throw CoreError.other("unexpected") }
+    func restoreTask(date: String, displayText: String) async throws { throw CoreError.other("unexpected") }
+    func purgeRecycled(date: String, displayText: String) async throws { throw CoreError.other("unexpected") }
+    func configJSON() async throws -> String { throw CoreError.other("unexpected") }
+    func setConfig(patchJSON: String) async throws { throw CoreError.other("unexpected") }
+    func duePromptsJSON(nowRFC3339: String) async throws -> String { throw CoreError.other("unexpected") }
+    func applyMorning(date: String, decisionsJSON: String) async throws { throw CoreError.other("unexpected") }
+    func applyEvening(date: String, decisionsJSON: String) async throws { throw CoreError.other("unexpected") }
+    func setWeeklyPlan(date: String, goalsJSON: String) async throws { throw CoreError.other("unexpected") }
+    func unreviewedWeekJSON(date: String) async throws -> String { throw CoreError.other("unexpected") }
+    func weekReviewCandidatesJSON(date: String) async throws -> String { throw CoreError.other("unexpected") }
+    func applyWeekReview(date: String, decisionsJSON: String) async throws { throw CoreError.other("unexpected") }
+    func weeklySummaryJSON(date: String) async throws -> String { throw CoreError.other("unexpected") }
+    func weeklySummaryPendingJSON(date: String) async throws -> String { throw CoreError.other("unexpected") }
+    func markWeekSummarized(date: String) async throws { throw CoreError.other("unexpected") }
+    func syncNow(tokenJSON: String) async throws -> String { throw CoreError.other("unexpected") }
+    func conflictsJSON(tokenJSON: String) async throws -> String { throw CoreError.other("unexpected") }
+    func resolveConflict(tokenJSON: String, path: String, choice: String) async throws { throw CoreError.other("unexpected") }
 }
