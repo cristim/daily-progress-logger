@@ -31,7 +31,6 @@ struct RecurringView: View {
             .sheet(isPresented: $showingAdd) {
                 AddRecurringSheet(store: store)
             }
-            .toast(store.toast)
             .modifier(RecurringErrorAlert(store: store))
             .modifier(DeleteRecurringConfirmation(store: store, pendingDelete: $pendingDelete))
             // Refresh when another tab mutates shared data (bumpDataVersion).

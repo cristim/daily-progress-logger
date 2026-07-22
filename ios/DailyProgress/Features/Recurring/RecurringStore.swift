@@ -26,8 +26,6 @@ final class RecurringStore {
     /// Used for refresh/remove failures; add() failures use addFieldError instead so
     /// they render inline in the add sheet rather than as an alert.
     var errorMessage: String?
-    /// Short-lived bottom toast for recoverable notices.
-    var toast: String?
     /// Inline error for the add-recurring sheet (e.g. BAD_INPUT: no recurrence tag).
     /// Kept separate from errorMessage so the sheet can show it under the text field
     /// while staying open, without also popping the list-level alert.
