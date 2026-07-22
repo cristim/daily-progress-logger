@@ -26,22 +26,16 @@ struct AddRecurringSheet: View {
                         .focused($fieldFocused)
                         .submitLabel(.done)
                         .onSubmit(add)
+                        .onChange(of: text) { _, _ in
+                            store.addFieldError = nil
+                        }
                     if let error = store.addFieldError {
                         Text(error)
                             .foregroundStyle(.red)
                             .font(.footnote)
                     }
                 } footer: {
-                    Text("""
-                    Needs a recurrence tag: @daily, @weekday, @weekly (add a day like \
-                    @fri and a time like @16:00), or @monthly @1 (day of month). Add \
-                    @<project> to file it under a project.
-
-                    Examples:
-                    Standup @daily
-                    Report @weekly @fri @16:00
-                    Rent @monthly @1
-                    """)
+                    Text("Examples: @daily  \u{00B7}  @weekday  \u{00B7}  @weekly @mon @09:00  \u{00B7}  @monthly @15  \u{00B7}  optional @project")
                 }
             }
             .navigationTitle("Add Recurring Task")

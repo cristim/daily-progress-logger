@@ -161,7 +161,7 @@ private struct DeleteRecurringConfirmation: ViewModifier {
 
     func body(content: Content) -> some View {
         content.confirmationDialog(
-            "Delete this recurring task? Already-created occurrences stay.",
+            "Delete this recurring task?",
             isPresented: Binding(
                 get: { pendingDelete != nil },
                 set: { if !$0 { pendingDelete = nil } }
@@ -175,6 +175,8 @@ private struct DeleteRecurringConfirmation: ViewModifier {
                 pendingDelete = nil
             }
             Button("Cancel", role: .cancel) { pendingDelete = nil }
+        } message: {
+            Text("Already-created occurrences stay. This only removes the template.")
         }
     }
 }
