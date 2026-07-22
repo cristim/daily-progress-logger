@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4F8F7A2F6E95ADEE4292DF85 /* RecurringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9F41FFFF13899E90B6FE1A9 /* RecurringTests.swift */; };
 		D5B670C82C91EE1E89863181 /* AddRecurringSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B60AEC21B85271A2BB4ACDAC /* AddRecurringSheet.swift */; };
 		0057FF2AB8A5FBBC7D58D77C /* WeekView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D9E84A4318ED0AFA85CDF1A /* WeekView.swift */; };
 		95CAC5ABDE9342B1B0B0A644 /* CheckinButtonsBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B132A872A337424AB317CAFE /* CheckinButtonsBar.swift */; };
@@ -92,6 +93,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		F9F41FFFF13899E90B6FE1A9 /* RecurringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringTests.swift; sourceTree = "<group>"; };
 		B60AEC21B85271A2BB4ACDAC /* AddRecurringSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddRecurringSheet.swift; sourceTree = "<group>"; };
 		03A785B5271E98D136C48AEF /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		DF523528795E424EB2B8040B /* CoreDecoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreDecoding.swift; sourceTree = "<group>"; };
@@ -376,6 +378,7 @@
 				787584B0E4384A6D850AEFB3 /* CheckinTests.swift */,
 				AB946DC747F6443F922E43DC /* WeekTests.swift */,
 				DD44EE55FF66AA11BB22CC33 /* BacklogTests.swift */,
+				F9F41FFFF13899E90B6FE1A9 /* RecurringTests.swift */,
 			);
 			path = DailyProgressTests;
 			sourceTree = "<group>";
@@ -564,6 +567,7 @@
 				051E428DCDCF44988F4640DD /* CheckinTests.swift in Sources */,
 				E1021A007AAE487AAEFE40B4 /* WeekTests.swift in Sources */,
 				CC33DD44EE55FF66AA11BB22 /* BacklogTests.swift in Sources */,
+				4F8F7A2F6E95ADEE4292DF85 /* RecurringTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
