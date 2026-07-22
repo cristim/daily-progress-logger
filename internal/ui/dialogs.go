@@ -206,6 +206,77 @@ func plannedTodayLabel(daily *store.Daily, exists bool) *qt.QLabel {
 	return summary
 }
 
+// promptDisplayHTML renders the daily prompt for display: the escaped text,
+// or a muted italic placeholder when text is empty (unset).
+func promptDisplayHTML(text string) string {
+	if text == "" {
+		return `<span style="color:#888888; font-style:italic;">Set a daily prompt…</span>`
+	}
+	return html.EscapeString(text)
+}
+
+// dailyPromptRow builds the personal daily-prompt row shown at the top of the
+// morning check-in. It displays the current prompt (or a muted placeholder
+// when unset) with an Edit button revealed on hover (see hoverReveal in
+// tree.go); clicking it swaps the row to an inline QLineEdit with Save /
+// Cancel, mirroring the same hover-to-edit affordance used elsewhere in the
+// tree. Save persists via a.store.SetDailyPrompt and reports failures the
+// same way the rest of the app does (a.reportError); Cancel discards the edit.
+func (a *App) dailyPromptRow(current string) *qt.QWidget {
+	container := qt.NewQWidget2()
+	outer := qt.NewQVBoxLayout(container)
+	outer.SetContentsMargins(0, 0, 0, 0)
+
+	displayRow, displayLayout := newRowWidget()
+	label := qt.NewQLabel3(promptDisplayHTML(current))
+	label.SetTextFormat(qt.RichText)
+	label.SetWordWrap(true)
+	displayLayout.AddWidget2(label.QWidget, 1)
+
+	editRow, editLayout := newRowWidget()
+	editRow.SetVisible(false)
+	lineEdit := qt.NewQLineEdit3(current)
+	lineEdit.SetPlaceholderText("e.g. What will move the needle today?")
+	editLayout.AddWidget2(lineEdit.QWidget, 1)
+	saveBtn := qt.NewQPushButton3("Save")
+	cancelBtn := qt.NewQPushButton3("Cancel")
+	editLayout.AddWidget(saveBtn.QWidget)
+	editLayout.AddWidget(cancelBtn.QWidget)
+
+	outer.AddWidget(displayRow)
+	outer.AddWidget(editRow)
+
+	saved := current // last-saved value; Cancel reverts the editor to this
+	showDisplay := func(text string) {
+		label.SetText(promptDisplayHTML(text))
+		editRow.SetVisible(false)
+		displayRow.SetVisible(true)
+	}
+	showEdit := func() {
+		lineEdit.SetText(saved)
+		displayRow.SetVisible(false)
+		editRow.SetVisible(true)
+		lineEdit.SetFocus()
+	}
+
+	editBtn := a.window.textButton("Edit", "Edit the daily prompt", showEdit)
+	displayLayout.AddWidget(editBtn)
+	a.window.hoverReveal(displayRow, editBtn)
+
+	saveBtn.OnClicked(func() {
+		text := strings.TrimSpace(lineEdit.Text())
+		if err := a.store.SetDailyPrompt(text); err != nil {
+			a.reportError(err)
+			return
+		}
+		saved = text
+		showDisplay(saved)
+	})
+	cancelBtn.OnClicked(func() { showDisplay(saved) })
+
+	return container
+}
+
 // buildMorningDialog asks what the user plans to work on today, offering
 // carry-over candidates from earlier in the week and the backlog.
 // manual mirrors runPrompt's manual flag and is forwarded to attachButtons.
@@ -222,11 +293,17 @@ func (a *App) buildMorningDialog(today time.Time, manual bool) (*dialogSpec, err
 		return nil, err
 	}
 
+	prompt, err := a.store.DailyPrompt()
+	if err != nil {
+		return nil, err
+	}
+
 	dialog := qt.NewQDialog(a.window.win.QWidget)
 	dialog.SetWindowTitle("Morning Check-in")
 	dialog.SetMinimumWidth(460)
 	layout := qt.NewQVBoxLayout(dialog.QWidget)
 
+	layout.AddWidget(a.dailyPromptRow(prompt))
 	layout.AddWidget(qt.NewQLabel3("<b>What are you planning to work on today?</b>").QWidget)
 
 	// Show this week's big things (the weekly plan) read-only for reference, so
