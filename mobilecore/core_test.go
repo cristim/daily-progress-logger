@@ -1125,7 +1125,7 @@ func TestDailyPromptJSON_UnsetIsEmptyText(t *testing.T) {
 	require.NoError(t, err)
 	var got dailyPromptDTO
 	require.NoError(t, json.Unmarshal([]byte(raw), &got))
-	assert.Equal(t, "", got.Text)
+	assert.Empty(t, got.Text)
 	assert.JSONEq(t, `{"text":""}`, raw)
 }
 
