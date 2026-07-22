@@ -40,11 +40,13 @@ sealed interface RecurringUiState {
  *   plan's design decision: templates are global (date-independent), but
  *   only the tree shape carries the `describe` schedule caption used for
  *   display. `raw` (used for delete) is present in both shapes.
- * - Add: [CoreError.BadInput] (missing recurrence tag) surfaces as an inline
- *   field error in the add dialog, not a snackbar — the dialog stays open so
- *   the user can fix the text (fail-loud, no silent drop). Other errors
- *   surface via snackbar; the dialog also stays open so typed text is not
- *   lost.
+ * - Add: [CoreError.BadInput] (missing recurrence tag, or a recurrence tag
+ *   with no description) surfaces as an inline field error in the add
+ *   dialog, not a snackbar — the dialog stays open so the user can fix the
+ *   text (fail-loud, no silent drop). The field error text is the core's own
+ *   detail (stripped of the "BAD_INPUT: " prefix), since only the core knows
+ *   which of the two causes fired. Other errors surface via snackbar; the
+ *   dialog also stays open so typed text is not lost.
  * - Remove: always confirmed by the caller before invoking; NOT_FOUND races
  *   (template already removed) are treated like any other error since core
  *   already refreshes state either way.
@@ -72,6 +74,10 @@ class RecurringViewModel(
     /** One-shot signal emitted on a successful add, so the screen closes the dialog. */
     private val _addDone = Channel<Unit>(Channel.BUFFERED)
     val addDoneEvents = _addDone.receiveAsFlow()
+
+    /** True while an add() call is in flight; guards against a double-tap firing add() twice. */
+    private val _submitting = MutableStateFlow(false)
+    val submitting: StateFlow<Boolean> = _submitting.asStateFlow()
 
     init {
         refresh()
@@ -124,7 +130,9 @@ class RecurringViewModel(
      * the core returns BAD_INPUT.
      */
     fun add(text: String) {
+        if (_submitting.value) return
         viewModelScope.launch {
+            _submitting.value = true
             runCatching { repository.addRecurring(text) }
                 .onSuccess {
                     _addFieldError.value = null
@@ -138,13 +146,19 @@ class RecurringViewModel(
                 .onFailure { t ->
                     val err = t as? CoreError ?: CoreError.Unknown(t.message.orEmpty())
                     when (err) {
+                        // Surface the core's actual error detail (stripped of the
+                        // "BAD_INPUT: " code prefix) rather than a hardcoded guess:
+                        // BAD_INPUT covers both "no recurrence tag" and "no
+                        // description" causes, and only the core knows which one
+                        // fired.
                         is CoreError.BadInput ->
                             _addFieldError.value =
-                                "Needs a recurrence tag, e.g. @daily or @weekly @mon @09:00."
+                                err.message.orEmpty().removePrefix("BAD_INPUT: ")
                         else ->
                             _snackbar.trySend(SnackbarEvent("Error: ${err.message}"))
                     }
                 }
+            _submitting.value = false
         }
     }
 
