@@ -93,7 +93,7 @@ data class BacklogDto(
 // ---------------------------------------------------------------------------
 
 @Serializable
-data class DailyPromptDto(val text: String = "")
+data class DailyPromptDto(val text: String)
 
 // ---------------------------------------------------------------------------
 // Check-in DTOs

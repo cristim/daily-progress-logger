@@ -499,6 +499,20 @@ class DtoDecodingTest {
         }
     }
 
+    @Test
+    fun `daily prompt with missing text key fails loud on decode`() {
+        // Contract rule: text is always present on the wire (FROZEN contract).
+        // A missing key means the payload drifted from the contract and must
+        // throw, never silently default to unset/empty.
+        val fixture = """{}"""
+        try {
+            json.decodeFromString<DailyPromptDto>(fixture)
+            org.junit.Assert.fail("Expected SerializationException for missing text key but none was thrown")
+        } catch (_: SerializationException) {
+            // expected
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Morning check-in DTOs
     // -----------------------------------------------------------------------
