@@ -29,11 +29,10 @@ Non-blocking residual divergences flagged during the mobile-app-foundation
 review (both apps merged and building). Address before the corresponding
 screens ship.
 
-- **[open] Android `RecurringTemplateDto` silently defaults absent schedule
-  fields.** `describe=""`, `kind=0`, etc. mean the 3-field management shape
-  and a real `kind=0` are indistinguishable (violates the no-magic-default
-  rule). iOS now models these as optionals. Fix Android before the Recurring
-  screen is built.
+- **[done] Android `RecurringTemplateDto` silently defaulted absent schedule
+  fields.** Fixed in Phase D: `describe/kind/weekday/month_day/hour/minute` are
+  now nullable (`?`), with a decode test proving absent decodes `null` vs an
+  explicit `kind=0` decodes `0`. Matches iOS's optionals.
 - **[done] iOS `AppState.refreshDuePrompts` decoded with a bare JSONDecoder
   and swallowed errors.** Fixed in Phase A: `CoreDecoding` is the single
   decode/encode surface and classifies failures; `refreshDuePrompts` logs on
