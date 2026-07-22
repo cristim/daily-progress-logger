@@ -24,6 +24,11 @@ struct MorningCheckinSheet: View {
     @State private var newText = ""
     @State private var isApplying = false
 
+    // Daily prompt tap-to-edit state
+    @State private var isEditingPrompt = false
+    @State private var promptDraft = ""
+    @FocusState private var promptFieldFocused: Bool
+
     var body: some View {
         NavigationStack {
             content
@@ -59,10 +64,36 @@ struct MorningCheckinSheet: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Form {
+                dailyPromptSection
                 goalsSection
                 plannedSummarySection
                 newTasksSection
                 candidatesSection
+            }
+        }
+    }
+
+    // Daily prompt: display mode shows the text (or a muted placeholder when unset);
+    // tapping anywhere in the row switches to an inline TextField with Save/Cancel.
+    @ViewBuilder
+    private var dailyPromptSection: some View {
+        Section {
+            if isEditingPrompt {
+                HStack {
+                    TextField("Daily prompt", text: $promptDraft)
+                        .focused($promptFieldFocused)
+                        .submitLabel(.done)
+                        .onSubmit { savePrompt() }
+                    Button("Save") { savePrompt() }
+                        .buttonStyle(.borderless)
+                    Button("Cancel", role: .cancel) { cancelPromptEdit() }
+                        .buttonStyle(.borderless)
+                }
+            } else {
+                Text(store.dailyPrompt.isEmpty ? "Set a daily prompt…" : store.dailyPrompt)
+                    .foregroundStyle(store.dailyPrompt.isEmpty ? .secondary : .primary)
+                    .contentShape(Rectangle())
+                    .onTapGesture { beginPromptEdit() }
             }
         }
     }
@@ -130,6 +161,26 @@ struct MorningCheckinSheet: View {
     }
 
     // MARK: - Actions
+
+    private func beginPromptEdit() {
+        promptDraft = store.dailyPrompt
+        isEditingPrompt = true
+        promptFieldFocused = true
+    }
+
+    private func cancelPromptEdit() {
+        isEditingPrompt = false
+        promptFieldFocused = false
+    }
+
+    private func savePrompt() {
+        let trimmed = promptDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        isEditingPrompt = false
+        promptFieldFocused = false
+        Task {
+            await store.saveDailyPrompt(trimmed)
+        }
+    }
 
     private func applyAndDismiss() {
         isApplying = true
