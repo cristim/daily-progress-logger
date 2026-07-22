@@ -250,6 +250,35 @@ class DtoDecodingTest {
         assertEquals(null, list[0].kind)
     }
 
+    @Test
+    fun `recurring template distinguishes absent kind from a real kind of 0`() {
+        // Regression for the known-issues silent-default bug: before the fix,
+        // both an absent kind (management shape) and an explicit kind=0
+        // (daily, from TreeJSON) decoded to the same Int 0, making them
+        // indistinguishable. Nullable fields must tell these apart.
+        val managementShape = """[{"text": "Standup", "project": "", "raw": "Standup @daily"}]"""
+        val absentKind = json.decodeFromString<List<RecurringTemplateDto>>(managementShape)[0].kind
+        assertEquals(null, absentKind)
+
+        val treeShapeDaily = """
+            {
+              "projects": [], "unfiled": [], "recycled": [],
+              "recurring": [
+                {
+                  "text": "Standup", "project": "", "describe": "daily 09:00",
+                  "kind": 0, "weekday": 0, "month_day": 0, "hour": 9, "minute": 0,
+                  "raw": "Standup @daily @09:00"
+                }
+              ]
+            }
+        """.trimIndent()
+        val realKindZero = json.decodeFromString<TreeDto>(treeShapeDaily).recurring[0].kind
+        assertEquals(0, realKindZero)
+
+        // The two must be distinguishable: one is null, the other is the Int 0.
+        assertTrue(absentKind == null && realKindZero == 0)
+    }
+
     // -----------------------------------------------------------------------
     // Backlog
     // -----------------------------------------------------------------------
