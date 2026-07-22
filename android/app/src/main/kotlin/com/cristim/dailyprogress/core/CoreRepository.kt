@@ -36,7 +36,7 @@ import kotlinx.serialization.json.Json
  * - No optimistic UI: callers re-fetch the affected read endpoint after each
  *   mutation and replace state entirely.
  */
-class CoreRepository(private val client: CoreClient) : WeekReviewOps, BacklogOps {
+class CoreRepository(private val client: CoreClient) : WeekReviewOps, BacklogOps, RecurringOps {
 
     /** JSON codec: ignoreUnknownKeys so additive core changes never crash. */
     private val json = Json {
@@ -72,7 +72,7 @@ class CoreRepository(private val client: CoreClient) : WeekReviewOps, BacklogOps
     // -----------------------------------------------------------------------
 
     /** Fetches the day's project tree. Also materialises recurring tasks due that day. */
-    suspend fun tree(date: String): TreeDto = call { core ->
+    override suspend fun tree(date: String): TreeDto = call { core ->
         json.decodeFromString(core.treeJSON(date))
     }
 
@@ -213,10 +213,10 @@ class CoreRepository(private val client: CoreClient) : WeekReviewOps, BacklogOps
         json.decodeFromString(core.recurringJSON())
     }
 
-    suspend fun addRecurring(text: String) =
+    override suspend fun addRecurring(text: String) =
         call { core -> core.addRecurring(text) }
 
-    suspend fun removeRecurring(rawText: String) =
+    override suspend fun removeRecurring(rawText: String) =
         call { core -> core.removeRecurring(rawText) }
 
     // -----------------------------------------------------------------------

@@ -41,6 +41,7 @@ import com.cristim.dailyprogress.ui.checkin.MorningCheckinScreen
 import com.cristim.dailyprogress.ui.checkin.SharedPrefsSnoozeSkipStorage
 import com.cristim.dailyprogress.ui.day.DayScreen
 import com.cristim.dailyprogress.ui.more.MoreScreen
+import com.cristim.dailyprogress.ui.recurring.RecurringScreen
 import com.cristim.dailyprogress.ui.week.WeekReviewScreen
 import com.cristim.dailyprogress.ui.week.WeekScreen
 import com.cristim.dailyprogress.ui.week.WeeklySummaryScreen
@@ -364,9 +365,19 @@ fun RootScaffold(
             }
 
             // More tab + nested destinations (phases D-H)
-            composable(Routes.MORE) { MoreScreen() }
+            composable(Routes.MORE) {
+                MoreScreen(
+                    onRecurringClick = { navController.navigate(Routes.RECURRING) },
+                )
+            }
             composable(Routes.PROJECTS) { MoreScreen() }    // phase E
-            composable(Routes.RECURRING) { MoreScreen() }   // phase D
+            composable(Routes.RECURRING) {                  // phase D
+                RecurringScreen(
+                    repository = repository,
+                    dataVersion = dataVersion,
+                    onBack = { navController.popBackStack() },
+                )
+            }
             composable(Routes.RECYCLE) { MoreScreen() }     // phase F
             composable(Routes.SYNC) { MoreScreen() }        // phase H
             composable(Routes.SETTINGS) { MoreScreen() }    // phase G

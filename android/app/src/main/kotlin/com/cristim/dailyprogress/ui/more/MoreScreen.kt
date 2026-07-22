@@ -1,5 +1,6 @@
 package com.cristim.dailyprogress.ui.more
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -28,7 +29,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MoreScreen() {
+fun MoreScreen(onRecurringClick: () -> Unit = {}) {
     Scaffold(
         topBar = { TopAppBar(title = { Text("More") }) },
     ) { padding ->
@@ -48,7 +49,8 @@ fun MoreScreen() {
                 MoreMenuItem(
                     icon = Icons.Filled.Repeat,
                     label = "Recurring Templates",
-                    enabled = false,
+                    enabled = true,
+                    onClick = onRecurringClick,
                 )
             }
             item {
@@ -81,6 +83,7 @@ private fun MoreMenuItem(
     icon: ImageVector,
     label: String,
     enabled: Boolean,
+    onClick: () -> Unit = {},
 ) {
     val contentColor = if (enabled) {
         MaterialTheme.colorScheme.onSurface
@@ -103,6 +106,7 @@ private fun MoreMenuItem(
                 tint = contentColor,
             )
         },
+        modifier = if (enabled) Modifier.clickable(onClick = onClick) else Modifier,
         colors = ListItemDefaults.colors(),
     )
 }
