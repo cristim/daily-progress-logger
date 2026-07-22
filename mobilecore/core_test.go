@@ -60,8 +60,14 @@ func TestTreeJSON_MaterializeRecurring(t *testing.T) {
 	// Add a daily recurring task due every day.
 	require.NoError(t, c.store.AddRecurring("Standup @daily @09:00"))
 
+	// MaterializeRecurring is a deliberate no-op for dates before the real
+	// clock's today, so materialize against the real current date rather than
+	// the fixed today() fixture (a hardcoded date drifts into the past as the
+	// calendar advances, which would spuriously fail this test).
+	date := time.Now().Format("2006-01-02")
+
 	// TreeJSON should trigger materialization and include the recurring task.
-	raw, err := c.TreeJSON(today())
+	raw, err := c.TreeJSON(date)
 	require.NoError(t, err)
 
 	var tree map[string]any
