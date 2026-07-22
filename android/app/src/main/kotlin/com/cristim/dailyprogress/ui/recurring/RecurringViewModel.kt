@@ -128,9 +128,12 @@ class RecurringViewModel(
             runCatching { repository.addRecurring(text) }
                 .onSuccess {
                     _addFieldError.value = null
-                    dataVersion.value++
                     _addDone.trySend(Unit)
-                    refresh()
+                    // Do NOT call refresh() here: the init collector
+                    // (dataVersion.drop(1).collect { refresh() }) fires on the
+                    // bump below and reloads — calling refresh() here too would
+                    // double-fetch (matches DayViewModel.mutate's fix).
+                    dataVersion.value++
                 }
                 .onFailure { t ->
                     val err = t as? CoreError ?: CoreError.Unknown(t.message.orEmpty())
@@ -150,12 +153,14 @@ class RecurringViewModel(
         viewModelScope.launch {
             runCatching { repository.removeRecurring(raw) }
                 .onSuccess {
+                    // Bump-only: the init collector handles the reload (see add()).
                     dataVersion.value++
-                    refresh()
                 }
                 .onFailure { t ->
                     val err = t as? CoreError ?: CoreError.Unknown(t.message.orEmpty())
                     _snackbar.trySend(SnackbarEvent("Error: ${err.message}"))
+                    // No bump on failure, so refresh explicitly here (matches the
+                    // CAS-mismatch branch pattern elsewhere).
                     refresh()
                 }
         }

@@ -148,12 +148,21 @@ class RecurringTest {
         val vm = RecurringViewModel(ops, dataVersion)
 
         vm.uiState.first { it is RecurringUiState.Content }
+        val callsAfterInit = ops.treeCalls.size
         vm.add("Standup @daily")
 
         vm.addDoneEvents.first()
         assertNull(vm.addFieldError.value)
         assertTrue("dataVersion must be bumped on add success", dataVersion.value > 0)
         assertEquals(listOf("Standup @daily"), ops.addCalls)
+        // Regression for the DayViewModel.mutate double-refresh bug class: the
+        // bump above must trigger exactly one reload via the init collector,
+        // not a second explicit refresh() in the success branch.
+        assertEquals(
+            "add success must trigger exactly one refresh, not a double reload",
+            callsAfterInit + 1,
+            ops.treeCalls.size,
+        )
     }
 
     // -----------------------------------------------------------------------
@@ -179,7 +188,7 @@ class RecurringTest {
     // -----------------------------------------------------------------------
 
     @Test
-    fun `remove success bumps dataVersion and refreshes`() = runTest {
+    fun `remove success bumps dataVersion and refreshes exactly once`() = runTest {
         val ops = FakeRecurringOps(TreeDto(recurring = listOf(template("Standup @daily"))))
         val dataVersion = MutableStateFlow(0)
         val vm = RecurringViewModel(ops, dataVersion)
@@ -190,7 +199,12 @@ class RecurringTest {
 
         assertEquals(listOf("Standup @daily"), ops.removeCalls)
         assertTrue("dataVersion must be bumped on remove success", dataVersion.value > 0)
-        assertTrue("tree() must be re-fetched after remove", ops.treeCalls.size > callsAfterInit)
+        // Regression for the double-refresh bug class (see the add() test above).
+        assertEquals(
+            "remove success must trigger exactly one refresh, not a double reload",
+            callsAfterInit + 1,
+            ops.treeCalls.size,
+        )
     }
 
     @Test
